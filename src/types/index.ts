@@ -113,7 +113,10 @@ export interface WorkflowRequest {
   keywords: string[];
   subreddits: string[];
   limit?: number;
-  export_to_sheets?: boolean;
+  export_to_sheets?: {
+    spreadsheet_id: string;
+    sheet_name?: string;
+  };
 }
 
 export interface WorkflowResponse {

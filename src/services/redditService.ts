@@ -88,61 +88,68 @@ class RedditService {
 
     try {
       for (const subreddit of subreddits) {
-        await this.rateLimitDelay();
-        console.log(`📡 Searching r/${subreddit}`);
+        for (const keyword of keywords) {
+          await this.rateLimitDelay();
+          console.log(`📡 Searching r/${subreddit} for "${keyword}"`);
 
-        // Get posts from subreddit
-        const response = await axios.get(`${this.baseURL}/r/${subreddit}/${sort}`, {
-          headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
-            'User-Agent': process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0'
-          },
-          params: {
-            limit: limit,
-            t: timeframe
-          }
-        });
-
-        const posts = response.data.data.children;
-
-        // Filter posts by keywords and process
-        for (const postWrapper of posts) {
-          const post = postWrapper.data;
-          
-          // Check if post title or content contains any keyword
-          const hasKeyword = keywords.some(keyword => {
-            const titleMatch = post.title.toLowerCase().includes(keyword.toLowerCase());
-            const contentMatch = post.selftext && post.selftext.toLowerCase().includes(keyword.toLowerCase());
-            return titleMatch || contentMatch;
+          // Use Reddit search API (matching n8n workflow)
+          const response = await axios.get(`${this.baseURL}/r/${subreddit}/search`, {
+            headers: {
+              'Authorization': `Bearer ${this.accessToken}`,
+              'User-Agent': process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0'
+            },
+            params: {
+              q: keyword,           // Search query (matching n8n)
+              restrict_sr: 'true',  // Restrict to subreddit
+              sort: sort,
+              t: timeframe,
+              limit: limit
+            }
           });
 
-          if (!hasKeyword) continue;
+          const posts = response.data.data.children;
+          console.log(`📥 Retrieved ${posts.length} posts from r/${subreddit} search for "${keyword}"`);
 
-          // Skip duplicates and low-quality posts
-          if (seenIds.has(post.id) || 
-              post.score < 50 || 
-              post.title === '[deleted]' || 
-              post.title === '[removed]') {
-            continue;
+          // Filter posts by keywords and process
+          for (const postWrapper of posts) {
+            const post = postWrapper.data;
+            console.log(`🔍 Checking post: "${post.title}" (score: ${post.score})`);
+            
+            // Skip duplicates and low-quality posts (temporarily disabled for debugging)
+            if (seenIds.has(post.id)) {
+              console.log(`❌ Duplicate post filtered: "${post.title}"`);
+              continue;
+            }
+            
+            // if (post.score < 50) {
+            //   console.log(`❌ Low score filtered: "${post.title}" (score: ${post.score}, need >= 50)`);
+            //   continue;
+            // }
+            
+            if (post.title === '[deleted]' || post.title === '[removed]') {
+              console.log(`❌ Deleted/removed post filtered: "${post.title}"`);
+              continue;
+            }
+
+            seenIds.add(post.id);
+
+            const processedPost: RedditPost = {
+              id: post.id,
+              title: post.title,
+              content: post.selftext || '',
+              score: post.score,
+              comments: post.num_comments || 0,
+              subreddit: subreddit,
+              url: post.url,
+              permalink: `https://reddit.com${post.permalink}`,
+              author: post.author,
+              engagement: post.score + ((post.num_comments || 0) * 2), // Match n8n calculation exactly
+              created_utc: post.created_utc
+            };
+
+            allPosts.push(processedPost);
+            console.log(`✅ Added post: "${post.title}" to results`);
           }
-
-          seenIds.add(post.id);
-
-          const processedPost: RedditPost = {
-            id: post.id,
-            title: post.title,
-            content: post.selftext || '',
-            score: post.score,
-            comments: post.num_comments,
-            subreddit: subreddit,
-            url: post.url,
-            permalink: `https://reddit.com${post.permalink}`,
-            author: post.author,
-            engagement: post.score + (post.num_comments * 2),
-            created_utc: post.created_utc
-          };
-
-          allPosts.push(processedPost);
         }
       }
 

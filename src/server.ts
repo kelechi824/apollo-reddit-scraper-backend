@@ -3,6 +3,9 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { HealthCheckResponse, ApiInfoResponse } from './types';
 import redditRoutes from './routes/reddit';
+import analysisRoutes from './routes/analysis';
+import sheetsRoutes from './routes/sheets';
+import workflowRoutes from './routes/workflow';
 
 // Load environment variables
 dotenv.config();
@@ -20,6 +23,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api/reddit', redditRoutes);
+app.use('/api/analysis', analysisRoutes);
+app.use('/api/sheets', sheetsRoutes);
+app.use('/api/workflow', workflowRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
