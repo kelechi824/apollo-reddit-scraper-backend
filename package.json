@@ -28,12 +28,14 @@
     "express": "^5.1.0",
     "googleapis": "^150.0.1",
     "openai": "^5.5.1",
-    "snoowrap": "^1.23.0"
+    "snoowrap": "^1.23.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.3",
+    "@types/uuid": "^10.0.0",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
