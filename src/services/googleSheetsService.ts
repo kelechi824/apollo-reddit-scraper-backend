@@ -126,7 +126,6 @@ class GoogleSheetsService {
       post.analysis.audience_insight,
       post.analysis.content_opportunity,
       post.analysis.urgency_level,
-      post.analysis.target_demographic,
       post.permalink,
       post.analysis_timestamp
     ]);
@@ -150,7 +149,6 @@ class GoogleSheetsService {
       'Audience Insight',
       'Content Opportunity',
       'Urgency Level',
-      'Target Demographic',
       'Reddit Link',
       'Analysis Date'
     ];
@@ -158,13 +156,13 @@ class GoogleSheetsService {
     // Clear existing content
     await this.sheets.spreadsheets.values.clear({
       spreadsheetId: spreadsheetId,
-      range: `${sheetName}!A:N`
+      range: `${sheetName}!A:M`
     });
 
     // Add headers
     await this.sheets.spreadsheets.values.update({
       spreadsheetId: spreadsheetId,
-      range: `${sheetName}!A1:N1`,
+      range: `${sheetName}!A1:M1`,
       valueInputOption: 'RAW',
       resource: {
         values: [headers]
@@ -183,7 +181,7 @@ class GoogleSheetsService {
                 startRowIndex: 0,
                 endRowIndex: 1,
                 startColumnIndex: 0,
-                endColumnIndex: 14
+                endColumnIndex: 13
               },
               cell: {
                 userEnteredFormat: {

@@ -85,8 +85,7 @@ class OpenAIService {
           pain_point: 'Analysis failed - manual review required',
           audience_insight: 'Unable to generate insight due to analysis error',
           content_opportunity: 'Manual analysis recommended',
-          urgency_level: 'low',
-          target_demographic: 'Unknown'
+          urgency_level: 'low'
         };
 
         const analyzedPost: AnalyzedPost = {
@@ -187,10 +186,9 @@ Provide a JSON response with exactly these fields:
 
 {
   "pain_point": "What specific problem or frustration is this post revealing? Be concrete and actionable.",
-  "audience_insight": "What does this tell us about the target audience's needs, behaviors, or mindset?",
+  "audience_insight": "What does this tell us about the target audience's needs, behaviors, mindset, and demographics? Include specific details about who they are (job roles, experience level, industry, etc.) and what drives them.",
   "content_opportunity": "What type of content could address this pain point or serve this audience?",
-  "urgency_level": "high|medium|low - How urgent/important is this pain point?",
-  "target_demographic": "Who is the primary audience experiencing this pain point?"
+  "urgency_level": "high|medium|low - How urgent/important is this pain point?"
 }
 
 Focus on:
