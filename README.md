@@ -65,6 +65,9 @@ REDDIT_USER_AGENT=Apollo-Reddit-Scraper/1.0.0
 # OpenAI
 OPENAI_API_KEY=your_openai_api_key
 
+# Claude API for "Dig Deeper" Chat Feature
+CLAUDE_API_KEY=your_claude_api_key
+
 # Google Sheets (optional)
 GOOGLE_SHEETS_CLIENT_EMAIL=your_service_account_email
 GOOGLE_SHEETS_PRIVATE_KEY=your_private_key
@@ -91,6 +94,13 @@ NODE_ENV=development
 
 ### Sheets (Coming Soon)
 - `POST /api/sheets/save-results` - Save results to Google Sheets
+
+### Chat - "Dig Deeper" Feature ✅
+- `POST /api/chat/start-conversation` - Start socratic learning conversation
+- `POST /api/chat/message` - Send message and get AI response
+- `GET /api/chat/conversation/:id` - Retrieve conversation history
+- `GET /api/chat/status` - Check Claude service status
+- `GET /api/chat/test` - Test Claude connection
 
 ## 📊 API Response Examples
 
