@@ -16,6 +16,7 @@ export interface ApiInfoResponse {
       reddit: string;
       analysis: string;
       sheets: string;
+      chat: string;
     };
   };
 }
@@ -125,4 +126,51 @@ export interface WorkflowResponse {
   sheets_export?: SheetsExportResponse;
   workflow_id: string;
   completed_at: string;
+}
+
+// Chat Types for "Dig Deeper" Feature
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  reddit_post_context: {
+    post_id: string;
+    title: string;
+    content: string;
+    pain_point: string;
+    audience_insight: string;
+  };
+  messages: ChatMessage[];
+  created_at: string;
+  updated_at: string;
+  status: 'active' | 'completed' | 'expired';
+}
+
+export interface StartConversationRequest {
+  post_id: string;
+  title: string;
+  content: string;
+  pain_point: string;
+  audience_insight: string;
+}
+
+export interface StartConversationResponse {
+  conversation_id: string;
+  initial_message: ChatMessage;
+}
+
+export interface SendMessageRequest {
+  conversation_id: string;
+  message: string;
+}
+
+export interface SendMessageResponse {
+  user_message: ChatMessage;
+  assistant_message: ChatMessage;
+  conversation_stage?: string;
 } 

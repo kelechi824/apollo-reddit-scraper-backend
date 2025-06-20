@@ -6,6 +6,7 @@ import redditRoutes from './routes/reddit';
 import analysisRoutes from './routes/analysis';
 import sheetsRoutes from './routes/sheets';
 import workflowRoutes from './routes/workflow';
+import chatRoutes from './routes/chat';
 
 // Load environment variables
 dotenv.config();
@@ -26,6 +27,7 @@ app.use('/api/reddit', redditRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/sheets', sheetsRoutes);
 app.use('/api/workflow', workflowRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -48,7 +50,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
       endpoints: {
         reddit: '/api/reddit/*',
         analysis: '/api/analysis/*',
-        sheets: '/api/sheets/*'
+        sheets: '/api/sheets/*',
+        chat: '/api/chat/*'
       }
     }
   });
