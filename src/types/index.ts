@@ -63,7 +63,6 @@ export interface ContentAnalysisResult {
   audience_insight: string;
   content_opportunity: string;
   urgency_level: 'high' | 'medium' | 'low';
-  target_demographic: string;
 }
 
 export interface AnalyzedPost extends RedditPost {
