@@ -6,9 +6,7 @@
       "destination": "/api"
     }
   ],
-  "functions": {
-    "api/index.ts": {
-      "runtime": "nodejs20.x"
-    }
+  "dev": {
+    "port": 3003
   }
 } 
