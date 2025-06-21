@@ -17,7 +17,7 @@ const app: Express = express();
 // Middleware
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://apollo-reddit-scraper-frontend-r08fbo7j0.vercel.app'] // Your actual frontend domain
+    ? ['https://apollo-reddit-scraper-frontend-69az7g1ha.vercel.app'] // Current frontend domain
     : 'http://localhost:3002',
   credentials: true
 }));
