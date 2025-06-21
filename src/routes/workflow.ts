@@ -66,11 +66,11 @@ router.post('/run-analysis', async (req: Request, res: Response): Promise<any> =
       });
     }
 
-    // Quality check: Ensure we have enough high-quality posts (matching n8n criteria)
-    if (redditResults.posts.length < 3) {
+    // Quality check: Ensure we have enough posts for analysis (reduced threshold for more results)
+    if (redditResults.posts.length < 1) {
       return res.json({
         success: false,
-        message: `Only found ${redditResults.posts.length} quality posts (score >= 50). Need at least 3 for meaningful analysis.`,
+        message: `No posts found matching the criteria. Try different keywords or subreddits.`,
         reddit_results: redditResults,
         analyzed_posts: [],
         workflow_id: workflowId,

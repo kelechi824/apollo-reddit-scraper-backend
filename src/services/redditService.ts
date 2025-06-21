@@ -102,39 +102,74 @@ class RedditService {
           await this.rateLimitDelay();
           console.log(`📡 Searching r/${subreddit} for "${keyword}"`);
 
-          // Use Reddit search API (matching n8n workflow)
+          // Use Reddit search API with broader search parameters
           const response = await axios.get(`${this.baseURL}/r/${subreddit}/search`, {
             headers: {
               'Authorization': `Bearer ${this.accessToken}`,
               'User-Agent': process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0'
             },
             params: {
-              q: keyword,           // Search query (matching n8n)
-              restrict_sr: 'true',  // Restrict to subreddit
+              q: keyword,                    // Search query
+              restrict_sr: 'true',           // Restrict to subreddit
               sort: sort,
-              t: timeframe,
-              limit: limit
+              t: 'all',                      // Search all time instead of just 'week' for more results
+              limit: Math.min(limit, 100),   // Increase search limit to get more candidates
+              type: 'link,self'              // Include both link and text posts
             }
           });
 
-          const posts = response.data.data.children;
+          let posts = response.data.data.children;
           console.log(`📥 Retrieved ${posts.length} posts from r/${subreddit} search for "${keyword}"`);
+
+          // If search returned no results, try fetching recent posts and filtering manually
+          if (posts.length === 0) {
+            console.log(`🔄 No search results, trying fallback: fetching recent posts from r/${subreddit}`);
+            
+            try {
+              await this.rateLimitDelay(); // Rate limit the fallback request
+              const fallbackResponse = await axios.get(`${this.baseURL}/r/${subreddit}/hot`, {
+                headers: {
+                  'Authorization': `Bearer ${this.accessToken}`,
+                  'User-Agent': process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0'
+                },
+                params: { limit: 100 }
+              });
+              
+              const allRecentPosts = fallbackResponse.data.data.children;
+              console.log(`📥 Fallback: Retrieved ${allRecentPosts.length} recent posts from r/${subreddit}`);
+              
+              // Filter posts that contain the keyword in title or content
+              posts = allRecentPosts.filter((postWrapper: any) => {
+                const post = postWrapper.data;
+                const title = (post.title || '').toLowerCase();
+                const content = (post.selftext || '').toLowerCase();
+                const searchTerm = keyword.toLowerCase();
+                
+                return title.includes(searchTerm) || content.includes(searchTerm);
+              });
+              
+              console.log(`📊 Fallback filtered: ${posts.length} posts contain "${keyword}"`);
+            } catch (fallbackError) {
+              console.error(`❌ Fallback search failed for r/${subreddit}:`, fallbackError);
+            }
+          }
 
           // Filter posts by keywords and process
           for (const postWrapper of posts) {
             const post = postWrapper.data;
             console.log(`🔍 Checking post: "${post.title}" (score: ${post.score})`);
             
-            // Skip duplicates and low-quality posts (temporarily disabled for debugging)
+            // Skip duplicates and very low-quality posts (reduced threshold for more results)
             if (seenIds.has(post.id)) {
               console.log(`❌ Duplicate post filtered: "${post.title}"`);
               continue;
             }
             
-            // if (post.score < 50) {
-            //   console.log(`❌ Low score filtered: "${post.title}" (score: ${post.score}, need >= 50)`);
-            //   continue;
-            // }
+            // Filter out posts with very low engagement (reduced from 50 to 5 for more results)
+            if (post.score < 5) {
+              console.log(`❌ Low score filtered: "${post.title}" (score: ${post.score}, need >= 5)`);
+              continue;
+            }
             
             if (post.title === '[deleted]' || post.title === '[removed]') {
               console.log(`❌ Deleted/removed post filtered: "${post.title}"`);
