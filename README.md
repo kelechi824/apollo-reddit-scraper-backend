@@ -1,4 +1,4 @@
-# Apollo Reddit Scraper - Backend API
+# Apollo's Reddit Prospecting & Content Generation Tool
 
 Backend API for Apollo Reddit Scraper, a content analysis tool that identifies pain points, audience insights, and content opportunities from Reddit discussions.
 
@@ -7,7 +7,6 @@ Backend API for Apollo Reddit Scraper, a content analysis tool that identifies p
 - **Express Server**: RESTful API with CORS enabled
 - **Reddit Integration**: OAuth flow and post searching via snoowrap
 - **OpenAI Analysis**: Content analysis for insights and opportunities
-- **Google Sheets Export**: Automated data export to spreadsheets
 - **Environment Config**: Secure credential management
 
 ## 🛠️ Tech Stack
@@ -16,7 +15,6 @@ Backend API for Apollo Reddit Scraper, a content analysis tool that identifies p
 - **Framework**: Express.js 5.1.0
 - **Reddit API**: snoowrap 1.23.0
 - **AI**: OpenAI API 5.5.1
-- **Sheets**: Google APIs 150.0.1
 - **HTTP Client**: Axios 1.10.0
 - **Environment**: dotenv 16.5.0
 
@@ -26,7 +24,6 @@ Backend API for Apollo Reddit Scraper, a content analysis tool that identifies p
 - Node.js 18+
 - Reddit App credentials
 - OpenAI API key
-- Google Sheets service account (optional)
 
 ### Installation
 
