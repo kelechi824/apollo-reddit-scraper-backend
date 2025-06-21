@@ -7,6 +7,7 @@ import analysisRoutes from './routes/analysis';
 import sheetsRoutes from './routes/sheets';
 import workflowRoutes from './routes/workflow';
 import chatRoutes from './routes/chat';
+import contentRoutes from './routes/content';
 
 // Load environment variables
 dotenv.config();
@@ -28,6 +29,7 @@ app.use('/api/analysis', analysisRoutes);
 app.use('/api/sheets', sheetsRoutes);
 app.use('/api/workflow', workflowRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/content', contentRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
