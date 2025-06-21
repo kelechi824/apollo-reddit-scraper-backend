@@ -493,6 +493,54 @@ MESSAGES SO FAR: ${conversation.messages.length}
   }
 
   /**
+   * Generate content using Claude with Reddit context and brand kit
+   * Why this matters: Creates SEO-optimized content by combining Reddit insights with brand positioning.
+   */
+  async generateContent(request: {
+    system_prompt: string;
+    user_prompt: string;
+    post_context: any;
+    brand_kit: any;
+  }): Promise<{ content: string; title?: string; description?: string }> {
+    if (!this.client) {
+      throw new Error('Claude client not initialized');
+    }
+
+    try {
+      console.log('🤖 Generating content with Claude...');
+
+      const response = await this.client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4000,
+        temperature: 0.7,
+        system: request.system_prompt,
+        messages: [
+          {
+            role: 'user',
+            content: request.user_prompt
+          }
+        ]
+      });
+
+      if (response.content[0].type === 'text') {
+        const content = response.content[0].text;
+        
+        return {
+          content,
+          title: request.post_context?.title || '',
+          description: 'Generated SEO-optimized content'
+        };
+      } else {
+        throw new Error('Unexpected response format from Claude');
+      }
+
+    } catch (error) {
+      console.error('Content generation error:', error);
+      throw new Error(`Content generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Get conversation by ID
    * Why this matters: Allows frontend to retrieve conversation history.
    */
