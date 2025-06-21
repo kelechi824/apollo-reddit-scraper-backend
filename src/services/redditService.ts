@@ -8,10 +8,8 @@ class RedditService {
   private readonly baseURL = 'https://oauth.reddit.com';
 
   constructor() {
-    // Delay initialization to allow environment variables to load
-    setTimeout(() => {
-      this.initializeClient();
-    }, 100);
+    // Initialize immediately - environment variables should be available
+    this.initializeClient();
   }
 
   /**
@@ -72,13 +70,25 @@ class RedditService {
   }
 
   /**
+   * Ensure Reddit client is initialized
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (!this.accessToken) {
+      console.log('🔄 Reddit client not initialized, initializing now...');
+      await this.initializeClient();
+      
+      if (!this.accessToken) {
+        throw new Error('Reddit client not initialized');
+      }
+    }
+  }
+
+  /**
    * Search Reddit posts by keywords in specific subreddits
    * Why this matters: This is our core data collection functionality.
    */
   async searchPosts(request: RedditSearchRequest): Promise<RedditSearchResponse> {
-    if (!this.accessToken) {
-      throw new Error('Reddit client not initialized');
-    }
+    await this.ensureInitialized();
 
     const { keywords, subreddits, limit = 25, timeframe = 'week', sort = 'top' } = request;
     const allPosts: RedditPost[] = [];
@@ -177,7 +187,9 @@ class RedditService {
    * Test Reddit connection
    */
   async testConnection(): Promise<boolean> {
-    if (!this.accessToken) {
+    try {
+      await this.ensureInitialized();
+    } catch (error) {
       return false;
     }
 
