@@ -45,9 +45,23 @@ router.post('/generate', async (req: Request, res: Response): Promise<any> => {
       brand_kit
     });
 
+    // Handle LinkedIn post variations
+    let contentResult;
+    if (typeof response.content === 'string') {
+      // If single content, create variations or return as single item array
+      contentResult = [response.content];
+    } else if (Array.isArray(response.content)) {
+      // If already array, use as is
+      contentResult = response.content;
+    } else {
+      // Fallback
+      contentResult = [response.content];
+    }
+
     res.json({
       success: true,
-      content: response.content,
+      content: contentResult,
+      variations: contentResult, // Support both formats
       title: response.title || post_context.title,
       description: response.description || '',
       generated_at: new Date().toISOString()
