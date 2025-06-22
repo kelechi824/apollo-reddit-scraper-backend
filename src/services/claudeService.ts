@@ -204,7 +204,7 @@ Generate a practical, action-oriented opening that identifies the engagement opp
 
     try {
       const completion = await this.client!.messages.create({
-        model: "claude-3-5-sonnet-20241022", // Using latest Claude 3.5 Sonnet (Claude 4 not yet available via API)
+        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
         max_tokens: 300,
         temperature: 0.7,
         system: systemPrompt,
@@ -268,7 +268,7 @@ What angle feels most natural for your approach?`,
       });
 
       const completion = await this.client!.messages.create({
-        model: "claude-3-5-sonnet-20241022", // Using latest Claude 3.5 Sonnet (Claude 4 not yet available via API)
+        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
         max_tokens: 400,
         temperature: 0.7,
         system: systemPrompt + "\n\n" + conversationHistory,
@@ -510,7 +510,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
       console.log('🤖 Generating content with Claude...');
 
       const response = await this.client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 4000,
         temperature: 0.7,
         system: request.system_prompt,
@@ -580,7 +580,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
 
     try {
       const completion = await this.client.messages.create({
-        model: "claude-3-5-sonnet-20241022", // Using latest Claude 3.5 Sonnet (Claude 4 not yet available via API)
+        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
         max_tokens: 50,
         messages: [{ role: "user", content: "Hello, this is a connection test." }]
       });
