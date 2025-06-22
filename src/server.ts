@@ -17,7 +17,10 @@ const PORT: number = parseInt(process.env.PORT || '3003', 10);
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3002', // Frontend URL
+  origin: [
+    'http://localhost:3002', // Local frontend
+    'https://apollo-reddit-scraper-frontend.vercel.app', // Production frontend
+  ],
   credentials: true
 }));
 app.use(express.json());
