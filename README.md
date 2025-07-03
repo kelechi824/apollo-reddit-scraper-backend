@@ -1,12 +1,14 @@
 # Apollo's Reddit Prospecting & Content Generation Tool
 
-Backend API for Apollo Reddit Scraper, a content analysis tool that identifies pain points, audience insights, and content opportunities from Reddit discussions.
+Backend API for Apollo Reddit Content Creator, a content analysis tool that identifies pain points, audience insights, and content opportunities from Reddit discussions, with AI-powered content generation capabilities.
 
 ## 🚀 Features
 
 - **Express Server**: RESTful API with CORS enabled
 - **Reddit Integration**: OAuth flow and post searching via snoowrap
-- **OpenAI Analysis**: Content analysis for insights and opportunities
+- **AI Analysis**: OpenAI GPT-4 for business intelligence analysis
+- **Claude Content Generation**: Claude Sonnet 4 for SEO-optimized content creation
+- **Chat Interface**: Socratic learning conversations for sales discovery and Reddit conversation starter
 - **Environment Config**: Secure credential management
 
 ## 🛠️ Tech Stack
@@ -15,6 +17,7 @@ Backend API for Apollo Reddit Scraper, a content analysis tool that identifies p
 - **Framework**: Express.js 5.1.0
 - **Reddit API**: snoowrap 1.23.0
 - **AI**: OpenAI API 5.5.1
+- **Claude API**: Anthropic Claude Sonnet 4
 - **HTTP Client**: Axios 1.10.0
 - **Environment**: dotenv 16.5.0
 
@@ -24,6 +27,7 @@ Backend API for Apollo Reddit Scraper, a content analysis tool that identifies p
 - Node.js 18+
 - Reddit App credentials
 - OpenAI API key
+- Claude API key
 
 ### Installation
 
@@ -59,16 +63,11 @@ REDDIT_CLIENT_ID=your_reddit_client_id
 REDDIT_CLIENT_SECRET=your_reddit_client_secret
 REDDIT_USER_AGENT=Apollo-Reddit-Scraper/1.0.0
 
-# OpenAI
+# OpenAI for Business Analysis
 OPENAI_API_KEY=your_openai_api_key
 
-# Claude API for "Dig Deeper" Chat Feature
+# Claude API for Content Generation & Chat
 CLAUDE_API_KEY=your_claude_api_key
-
-# Google Sheets (optional)
-GOOGLE_SHEETS_CLIENT_EMAIL=your_service_account_email
-GOOGLE_SHEETS_PRIVATE_KEY=your_private_key
-GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
 
 # Server
 PORT=3003
@@ -81,23 +80,29 @@ NODE_ENV=development
 - `GET /health` - Backend health status
 - `GET /` - API information
 
-### Reddit (Coming Soon)
-- `GET /auth/reddit` - Initiate Reddit OAuth
-- `GET /auth/reddit/callback` - Handle OAuth callback
-- `POST /api/reddit/search` - Search Reddit posts
+### Reddit Search
+- `POST /api/reddit/search` - Search Reddit posts by keywords and subreddits
+- `GET /api/reddit/status` - Get Reddit service status
 
-### Analysis (Coming Soon)
-- `POST /api/analysis/analyze-posts` - Analyze posts with OpenAI
+### AI Analysis
+- `POST /api/analysis/analyze-posts` - Analyze posts with OpenAI for business insights
+- `GET /api/analysis/status` - Check OpenAI service status
+- `GET /api/analysis/test` - Test OpenAI connection
 
-### Sheets (Coming Soon)
-- `POST /api/sheets/save-results` - Save results to Google Sheets
+### Content Generation
+- `POST /api/content/generate` - Generate SEO-optimized content using Claude Sonnet 4
+- Supports LinkedIn posts, blog articles, and custom content types
 
-### Chat - "Dig Deeper" Feature ✅
+### Chat & Discovery
 - `POST /api/chat/start-conversation` - Start socratic learning conversation
 - `POST /api/chat/message` - Send message and get AI response
 - `GET /api/chat/conversation/:id` - Retrieve conversation history
 - `GET /api/chat/status` - Check Claude service status
 - `GET /api/chat/test` - Test Claude connection
+
+### Workflow Orchestration
+- `POST /api/workflow/run-analysis` - Complete Reddit → OpenAI analysis pipeline
+- `GET /api/workflow/status` - Check all services status
 
 ## 📊 API Response Examples
 
@@ -110,12 +115,14 @@ NODE_ENV=development
 }
 ```
 
-### API Info
+### Content Generation Response
 ```json
 {
-  "name": "Apollo Reddit Scraper API",
-  "version": "1.0.0",
-  "description": "Backend API for Reddit content analysis and insights"
+  "success": true,
+  "content": ["Generated content variations..."],
+  "title": "SEO-Optimized Title",
+  "description": "Meta description",
+  "generated_at": "2024-01-01T12:00:00.000Z"
 }
 ```
 
@@ -128,41 +135,69 @@ NODE_ENV=development
 ## 🎯 Development Status
 
 ### Completed ✅
-- [x] Express server setup
-- [x] CORS configuration
-- [x] Environment management
-- [x] Health check endpoints
-- [x] Package dependencies
-
-### In Progress 🚧
-- [ ] Reddit OAuth implementation
-- [ ] Reddit search functionality
-- [ ] OpenAI integration
-- [ ] Google Sheets integration
+- [x] Express server setup with TypeScript
+- [x] CORS configuration and environment management
+- [x] Reddit OAuth and search functionality
+- [x] OpenAI integration for business analysis
+- [x] Claude Sonnet 4 integration for content generation
+- [x] Chat interface for socratic learning discovery
+- [x] Workflow orchestration and health monitoring
+- [x] Complete end-to-end pipeline functionality
 
 ### Todo 📝
-- [ ] Error handling middleware
-- [ ] Rate limiting
-- [ ] Request validation
-- [ ] Logging system
-- [ ] Unit tests
+- [ ] Rate limiting enhancements
+- [ ] Advanced caching strategies
+- [ ] Performance monitoring
+- [ ] Unit and integration tests
 
 ## 🔧 Development
 
 ### Project Structure
 ```
-├── server.js          # Main Express server
-├── package.json       # Dependencies and scripts
-├── .env.example       # Environment template
-├── .gitignore        # Git ignore rules
-└── README.md         # This file
+├── api/
+│   └── index.ts          # Vercel serverless entry point
+├── src/
+│   ├── routes/           # API route handlers
+│   │   ├── reddit.ts     # Reddit search endpoints
+│   │   ├── analysis.ts   # OpenAI analysis endpoints
+│   │   ├── content.ts    # Claude content generation
+│   │   ├── chat.ts       # Chat and discovery endpoints
+│   │   └── workflow.ts   # Orchestration endpoints
+│   ├── services/         # Business logic services
+│   │   ├── redditService.ts      # Reddit API integration
+│   │   ├── openaiService.ts      # OpenAI business analysis
+│   │   └── claudeService.ts      # Claude content generation
+│   ├── types/            # TypeScript type definitions
+│   └── server.ts         # Express server configuration
+├── package.json          # Dependencies and scripts
+└── vercel.json          # Vercel deployment config
 ```
 
-### Adding New Endpoints
-1. Create route handlers in `server.js`
-2. Add middleware as needed
-3. Update this documentation
-4. Test with frontend integration
+### Key Features
+
+#### Reddit Integration
+- OAuth authentication flow
+- Advanced post searching with filters
+- High-engagement post discovery
+- Rate limiting and error handling
+
+#### AI-Powered Analysis
+- OpenAI GPT-4 business intelligence extraction
+- Pain point identification
+- Audience insight analysis
+- Content opportunity mapping
+
+#### Content Generation
+- Claude Sonnet 4 for high-quality content creation
+- SEO-optimized article generation
+- LinkedIn thought leadership posts
+- Brand kit variable integration
+
+#### Chat Discovery
+- Socratic methodology for sales discovery
+- Apollo solution positioning
+- Conversation stage tracking
+- Multi-persona engagement strategies
 
 ## 🤝 Contributing
 
