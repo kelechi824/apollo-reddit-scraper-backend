@@ -79,4 +79,78 @@ router.post('/generate', async (req: Request, res: Response): Promise<any> => {
   }
 });
 
+/**
+ * POST /api/content/publish-to-cms
+ * Simple prototype for publishing content to external CMS (demo)
+ * Why this matters: Demonstrates how content can be published to any CMS via API
+ */
+router.post('/publish-to-cms', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { 
+      title, 
+      content, 
+      meta_title, 
+      meta_description,
+      api_endpoint,
+      api_key,
+      cms_type = 'custom',
+      status = 'draft'
+    } = req.body;
+
+    if (!title || !content) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'title and content are required',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`📰 [DEMO] Publishing to ${cms_type}: "${title.substring(0, 50)}..."`);
+
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Generate demo response (simulating successful publish)
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
+
+    const demoResponse = {
+      success: true,
+      post_id: `demo-${Date.now()}`,
+      slug: slug,
+      url: api_endpoint ? 
+        `${api_endpoint.replace('/api/', '/blog/')}/${slug}` : 
+        `https://demo-apollo-blog.com/blog/${slug}`,
+      status: status,
+      published_date: new Date().toISOString(),
+      cms_type: cms_type,
+      message: `Demo: Content would be published to ${cms_type} CMS`
+    };
+
+    console.log('✅ [DEMO] Simulated publish result:', demoResponse);
+
+    res.json({
+      success: true,
+      publication: demoResponse,
+      demo_mode: true,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Demo publish endpoint error:', error);
+    
+    res.status(500).json({
+      error: 'Publication Failed',
+      message: error instanceof Error ? error.message : 'Unknown publication error',
+      status: 500,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 export default router; 
