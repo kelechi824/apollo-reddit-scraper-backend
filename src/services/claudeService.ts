@@ -593,6 +593,67 @@ MESSAGES SO FAR: ${conversation.messages.length}
   }
 
   /**
+   * Generate comprehensive playbook content using Claude API
+   * Why this matters: Creates high-quality, structured playbook content using
+   * the processed markdown data as context for targeted job title strategies.
+   */
+  async generatePlaybookContent(request: {
+    system_prompt: string;
+    user_prompt: string;
+    job_title: string;
+    markdown_data: string;
+  }): Promise<{ content: string }> {
+    const { system_prompt, user_prompt, job_title, markdown_data } = request;
+    
+    if (!this.client) {
+      throw new Error('Claude client not initialized');
+    }
+    
+    if (!system_prompt || !user_prompt || !job_title || !markdown_data) {
+      throw new Error('system_prompt, user_prompt, job_title, and markdown_data are required');
+    }
+
+    console.log(`📚 Generating playbook content for job title: ${job_title}`);
+
+    try {
+      // Inject markdown data into the user prompt
+      const enhancedUserPrompt = `${user_prompt}
+
+**Processed Markdown Data for ${job_title}:**
+${markdown_data}
+
+Please use this processed data as context to create a comprehensive playbook following the specified format.`;
+
+      const response = await this.client.messages.create({
+        model: 'claude-3-5-sonnet-20241022', // Using available Claude model
+        max_tokens: 4000,
+        temperature: 0.7,
+        system: system_prompt,
+        messages: [
+          {
+            role: 'user',
+            content: enhancedUserPrompt
+          }
+        ]
+      });
+
+      const content = response.content[0];
+      
+      if (!content || content.type !== 'text') {
+        throw new Error('No valid content generated');
+      }
+
+      console.log(`✅ Successfully generated playbook content for ${job_title}`);
+      
+      return { content: content.text };
+
+    } catch (error) {
+      console.error('❌ Failed to generate playbook content:', error);
+      throw new Error(`Failed to generate playbook content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Get service status
    * Why this matters: Monitoring and debugging information.
    */

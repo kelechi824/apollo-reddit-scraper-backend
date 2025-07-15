@@ -1,9 +1,8 @@
 import { Router, Request, Response } from 'express';
-import OpenAIService from '../services/openaiService';
+import openaiService from '../services/openaiService';
 import { ContentAnalysisRequest, ApiError } from '../types';
 
 const router = Router();
-const openaiService = new OpenAIService();
 
 /**
  * POST /api/analysis/analyze-posts
