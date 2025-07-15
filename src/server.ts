@@ -58,7 +58,10 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         reddit: '/api/reddit/*',
         analysis: '/api/analysis/*',
         sheets: '/api/sheets/*',
-        chat: '/api/chat/*'
+        workflow: '/api/workflow/*',
+        chat: '/api/chat/*',
+        content: '/api/content/*',
+        playbooks: '/api/playbooks/*'
       }
     }
   });
