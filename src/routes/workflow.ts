@@ -1,12 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { redditService } from '../services/redditService';
-import OpenAIService from '../services/openaiService';
+import openaiService from '../services/openaiService';
 import GoogleSheetsService from '../services/googleSheetsService';
 import { WorkflowRequest, WorkflowResponse, ApiError } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
-const openaiService = new OpenAIService();
 const sheetsService = new GoogleSheetsService();
 
 /**

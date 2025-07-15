@@ -239,6 +239,73 @@ Respond only with valid JSON.`;
   }
 
   /**
+   * Convert raw text data to markdown format using GPT-4.1-nano
+   * Why this matters: Transforms unstructured raw data into clean, processable markdown
+   * format that can be used as context for playbook generation.
+   */
+  async convertToMarkdown(request: { raw_data: string; job_title: string }): Promise<string> {
+    const { raw_data, job_title } = request;
+    
+    if (!this.client) {
+      throw new Error('OpenAI client not initialized');
+    }
+    
+    if (!raw_data || !job_title) {
+      throw new Error('raw_data and job_title are required');
+    }
+
+    console.log(`📝 Converting raw data to markdown for job title: ${job_title}`);
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: 'gpt-4o-mini', // Using gpt-4o-mini as gpt-4.1-nano is not available
+        messages: [
+          {
+            role: 'system',
+            content: `You are a skilled technical writer specializing in converting raw text data into clean, well-structured markdown format for business playbooks. Your task is to transform unstructured data into organized markdown that can be easily processed by other systems.
+
+IMPORTANT CONTEXT: You are working with executive job title data and business metrics. When you see common business abbreviations, interpret them in their executive/business context:
+- CRO = Chief Revenue Officer (NOT Conversion Rate Optimization)
+- CMO = Chief Marketing Officer  
+- CFO = Chief Financial Officer
+- CEO = Chief Executive Officer
+- CTO = Chief Technology Officer
+- VP = Vice President
+- etc.
+
+Always use the executive job title interpretation for these abbreviations in your markdown output.`
+          },
+          {
+            role: 'user',
+            content: `Turn this raw text data about the executive role "${job_title}" into a single markdown output for easy processing. This is business performance data for an executive position, not marketing metrics. DO NOT separate each template. Think deeply about what I just asked you to do before creating the markdown. Ensure you understand the task before proceeding.
+
+Raw data:
+${raw_data}
+
+Please convert this into clean, structured markdown format that preserves all the important information while making it easy to process programmatically. Remember that any abbreviations should be interpreted in their executive/business context.`
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.3, // Lower temperature for more consistent formatting
+      });
+
+      const markdownContent = response.choices[0]?.message?.content;
+      
+      if (!markdownContent) {
+        throw new Error('No markdown content generated');
+      }
+
+      console.log(`✅ Successfully converted raw data to markdown for ${job_title}`);
+      
+      return markdownContent;
+
+    } catch (error) {
+      console.error('❌ Failed to convert raw data to markdown:', error);
+      throw new Error(`Failed to convert raw data to markdown: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Get service status for monitoring
    */
   getServiceStatus(): { initialized: boolean; hasApiKey: boolean } {
@@ -249,4 +316,6 @@ Respond only with valid JSON.`;
   }
 }
 
-export default OpenAIService; 
+// Export singleton instance
+export const openaiService = new OpenAIService();
+export default openaiService; 
