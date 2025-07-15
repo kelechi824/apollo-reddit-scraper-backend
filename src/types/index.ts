@@ -16,7 +16,10 @@ export interface ApiInfoResponse {
       reddit: string;
       analysis: string;
       sheets: string;
+      workflow: string;
       chat: string;
+      content: string;
+      playbooks: string;
     };
   };
 }
