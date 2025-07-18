@@ -625,7 +625,7 @@ ${markdown_data}
 Please use this processed data as context to create a comprehensive playbook following the specified format.`;
 
       const response = await this.client.messages.create({
-        model: 'claude-3-5-sonnet-20241022', // Using available Claude model
+        model: 'claude-sonnet-4-20250514', // Updated to latest Claude Sonnet 4 for enhanced content generation
         max_tokens: 4000,
         temperature: 0.7,
         system: system_prompt,
