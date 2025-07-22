@@ -9,6 +9,7 @@ import workflowRoutes from '../src/routes/workflow';
 import chatRoutes from '../src/routes/chat';
 import contentRoutes from '../src/routes/content';
 import playbooksRoutes from '../src/routes/playbooks';
+import blogCreatorRoutes from '../src/routes/blogCreator';
 
 // Load environment variables
 dotenv.config();
@@ -37,6 +38,7 @@ app.use('/api/workflow', workflowRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/playbooks', playbooksRoutes);
+app.use('/api/blog-creator', blogCreatorRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -63,7 +65,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         workflow: '/api/workflow/*',
         chat: '/api/chat/*',
         content: '/api/content/*',
-        playbooks: '/api/playbooks/*'
+        playbooks: '/api/playbooks/*',
+        blogCreator: '/api/blog-creator/*'
       }
     }
   });
