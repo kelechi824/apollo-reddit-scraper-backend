@@ -31,15 +31,15 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// API Routes
-app.use('/api/reddit', redditRoutes);
-app.use('/api/analysis', analysisRoutes);
-app.use('/api/sheets', sheetsRoutes);
-app.use('/api/workflow', workflowRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/content', contentRoutes);
-app.use('/api/playbooks', playbooksRoutes);
-app.use('/api/blog-creator', blogCreatorRoutes);
+// API Routes - Vercel handles the /api prefix
+app.use('/reddit', redditRoutes);
+app.use('/analysis', analysisRoutes);
+app.use('/sheets', sheetsRoutes);
+app.use('/workflow', workflowRoutes);
+app.use('/chat', chatRoutes);
+app.use('/content', contentRoutes);
+app.use('/playbooks', playbooksRoutes);
+app.use('/blog-creator', blogCreatorRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
