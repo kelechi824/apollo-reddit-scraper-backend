@@ -155,13 +155,82 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
  */
 router.get('/job-status/:jobId', (req: Request, res: Response): any => {
   const { jobId } = req.params;
-  const job = jobProgress.get(jobId);
+  
+  // First try to get from in-memory store (for immediate requests)
+  let job = jobProgress.get(jobId);
 
+  // If not found in memory, try to get from workflowOrchestrator
+  // This handles serverless environments where memory is not persistent
   if (!job) {
-    return res.status(404).json({
-      success: false,
-      error: 'Job not found'
-    });
+    const workflowState = workflowOrchestrator.getWorkflowState(jobId);
+    
+    if (!workflowState) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found or has expired'
+      });
+    }
+
+    // Reconstruct job status from workflow state
+    let status: 'running' | 'completed' | 'error' = 'running';
+    let progress = 0;
+    let message = 'Processing...';
+    let result = undefined;
+    let error = undefined;
+
+    // Determine status from workflow state
+    if (workflowState.currentStage === 'completed') {
+      status = 'completed';
+      progress = 100;
+      message = 'Content generation complete!';
+      
+      // Try to get result from completed stages
+      const completedStages = workflowState.completedStages || {};
+      if (completedStages.content_generation) {
+        result = completedStages.content_generation;
+      }
+    } else if (workflowState.currentStage === 'error') {
+      status = 'error';
+      error = workflowState.lastError?.message || 'Unknown error occurred';
+      message = `Generation failed: ${error}`;
+    } else {
+      // Still running - calculate progress based on completed stages
+      const totalStages = 4; // firecrawl, deep_research, gap_analysis, content_generation
+      const completedCount = Object.keys(workflowState.completedStages || {}).length;
+      progress = Math.round((completedCount / totalStages) * 100);
+      
+      // Set message based on current stage with keyword
+      const keyword = workflowState.keyword || 'your topic';
+      switch (workflowState.currentStage) {
+        case 'firecrawl':
+          message = `Scraping the top 3 search results for ${keyword} on Google...`;
+          break;
+        case 'deep_research':
+          message = `Performing deep research on ${keyword}...`;
+          break;
+        case 'gap_analysis':
+          message = 'Conducting content gap analysis for opportunities...';
+          break;
+        case 'content_generation':
+          message = 'Gathering insights from Step 1, 2, and 3 to generate content...';
+          break;
+        default:
+          message = `Processing stage: ${workflowState.currentStage}`;
+      }
+    }
+
+    // Create job object from workflow state
+    job = {
+      status,
+      progress,
+      stage: workflowState.currentStage,
+      message,
+      result,
+      error,
+      startTime: workflowState.startTime
+    };
+
+    console.log(`📊 Reconstructed job status for ${jobId} from workflow state:`, { status, progress, message });
   }
 
   // Get enhanced workflow state if available
