@@ -62,7 +62,7 @@ class FirecrawlService {
    * Why this matters: Firecrawl requires API key authentication for search and scraping requests.
    */
   private async initializeClient(): Promise<void> {
-    const apiKey = process.env.FIRECRAWL_API_KEY || 'fc-b8f96c78306647138d79a29b21253205';
+    const apiKey = process.env.FIRECRAWL_API_KEY;
     
     if (!apiKey) {
       console.error('Firecrawl API key not found in environment variables');
@@ -93,6 +93,12 @@ class FirecrawlService {
 
     console.log(`🔍 Searching for top 3 results for keyword: "${keyword}"`);
 
+    // Production fallback: Skip Firecrawl in production if environment variable is set
+    if (process.env.NODE_ENV === 'production' && process.env.SKIP_FIRECRAWL === 'true') {
+      console.log(`⚠️ Skipping Firecrawl in production (fallback mode)`);
+      return this.createMockFirecrawlResult(keyword);
+    }
+
     // Use circuit breaker and retry logic for the entire operation
     return await this.circuitBreaker.execute(async () => {
       return await retryWithBackoff(
@@ -101,19 +107,36 @@ class FirecrawlService {
           await this.rateLimiter.waitForNext();
 
           const searchQuery = keyword.trim();
+          console.log(`🔍 Searching for: "${searchQuery}"`);
+          console.log(`🌐 Firecrawl client initialized: ${!!this.client}`);
           
-          // Perform the search with timeout handling
+          // Perform the search with reduced timeout and better error handling
+          const searchStartTime = Date.now();
+          console.log(`⏰ Starting Firecrawl search at ${new Date().toISOString()}`);
+          
           const searchResponse = await Promise.race([
-            this.client!.search(searchQuery, {
-              limit: 3, // Top 3 results only
-              scrapeOptions: {
-                formats: ['markdown', 'html'],
-                includeTags: ['title', 'meta', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-                excludeTags: ['nav', 'footer', 'sidebar', 'ads'],
-                onlyMainContent: true
+            (async () => {
+              try {
+                console.log(`📡 Making Firecrawl API call...`);
+                const result = await this.client!.search(searchQuery, {
+                  limit: 3, // Top 3 results only
+                  scrapeOptions: {
+                    formats: ['markdown', 'html'],
+                    includeTags: ['title', 'meta', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+                    excludeTags: ['nav', 'footer', 'sidebar', 'ads'],
+                    onlyMainContent: true
+                  }
+                });
+                const duration = Date.now() - searchStartTime;
+                console.log(`✅ Firecrawl search completed in ${duration}ms`);
+                return result;
+              } catch (error) {
+                const duration = Date.now() - searchStartTime;
+                console.error(`❌ Firecrawl search failed after ${duration}ms:`, error);
+                throw error;
               }
-            }),
-            this.createTimeoutPromise(30000) // 30 second timeout
+            })(),
+            this.createTimeoutPromise(15000) // Reduced to 15 second timeout for faster feedback
           ]);
 
           if (!searchResponse.success || !searchResponse.data) {
@@ -362,6 +385,72 @@ class FirecrawlService {
   }
 
   /**
+   * Create mock Firecrawl result for production fallback
+   * Why this matters: Allows the workflow to continue in production when Firecrawl is unavailable
+   */
+  private createMockFirecrawlResult(keyword: string): FirecrawlSearchResult {
+    console.log(`🎭 Creating mock Firecrawl result for keyword: "${keyword}"`);
+    
+    const mockAnalyses: CompetitorAnalysis[] = [
+      {
+        url: `https://example.com/article-about-${keyword.replace(/\s+/g, '-')}`,
+        title: `${keyword.charAt(0).toUpperCase() + keyword.slice(1)}: Complete Guide`,
+        content: `This is a comprehensive guide about ${keyword}. It covers the main aspects and provides valuable insights.`,
+        meta_description: `Learn everything about ${keyword} in this complete guide.`,
+        word_count: 1500,
+        headings: [`Introduction to ${keyword}`, `Key Benefits`, `Best Practices`, `Conclusion`],
+        key_topics: [keyword, 'guide', 'best practices', 'benefits', 'implementation'],
+        content_structure: {
+          intro_present: true,
+          conclusion_present: true,
+          numbered_lists: 2,
+          bullet_points: 5
+        }
+      },
+      {
+        url: `https://example.com/advanced-${keyword.replace(/\s+/g, '-')}`,
+        title: `Advanced ${keyword} Strategies`,
+        content: `Advanced strategies and techniques for ${keyword} implementation.`,
+        meta_description: `Advanced ${keyword} strategies for professionals.`,
+        word_count: 2200,
+        headings: [`Advanced Techniques`, `Strategy Overview`, `Implementation`, `Results`],
+        key_topics: [keyword, 'advanced', 'strategies', 'implementation', 'techniques'],
+        content_structure: {
+          intro_present: true,
+          conclusion_present: true,
+          numbered_lists: 3,
+          bullet_points: 8
+        }
+      },
+      {
+        url: `https://example.com/${keyword.replace(/\s+/g, '-')}-tips`,
+        title: `Top Tips for ${keyword}`,
+        content: `Essential tips and tricks for mastering ${keyword}.`,
+        meta_description: `Top tips and tricks for ${keyword} success.`,
+        word_count: 1200,
+        headings: [`Getting Started`, `Pro Tips`, `Common Mistakes`, `Expert Advice`],
+        key_topics: [keyword, 'tips', 'tricks', 'expert advice', 'mistakes'],
+        content_structure: {
+          intro_present: true,
+          conclusion_present: true,
+          numbered_lists: 1,
+          bullet_points: 10
+        }
+      }
+    ];
+
+         return {
+       keyword: keyword.trim(),
+       search_metadata: {
+         search_query: keyword.trim(),
+         total_results: 3,
+         timestamp: new Date().toISOString()
+       },
+       top_results: mockAnalyses
+     };
+  }
+
+  /**
    * Test Firecrawl connection and functionality
    * Why this matters: Validates that Firecrawl integration is working before processing real keywords.
    */
@@ -420,7 +509,7 @@ class FirecrawlService {
   } {
     return {
       initialized: !!this.client,
-      hasApiKey: !!(process.env.FIRECRAWL_API_KEY || 'fc-b8f96c78306647138d79a29b21253205'),
+      hasApiKey: !!process.env.FIRECRAWL_API_KEY,
       circuitBreakerState: this.circuitBreaker.getState(),
       rateLimitActive: Date.now() - (this.rateLimiter as any).lastRequestTime < DEFAULT_RATE_LIMITS.firecrawl
     };
