@@ -31,6 +31,94 @@ const jobProgress = new Map<string, {
   startTime: number;
 }>();
 
+// Serverless-compatible job storage using process.env as fallback
+const JOBS_ENV_PREFIX = 'APOLLO_JOB_';
+
+function storeJobData(jobId: string, data: any) {
+  try {
+    // Store in memory for immediate access
+    jobProgress.set(jobId, data);
+    
+    // Also store in process.env for serverless persistence (with TTL)
+    const envKey = `${JOBS_ENV_PREFIX}${jobId}`;
+    const jobData = {
+      ...data,
+      stored_at: Date.now()
+    };
+    process.env[envKey] = JSON.stringify(jobData);
+    console.log(`💾 Stored job ${jobId} in both memory and env`);
+  } catch (error) {
+    console.warn(`⚠️ Failed to store job data for ${jobId}:`, error);
+    // Still store in memory as fallback
+    jobProgress.set(jobId, data);
+  }
+}
+
+function getJobData(jobId: string) {
+  // First try memory
+  let job = jobProgress.get(jobId);
+  if (job) {
+    console.log(`📋 Found job ${jobId} in memory`);
+    return job;
+  }
+
+  // Fallback to process.env for serverless environments
+  try {
+    const envKey = `${JOBS_ENV_PREFIX}${jobId}`;
+    const envData = process.env[envKey];
+    
+    if (envData) {
+      const jobData = JSON.parse(envData);
+      
+      // Check if data is not too old (30 minutes max)
+      const maxAge = 30 * 60 * 1000; // 30 minutes
+      if (Date.now() - jobData.stored_at < maxAge) {
+        console.log(`📋 Found job ${jobId} in env storage`);
+        // Remove stored_at before returning
+        delete jobData.stored_at;
+        
+        // Restore to memory for future access
+        jobProgress.set(jobId, jobData);
+        return jobData;
+      } else {
+        console.log(`⏰ Job ${jobId} expired in env storage`);
+        // Clean up expired job
+        delete process.env[envKey];
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️ Failed to retrieve job data from env for ${jobId}:`, error);
+  }
+
+  return null;
+}
+
+function updateJobData(jobId: string, updates: any) {
+  let job = getJobData(jobId);
+  if (job) {
+    job = { ...job, ...updates };
+    storeJobData(jobId, job);
+  }
+  return job;
+}
+
+function deleteJobData(jobId: string): boolean {
+  // Delete from memory
+  const deletedFromMemory = jobProgress.delete(jobId);
+  
+  // Delete from env storage
+  try {
+    const envKey = `${JOBS_ENV_PREFIX}${jobId}`;
+    const existedInEnv = !!process.env[envKey];
+    delete process.env[envKey];
+    console.log(`🗑️ Deleted job ${jobId} from storage`);
+    return deletedFromMemory || existedInEnv;
+  } catch (error) {
+    console.warn(`⚠️ Failed to delete job from env storage for ${jobId}:`, error);
+    return deletedFromMemory;
+  }
+}
+
 /**
  * POST /api/blog-creator/generate-content
  * Generate content for a single keyword using the 4-model pipeline
@@ -89,8 +177,8 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
     // Generate unique job ID
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Initialize job progress
-    jobProgress.set(jobId, {
+    // Initialize job progress with serverless-compatible storage
+    storeJobData(jobId, {
       status: 'running',
       progress: 0,
       stage: 'starting',
@@ -107,31 +195,25 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       brand_kit
     }, {
       onProgress: (stage: string, message: string, progress: number) => {
-        const job = jobProgress.get(jobId);
-        if (job) {
-          job.stage = stage;
-          job.message = message;
-          job.progress = progress;
-          jobProgress.set(jobId, job);
-        }
+        updateJobData(jobId, {
+          stage,
+          message,
+          progress
+        });
       }
     }).then((result: any) => {
-      const job = jobProgress.get(jobId);
-      if (job) {
-        job.status = 'completed';
-        job.progress = 100;
-        job.message = 'Content generation complete!';
-        job.result = result;
-        jobProgress.set(jobId, job);
-      }
+      updateJobData(jobId, {
+        status: 'completed',
+        progress: 100,
+        message: 'Content generation complete!',
+        result
+      });
     }).catch((error: any) => {
-      const job = jobProgress.get(jobId);
-      if (job) {
-        job.status = 'error';
-        job.error = error instanceof Error ? error.message : 'Unknown error';
-        job.message = 'Content generation failed';
-        jobProgress.set(jobId, job);
-      }
+      updateJobData(jobId, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        message: 'Content generation failed'
+      });
     });
 
     res.json({
@@ -156,8 +238,8 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
 router.get('/job-status/:jobId', (req: Request, res: Response): any => {
   const { jobId } = req.params;
   
-  // First try to get from in-memory store (for immediate requests)
-  let job = jobProgress.get(jobId);
+  // Try to get job data using serverless-compatible storage
+  let job = getJobData(jobId);
 
   // If not found in memory, try to get from workflowOrchestrator
   // This handles serverless environments where memory is not persistent
@@ -374,44 +456,36 @@ router.post('/resume/:jobId', async (req: Request, res: Response): Promise<any> 
     }
 
     // Update job progress to indicate resumption
-    const job = jobProgress.get(jobId);
-    if (job) {
-      job.status = 'running';
-      job.progress = 0;
-      job.stage = 'resuming';
-      job.message = 'Resuming workflow from last successful stage...';
-      job.error = undefined;
-      jobProgress.set(jobId, job);
-    }
+    updateJobData(jobId, {
+      status: 'running',
+      progress: 0,
+      stage: 'resuming',
+      message: 'Resuming workflow from last successful stage...',
+      error: undefined
+    });
 
     // Start async workflow resumption
     workflowOrchestrator.resumeWorkflow(jobId, {
       onProgress: (stage: string, message: string, progress: number) => {
-        const job = jobProgress.get(jobId);
-        if (job) {
-          job.stage = stage;
-          job.message = message;
-          job.progress = progress;
-          jobProgress.set(jobId, job);
-        }
+        updateJobData(jobId, {
+          stage,
+          message,
+          progress
+        });
       }
     }).then((result: any) => {
-      const job = jobProgress.get(jobId);
-      if (job) {
-        job.status = 'completed';
-        job.progress = 100;
-        job.message = 'Workflow resumed and completed successfully!';
-        job.result = result;
-        jobProgress.set(jobId, job);
-      }
+      updateJobData(jobId, {
+        status: 'completed',
+        progress: 100,
+        message: 'Workflow resumed and completed successfully!',
+        result
+      });
     }).catch((error: any) => {
-      const job = jobProgress.get(jobId);
-      if (job) {
-        job.status = 'error';
-        job.error = error instanceof Error ? error.message : 'Unknown error during resume';
-        job.message = 'Workflow resume failed';
-        jobProgress.set(jobId, job);
-      }
+      updateJobData(jobId, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error during resume',
+        message: 'Workflow resume failed'
+      });
     });
 
     res.json({
@@ -469,8 +543,8 @@ router.delete('/cancel/:jobId', (req: Request, res: Response): any => {
     // Cancel workflow state
     const workflowCancelled = workflowOrchestrator.cancelWorkflow(jobId);
     
-    // Cancel job progress
-    const jobCancelled = jobProgress.delete(jobId);
+    // Cancel job progress using serverless-compatible deletion
+    const jobCancelled = deleteJobData(jobId);
 
     if (!workflowCancelled && !jobCancelled) {
       return res.status(404).json({

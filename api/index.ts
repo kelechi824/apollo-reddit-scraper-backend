@@ -22,7 +22,8 @@ app.use(cors({
     ? [
         'https://apollo-reddit-scraper-frontend.vercel.app', // New production domain
         'https://apollo-reddit-scraper-frontend-5dwall1ms.vercel.app', // Current working domain
-        'https://apollo-reddit-scraper-frontend-69az7g1ha.vercel.app' // Legacy domain for backward compatibility  
+        'https://apollo-reddit-scraper-frontend-69az7g1ha.vercel.app', // Legacy domain for backward compatibility
+        /https:\/\/.*\.netlify\.app$/ // Allow all Netlify domains for frontend deployment
       ]
     : 'http://localhost:3002',
   credentials: true
