@@ -8,14 +8,35 @@ import {
   SendMessageRequest,
   SendMessageResponse 
 } from '../types';
+import { 
+  retryWithBackoff, 
+  CircuitBreaker, 
+  RateLimiter,
+  DEFAULT_RETRY_CONFIGS,
+  DEFAULT_CIRCUIT_BREAKER_CONFIGS,
+  DEFAULT_RATE_LIMITS,
+  createServiceError
+} from './errorHandling';
 
 class ClaudeService {
   private client: Anthropic | null = null;
   private conversations: Map<string, ChatConversation> = new Map();
   private readonly conversationTimeout = 30 * 60 * 1000; // 30 minutes
   private readonly maxMessages = 50; // Prevent runaway conversations
+  private circuitBreaker: CircuitBreaker;
+  private rateLimiter: RateLimiter;
 
   constructor() {
+    // Initialize error handling components
+    this.circuitBreaker = new CircuitBreaker(
+      DEFAULT_CIRCUIT_BREAKER_CONFIGS.claude,
+      'Claude Sonnet 4'
+    );
+    this.rateLimiter = new RateLimiter(
+      DEFAULT_RATE_LIMITS.claude,
+      'Claude Sonnet 4'
+    );
+
     // Delay initialization to allow environment variables to load
     setTimeout(() => {
       this.initializeClient();
@@ -503,41 +524,77 @@ MESSAGES SO FAR: ${conversation.messages.length}
     brand_kit: any;
   }): Promise<{ content: string; title?: string; description?: string }> {
     if (!this.client) {
-      throw new Error('Claude client not initialized');
+      throw createServiceError(new Error('Claude client not initialized'), 'Claude Sonnet 4', 'Client check');
     }
 
-    try {
-      console.log('🤖 Generating content with Claude...');
+    if (!request.system_prompt || !request.user_prompt) {
+      throw createServiceError(new Error('System prompt and user prompt are required'), 'Claude Sonnet 4', 'Input validation');
+    }
 
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        temperature: 0.7,
-        system: request.system_prompt,
-        messages: [
-          {
-            role: 'user',
-            content: request.user_prompt
+    console.log('🤖 Generating content with Claude...');
+
+    // Use circuit breaker and retry logic for content generation
+    return await this.circuitBreaker.execute(async () => {
+      return await retryWithBackoff(
+        async () => {
+          // Rate limiting before API call
+          await this.rateLimiter.waitForNext();
+
+          // Generate content with timeout protection
+          const response = await Promise.race([
+            this.client!.messages.create({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 4000,
+              temperature: 0.7,
+              system: request.system_prompt,
+              messages: [
+                {
+                  role: 'user',
+                  content: request.user_prompt
+                }
+              ]
+            }),
+            this.createTimeoutPromise(90000) // 1.5 minute timeout for content generation
+          ]);
+
+          if (!response.content || response.content.length === 0) {
+            throw new Error('Empty response from Claude');
           }
-        ]
-      });
 
-      if (response.content[0].type === 'text') {
-        const content = response.content[0].text;
-        
-        return {
-          content,
-          title: request.post_context?.title || '',
-          description: 'Generated SEO-optimized content'
-        };
-      } else {
-        throw new Error('Unexpected response format from Claude');
-      }
+          if (response.content[0].type === 'text') {
+            const content = response.content[0].text;
+            
+            if (!content || content.trim().length === 0) {
+              throw new Error('Claude returned empty content');
+            }
+            
+            return {
+              content,
+              title: request.post_context?.title || '',
+              description: 'Generated SEO-optimized content'
+            };
+          } else {
+            throw new Error('Unexpected response format from Claude - expected text content');
+          }
+        },
+        DEFAULT_RETRY_CONFIGS.claude,
+        'Claude Content Generation',
+        `Context: ${request.post_context?.keyword || 'Unknown'}`
+      );
+    });
+  }
 
-    } catch (error) {
-      console.error('Content generation error:', error);
-      throw new Error(`Content generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+  /**
+   * Create timeout promise for API calls
+   * Why this matters: Claude content generation can take time with large prompts,
+   * so we need timeout protection to prevent hanging requests.
+   */
+  private createTimeoutPromise(timeoutMs: number): Promise<never> {
+    return new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(createServiceError(new Error(`Claude request timeout after ${timeoutMs}ms`), 'Claude Sonnet 4', 'Timeout'));
+      }, timeoutMs);
+    });
   }
 
   /**
@@ -579,15 +636,37 @@ MESSAGES SO FAR: ${conversation.messages.length}
     }
 
     try {
-      const completion = await this.client.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
-        max_tokens: 50,
-        messages: [{ role: "user", content: "Hello, this is a connection test." }]
-      });
+      const testResult = await retryWithBackoff(
+        async () => {
+          const completion = await Promise.race([
+            this.client!.messages.create({
+              model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+              max_tokens: 50,
+              messages: [{ role: "user", content: "Hello, this is a connection test." }]
+            }),
+            this.createTimeoutPromise(15000) // 15 second timeout for test
+          ]);
 
-      return completion.content.length > 0;
+          if (!completion.content || completion.content.length === 0) {
+            throw new Error('Claude test returned empty response');
+          }
+
+          return true;
+        },
+        {
+          maxRetries: 2,
+          baseDelayMs: 1000,
+          maxDelayMs: 5000,
+          backoffMultiplier: 2,
+          jitterMs: 500
+        },
+        'Claude Connection Test'
+      );
+
+      console.log('✅ Claude connection test successful');
+      return testResult;
     } catch (error) {
-      console.error('Claude connection test failed:', error);
+      console.error('❌ Claude connection test failed:', error);
       return false;
     }
   }
@@ -654,6 +733,88 @@ Please use this processed data as context to create a comprehensive playbook fol
   }
 
   /**
+   * Generate dynamic AI-powered meta fields
+   * Why this matters: Creates unique, contextually relevant meta titles and descriptions
+   */
+  async generateMetaFields(params: {
+    keyword: string;
+    content_preview: string;
+    prompt: string;
+  }): Promise<{ metaSeoTitle: string; metaDescription: string }> {
+    try {
+      if (!this.client) {
+        throw new Error('Claude service not initialized');
+      }
+
+      console.log(`🎯 Generating meta fields for keyword: ${params.keyword}`);
+      console.log(`📝 Prompt preview: ${params.prompt.substring(0, 200)}...`);
+
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        temperature: 0.5, // Balanced temperature for creative but controlled meta fields
+        system: 'You are an expert SEO copywriter specializing in creating unique, compelling meta titles and descriptions. CRITICAL: Never use formulaic patterns like "Master...", "Discover...", "Learn...", "Build...", "comprehensive guide", "proven strategies". Each description must be genuinely unique and contextual. Write like a human expert, not an AI. Focus on specific outcomes, data points, or unique insights. Meta titles must be 70 characters or less INCLUDING "| Apollo" suffix. Meta descriptions must be 150-160 characters. Always respond with valid JSON only.',
+        messages: [
+          {
+            role: 'user',
+            content: params.prompt
+          }
+        ]
+      });
+
+      const content = response.content[0];
+      
+      if (!content || content.type !== 'text') {
+        console.error('❌ No valid content generated from Claude');
+        throw new Error('No valid content generated');
+      }
+
+      console.log(`🔍 Raw Claude response (${content.text.length} chars):`, content.text.substring(0, 500));
+
+      // Parse the JSON response
+      try {
+        const parsed = JSON.parse(content.text);
+        console.log(`✅ Successfully parsed JSON:`, parsed);
+        
+        const result = {
+          metaSeoTitle: parsed.metaSeoTitle || '',
+          metaDescription: parsed.metaDescription || ''
+        };
+        
+        console.log(`✅ Successfully generated meta fields for: ${params.keyword}`, result);
+        return result;
+        
+      } catch (parseError) {
+        console.error('❌ Failed to parse meta fields JSON:', parseError);
+        console.log('🔧 Attempting fallback regex parsing...');
+        
+        // Fallback parsing if JSON is malformed
+        const titleMatch = content.text.match(/"metaSeoTitle"\s*:\s*"([^"]+)"/);
+        const descMatch = content.text.match(/"metaDescription"\s*:\s*"([^"]+)"/);
+        
+        const fallbackResult = {
+          metaSeoTitle: titleMatch ? titleMatch[1] : '',
+          metaDescription: descMatch ? descMatch[1] : ''
+        };
+        
+        console.log('🔧 Fallback parsing result:', fallbackResult);
+        
+        if (!fallbackResult.metaSeoTitle && !fallbackResult.metaDescription) {
+          console.error('❌ Both JSON and regex parsing failed. Raw response:', content.text);
+          throw new Error('Failed to extract meta fields from response');
+        }
+        
+        return fallbackResult;
+      }
+
+    } catch (error) {
+      console.error('❌ Failed to generate meta fields:', error);
+      console.error('❌ Error details:', error instanceof Error ? error.message : String(error));
+      throw new Error(`Failed to generate meta fields: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Get service status
    * Why this matters: Monitoring and debugging information.
    */
@@ -662,13 +823,17 @@ Please use this processed data as context to create a comprehensive playbook fol
     hasApiKey: boolean; 
     activeConversations: number;
     totalConversations: number;
+    circuitBreakerState: any;
+    rateLimitActive: boolean;
   } {
     return {
       initialized: this.client !== null,
       hasApiKey: !!process.env.CLAUDE_API_KEY,
       activeConversations: Array.from(this.conversations.values())
         .filter(conv => conv.status === 'active').length,
-      totalConversations: this.conversations.size
+      totalConversations: this.conversations.size,
+      circuitBreakerState: this.circuitBreaker.getState(),
+      rateLimitActive: Date.now() - (this.rateLimiter as any).lastRequestTime < DEFAULT_RATE_LIMITS.claude
     };
   }
 }

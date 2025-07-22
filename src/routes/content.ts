@@ -153,4 +153,51 @@ router.post('/publish-to-cms', async (req: Request, res: Response): Promise<any>
   }
 });
 
+/**
+ * POST /api/content/generate-meta
+ * Generate dynamic AI-powered meta title and description
+ * Why this matters: Creates unique, contextually relevant meta fields instead of formulaic templates
+ */
+router.post('/generate-meta', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { keyword, content_preview, prompt } = req.body;
+
+    if (!keyword || !prompt) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'keyword and prompt are required',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`🎯 Generating AI meta fields for keyword: "${keyword}"`);
+
+    // Generate meta fields using Claude
+    const response = await claudeService.generateMetaFields({
+      keyword,
+      content_preview: content_preview || '',
+      prompt
+    });
+
+    console.log('✅ Meta fields generated successfully');
+
+    res.json({
+      metaSeoTitle: response.metaSeoTitle || '',
+      metaDescription: response.metaDescription || '',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Meta generation endpoint error:', error);
+    
+    res.status(500).json({
+      error: 'Meta Generation Failed',
+      message: error instanceof Error ? error.message : 'Unknown meta generation error',
+      status: 500,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 export default router; 

@@ -20,6 +20,7 @@ export interface ApiInfoResponse {
       chat: string;
       content: string;
       playbooks: string;
+      blogCreator: string;
     };
   };
 }
