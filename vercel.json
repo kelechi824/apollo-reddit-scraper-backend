@@ -2,10 +2,15 @@
   "version": 2,
   "public": true,
   "alias": ["apollo-reddit-scraper-backend.vercel.app"],
+  "functions": {
+    "api/index.ts": {
+      "runtime": "nodejs18.x"
+    }
+  },
   "rewrites": [
     {
-      "source": "/(.*)",
-      "destination": "/api"
+      "source": "/api/(.*)",
+      "destination": "/api/index/$1"
     }
   ],
   "headers": [
