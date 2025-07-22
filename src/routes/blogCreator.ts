@@ -182,7 +182,7 @@ router.get('/job-status/:jobId', (req: Request, res: Response): any => {
         currentStage: workflowState.currentStage,
         retryCount: workflowState.retryCount,
         maxRetries: workflowState.maxRetries,
-        completedStages: Object.keys(workflowState.completedStages),
+        completedStages: workflowState.completedStages, // Return the actual data objects, not just keys
         canResume: workflowState.currentStage === 'error' && workflowState.retryCount < workflowState.maxRetries
       } : null
     }
