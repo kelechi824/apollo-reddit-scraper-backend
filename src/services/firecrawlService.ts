@@ -83,8 +83,14 @@ class FirecrawlService {
    * what topics are already covered, helping with gap analysis for original content creation.
    */
   async searchAndAnalyzeCompetitors(keyword: string): Promise<FirecrawlSearchResult> {
+    // Ensure client is initialized before proceeding
     if (!this.client) {
-      throw createServiceError(new Error('Firecrawl client not initialized'), 'Firecrawl', 'Client check');
+      console.log('⚠️ Firecrawl client not ready, initializing now...');
+      await this.initializeClient();
+    }
+    
+    if (!this.client) {
+      throw createServiceError(new Error('Firecrawl client failed to initialize'), 'Firecrawl', 'Client check');
     }
 
     if (!keyword || keyword.trim().length === 0) {
@@ -455,7 +461,14 @@ class FirecrawlService {
    * Why this matters: Validates that Firecrawl integration is working before processing real keywords.
    */
   async testConnection(): Promise<boolean> {
+    // Ensure client is initialized before testing
     if (!this.client) {
+      console.log('⚠️ Firecrawl client not ready for testing, initializing now...');
+      await this.initializeClient();
+    }
+    
+    if (!this.client) {
+      console.log('❌ Firecrawl client failed to initialize for testing');
       return false;
     }
 
