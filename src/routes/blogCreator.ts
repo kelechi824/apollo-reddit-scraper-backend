@@ -121,7 +121,7 @@ function deleteJobData(jobId: string): boolean {
 
 /**
  * POST /api/blog-creator/generate-content
- * Generate content for a single keyword using the 4-model pipeline
+ * Generate content for a single keyword using the 4-model pipeline (SYNCHRONOUS - works in serverless)
  */
 router.post('/generate-content', async (req: Request, res: Response): Promise<any> => {
   try {
@@ -134,9 +134,9 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
       });
     }
 
-    console.log(`🚀 Starting content generation for keyword: "${keyword}"`);
+    console.log(`🚀 Starting SYNCHRONOUS content generation for keyword: "${keyword}"`);
 
-    // Execute the 4-model pipeline
+    // Execute the 4-model pipeline synchronously
     const result = await workflowOrchestrator.executeContentPipeline({
       keyword: keyword.trim(),
       target_audience,
@@ -145,13 +145,15 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
       brand_kit
     });
 
+    console.log(`✅ SYNCHRONOUS content generation completed for keyword: "${keyword}"`);
+
     res.json({
       success: true,
       data: result
     });
 
   } catch (error) {
-    console.error('❌ Content generation failed:', error);
+    console.error('❌ SYNCHRONOUS content generation failed:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Content generation failed'
@@ -238,18 +240,28 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
 router.get('/job-status/:jobId', (req: Request, res: Response): any => {
   const { jobId } = req.params;
   
+  console.log(`🔍 Checking status for job: ${jobId}`);
+  
   // Try to get job data using serverless-compatible storage
   let job = getJobData(jobId);
+  console.log(`📋 Job from storage:`, job ? 'found' : 'not found');
 
   // If not found in memory, try to get from workflowOrchestrator
   // This handles serverless environments where memory is not persistent
   if (!job) {
     const workflowState = workflowOrchestrator.getWorkflowState(jobId);
+    console.log(`🔧 Workflow state:`, workflowState ? 'found' : 'not found');
     
     if (!workflowState) {
+      console.log(`❌ Job ${jobId} not found in storage or workflow state`);
       return res.status(404).json({
         success: false,
-        error: 'Job not found or has expired'
+        error: 'Job not found or has expired',
+        debug: {
+          jobId,
+          timestamp: new Date().toISOString(),
+          environment: process.env.NODE_ENV || 'unknown'
+        }
       });
     }
 
