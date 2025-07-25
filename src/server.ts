@@ -10,6 +10,10 @@ import chatRoutes from './routes/chat';
 import contentRoutes from './routes/content';
 import playbooksRoutes from './routes/playbooks';
 import blogCreatorRoutes from './routes/blogCreator';
+import gongRoutes from './routes/gong';
+import gongAnalysisRoutes from './routes/gongAnalysis';
+import gongChatRoutes from './routes/gongChat';
+import croRoutes from './routes/cro';
 
 // Load environment variables
 dotenv.config();
@@ -37,6 +41,10 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/playbooks', playbooksRoutes);
 app.use('/api/blog-creator', blogCreatorRoutes);
+app.use('/api/gong', gongRoutes);
+app.use('/api/gong-analysis', gongAnalysisRoutes);
+app.use('/api/gong-chat', gongChatRoutes);
+app.use('/api/cro', croRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -64,7 +72,10 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         chat: '/api/chat/*',
         content: '/api/content/*',
         playbooks: '/api/playbooks/*',
-        blogCreator: '/api/blog-creator/*'
+        blogCreator: '/api/blog-creator/*',
+        cro: '/api/cro/*',
+        gongAnalysis: '/api/gong-analysis/*',
+        gongChat: '/api/gong-chat/*'
       }
     }
   });

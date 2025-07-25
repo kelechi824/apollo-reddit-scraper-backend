@@ -67,7 +67,10 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         chat: '/api/chat/*',
         content: '/api/content/*',
         playbooks: '/api/playbooks/*',
-        blogCreator: '/api/blog-creator/*'
+        blogCreator: '/api/blog-creator/*',
+        cro: '/api/cro/*',
+        gongAnalysis: '/api/gong-analysis/*',
+        gongChat: '/api/gong-chat/*'
       }
     }
   });
