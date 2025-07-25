@@ -389,23 +389,38 @@ class GongService {
 
   /**
    * Get comprehensive conversation insights for a call
-   * Why this matters: Combines extensive data and highlights for complete conversation understanding.
+   * Why this matters: Combines extensive data, highlights, and full transcript for complete conversation understanding.
    */
   async getCallConversationDetails(callId: string): Promise<any> {
     try {
       console.log(`🔍 Fetching comprehensive conversation details for call ${callId}`);
       
-      const [extensiveData, highlights] = await Promise.allSettled([
+      const [extensiveData, highlights, transcript] = await Promise.allSettled([
         this.getCallExtensiveData(callId),
-        this.getCallHighlights(callId)
+        this.getCallHighlights(callId),
+        this.getCallTranscript(callId)
       ]);
       
-      return {
+      // Use transcript from separate endpoint
+      const transcriptData = transcript.status === 'fulfilled' ? transcript.value : null;
+      
+      const result = {
         callId,
         extensiveData: extensiveData.status === 'fulfilled' ? extensiveData.value : null,
         highlights: highlights.status === 'fulfilled' ? highlights.value : null,
+        transcript: transcriptData,
         timestamp: new Date().toISOString()
       };
+      
+      console.log(`🔍 Conversation details result for call ${callId}:`, {
+        hasExtensiveData: !!result.extensiveData,
+        hasHighlights: !!result.highlights,
+        hasTranscript: !!result.transcript,
+        transcriptStatus: transcript.status,
+        transcriptReason: transcript.status === 'rejected' ? transcript.reason : 'N/A'
+      });
+      
+      return result;
     } catch (error: any) {
       console.error(`❌ Failed to fetch conversation details for call ${callId}:`, error.message);
       throw error;
