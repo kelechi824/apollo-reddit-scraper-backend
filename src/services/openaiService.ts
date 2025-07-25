@@ -118,7 +118,7 @@ class OpenAIService {
     
     try {
       const completion = await this.client!.chat.completions.create({
-        model: "gpt-4.1-nano-2025-04-14",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -211,7 +211,7 @@ Respond only with valid JSON.`;
     
     try {
       const testCompletion = await this.client.chat.completions.create({
-        model: "gpt-4.1-nano-2025-04-14",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "user",
@@ -258,7 +258,7 @@ Respond only with valid JSON.`;
 
     try {
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4.1-nano-2025-04-14', // Updated to latest nano model for better preprocessing
+        model: 'gpt-4.1-nano', // Fixed model name - using standard OpenAI API format
         messages: [
           {
             role: 'system',
