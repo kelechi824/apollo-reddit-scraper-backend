@@ -52,3 +52,6 @@ logs
 ehthumbs.db
 Thumbs.db
 .vercel
+
+# Generated screenshots from Playwright testing
+screenshots/
