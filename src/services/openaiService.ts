@@ -134,6 +134,21 @@ class OpenAIService {
         response_format: { type: "json_object" }
       });
 
+      // Log token usage and cost calculation for content analysis
+      if (completion.usage) {
+        const inputTokens = completion.usage.prompt_tokens;
+        const outputTokens = completion.usage.completion_tokens;
+        const totalTokens = completion.usage.total_tokens;
+        
+        // GPT-4.1-nano pricing (approximate)
+        const inputCost = (inputTokens / 1000) * 0.0015;
+        const outputCost = (outputTokens / 1000) * 0.006;
+        const totalCost = inputCost + outputCost;
+        
+        console.log(`💰 Content Analysis Token Usage - Input: ${inputTokens}, Output: ${outputTokens}, Total: ${totalTokens}`);
+        console.log(`💵 Content Analysis Cost - Input: $${inputCost.toFixed(4)}, Output: $${outputCost.toFixed(4)}, Total: $${totalCost.toFixed(4)}`);
+      }
+
       const responseContent = completion.choices[0]?.message?.content;
       
       if (!responseContent) {
@@ -258,7 +273,7 @@ Respond only with valid JSON.`;
 
     try {
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4.1-nano-2025-04-14', // Updated to latest nano model for better preprocessing
+        model: 'gpt-4.1-nano', // Fixed model name - using standard OpenAI API format
         messages: [
           {
             role: 'system',

@@ -6,7 +6,9 @@ import {
   DEFAULT_RETRY_CONFIGS,
   DEFAULT_CIRCUIT_BREAKER_CONFIGS,
   DEFAULT_RATE_LIMITS,
-  createServiceError
+  createServiceError,
+  globalOpenAIQueue,
+  workflowCostTracker
 } from './errorHandling';
 
 export interface DeepResearchResult {
@@ -151,15 +153,12 @@ class DeepResearchService {
     // Create comprehensive research prompt for the keyword
     const researchPrompt = this.buildDeepResearchPrompt(keyword, research_depth, focus_areas, exclude_topics);
 
-    // Try o4-mini first (faster and more stable), then o3 if needed
-    let completion;
-    let modelUsed = "";
+    // Use o4-mini-deep-research for research as requested
+    console.log(`🔧 Using o4-mini-deep-research for deep research on: "${keyword}"`);
+    const modelUsed = "o4-mini-deep-research-2025-06-26";
     
-    try {
-      console.log(`🔧 Trying o4-mini Deep Research for keyword: "${keyword}"`);
-      modelUsed = "o4-mini-deep-research-2025-06-26";
-      
-      completion = await Promise.race([
+    const completion = await globalOpenAIQueue.queueRequest(async () => {
+      return await Promise.race([
         this.client!.responses.create({
           model: modelUsed,
           input: [
@@ -192,59 +191,23 @@ class DeepResearchService {
           ],
           background: true // Use background mode for long-running Deep Research
         }),
-        this.createTimeoutPromise(180000) // 3 minute timeout for o4-mini
+        this.createTimeoutPromise(180000) // 3 minute timeout for o4-mini-deep-research
       ]);
+    });
+    
+    console.log(`✅ o4-mini-deep-research Deep Research completed successfully`);
+
+    // Log token usage and cost calculation for responses API
+    if (completion.usage) {
+      const inputTokens = completion.usage.input_tokens;
+      const outputTokens = completion.usage.output_tokens;
+      const totalTokens = inputTokens + outputTokens;
       
-      console.log(`✅ o4-mini Deep Research completed successfully`);
+      console.log(`💰 Deep Research Token Usage - Input: ${inputTokens}, Output: ${outputTokens}, Total: ${totalTokens}`);
       
-    } catch (o4Error) {
-      console.warn(`⚠️ o4-mini failed, trying o3: ${o4Error instanceof Error ? o4Error.message : 'Unknown error'}`);
-      
-      try {
-        console.log(`🔧 Trying o3 Deep Research for keyword: "${keyword}"`);
-        modelUsed = "o3-deep-research-2025-06-26";
-        
-        completion = await Promise.race([
-          this.client!.responses.create({
-            model: modelUsed,
-            input: [
-              {
-                role: "developer",
-                content: [
-                  {
-                    type: "input_text",
-                    text: this.buildSystemPrompt()
-                  }
-                ]
-              },
-              {
-                role: "user", 
-                content: [
-                  {
-                    type: "input_text",
-                    text: researchPrompt
-                  }
-                ]
-              }
-            ],
-            reasoning: {
-              summary: "auto"
-            },
-            tools: [
-              {
-                type: "web_search_preview"
-              }
-            ],
-            background: true // Use background mode for long-running Deep Research
-          }),
-          this.createTimeoutPromise(300000) // 5 minute timeout for o3
-        ]);
-        
-        console.log(`✅ o3 Deep Research completed successfully`);
-        
-      } catch (o3Error) {
-        throw new Error(`Both Deep Research models failed. o4-mini: ${o4Error instanceof Error ? o4Error.message : 'Unknown'}. o3: ${o3Error instanceof Error ? o3Error.message : 'Unknown'}`);
-      }
+      // Add to workflow cost tracker with o4-mini-deep-research pricing
+      const workflowId = `${keyword.replace(/\s+/g, '_')}_${startTime}`;
+      workflowCostTracker.addApiCall(workflowId, 'Deep Research (o4-mini)', inputTokens, outputTokens, 'o4-mini-deep-research');
     }
 
     console.log(`📊 Response output items: ${completion.output?.length || 0}`);
@@ -253,7 +216,7 @@ class DeepResearchService {
     const responseContent = this.extractResponseContentFromDocumentation(completion);
     
     if (!responseContent) {
-      throw new Error(`Empty response from ${modelUsed} - falling back to GPT-4`);
+      throw new Error(`Empty response from ${modelUsed}`);
     }
 
     return this.parseResearchResponse(responseContent, keyword, startTime, modelUsed);
@@ -310,25 +273,27 @@ class DeepResearchService {
     
     const researchPrompt = this.buildDeepResearchPrompt(keyword, research_depth, focus_areas, exclude_topics);
 
-    const completion = await Promise.race([
-      this.client!.chat.completions.create({
-        model: "gpt-4.1-nano-2025-04-14", // Use available GPT-4 model
-        messages: [
-          {
-            role: "system",
-            content: this.buildSystemPrompt()
-          },
-          {
-            role: "user",
-            content: researchPrompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 4000,
-        response_format: { type: "json_object" }
-      }),
-      this.createTimeoutPromise(120000) // 2 minute timeout for GPT-4
-    ]);
+    const completion = await globalOpenAIQueue.queueRequest(async () => {
+      return await Promise.race([
+        this.client!.chat.completions.create({
+          model: "gpt-4.1-nano-2025-04-14", // Use available GPT-4 model
+          messages: [
+            {
+              role: "system",
+              content: this.buildSystemPrompt()
+            },
+            {
+              role: "user",
+              content: researchPrompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
+          response_format: { type: "json_object" }
+        }),
+        this.createTimeoutPromise(120000) // 2 minute timeout for GPT-4
+      ]);
+    });
 
     const responseContent = completion.choices[0]?.message?.content;
     
@@ -678,7 +643,7 @@ Response format: Always respond with valid JSON following the exact structure pr
     return {
       initialized: !!this.client,
       hasApiKey: !!process.env.OPENAI_API_KEY,
-      model: "o3-deep-research-2025-06-26",
+      model: "o4-mini-deep-research-2025-06-26",
       circuitBreakerState: this.circuitBreaker.getState(),
       rateLimitActive: Date.now() - (this.rateLimiter as any).lastRequestTime < DEFAULT_RATE_LIMITS.openai_deep_research
     };
