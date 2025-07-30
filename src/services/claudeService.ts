@@ -6,7 +6,13 @@ import {
   StartConversationRequest, 
   StartConversationResponse,
   SendMessageRequest,
-  SendMessageResponse 
+  SendMessageResponse,
+  // Add Gong conversation types
+  GongChatConversation,
+  StartGongConversationRequest,
+  StartGongConversationResponse,
+  SendGongMessageRequest,
+  SendGongMessageResponse
 } from '../types';
 import { 
   retryWithBackoff, 
@@ -21,6 +27,8 @@ import {
 class ClaudeService {
   private client: Anthropic | null = null;
   private conversations: Map<string, ChatConversation> = new Map();
+  // Add separate conversation storage for Gong calls
+  private gongConversations: Map<string, GongChatConversation> = new Map();
   private readonly conversationTimeout = 30 * 60 * 1000; // 30 minutes
   private readonly maxMessages = 50; // Prevent runaway conversations
   private circuitBreaker: CircuitBreaker;
@@ -225,7 +233,7 @@ Generate a practical, action-oriented opening that identifies the engagement opp
 
     try {
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+        model: "claude-3-5-sonnet-20240620", // Fixed model name - using valid Claude 3.5 Sonnet
         max_tokens: 300,
         temperature: 0.7,
         system: systemPrompt,
@@ -704,7 +712,7 @@ ${markdown_data}
 Please use this processed data as context to create a comprehensive playbook following the specified format.`;
 
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514', // Updated to latest Claude Sonnet 4 for enhanced content generation
+        model: 'claude-3-5-sonnet-20241022', // Using valid Claude 3.5 Sonnet model
         max_tokens: 4000,
         temperature: 0.7,
         system: system_prompt,
@@ -812,6 +820,479 @@ Please use this processed data as context to create a comprehensive playbook fol
       console.error('❌ Error details:', error instanceof Error ? error.message : String(error));
       throw new Error(`Failed to generate meta fields: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Start a new CRO-focused conversation with Gong call context
+   * Why this matters: Initializes CRO optimization guidance with specific call insights,
+   * setting up conversion rate optimization discovery questions.
+   */
+  async startGongConversation(request: StartGongConversationRequest): Promise<StartGongConversationResponse> {
+    if (!this.client) {
+      throw new Error('Claude client not initialized');
+    }
+
+    const conversationId = uuidv4();
+    const now = new Date().toISOString();
+
+    // Create conversation with Gong call context
+    const conversation: GongChatConversation = {
+      id: conversationId,
+      gong_call_context: {
+        call_id: request.call_id,
+        title: request.title,
+        date: request.date,
+        duration: request.duration,
+        participants: request.participants,
+        sentiment: request.sentiment,
+        callSummary: request.callSummary,
+        painPoints: request.painPoints,
+        croOpportunity: request.croOpportunity
+      },
+      messages: [],
+      conversation_stage: 'Opportunity Assessment',
+      created_at: now,
+      updated_at: now,
+      status: 'active'
+    };
+
+    // Generate initial CRO guidance message
+    const initialMessage = await this.generateInitialGongMessage(conversation);
+    conversation.messages.push(initialMessage);
+    conversation.updated_at = new Date().toISOString();
+
+    // Store conversation
+    this.gongConversations.set(conversationId, conversation);
+
+    console.log(`🎯 Started new CRO conversation ${conversationId} for call: "${request.title.substring(0, 50)}..."`);
+
+    return {
+      conversation_id: conversationId,
+      initial_message: initialMessage
+    };
+  }
+
+  /**
+   * Send a user message and get CRO-focused AI response
+   * Why this matters: Continues the CRO optimization process, providing conversion guidance
+   * and landing page improvement recommendations based on call insights.
+   */
+  async sendGongMessage(request: SendGongMessageRequest): Promise<SendGongMessageResponse> {
+    if (!this.client) {
+      throw new Error('Claude client not initialized');
+    }
+
+    const conversation = this.gongConversations.get(request.conversation_id);
+    if (!conversation) {
+      throw new Error('Gong conversation not found or expired');
+    }
+
+    // Handle ping messages to test conversation existence
+    if (request.message === '__PING__') {
+      const pingMessage: ChatMessage = {
+        id: uuidv4(),
+        role: 'user',
+        content: '__PING__',
+        timestamp: new Date().toISOString()
+      };
+      
+      return {
+        user_message: pingMessage,
+        assistant_message: {
+          id: uuidv4(),
+          role: 'assistant',
+          content: '__PONG__',
+          timestamp: new Date().toISOString()
+        },
+        conversation_stage: conversation.conversation_stage
+      };
+    }
+
+    if (conversation.status !== 'active') {
+      throw new Error('Gong conversation is not active');
+    }
+
+    if (conversation.messages.length >= this.maxMessages) {
+      throw new Error('Gong conversation has reached maximum message limit');
+    }
+
+    const now = new Date().toISOString();
+
+    // Create user message
+    const userMessage: ChatMessage = {
+      id: uuidv4(),
+      role: 'user',
+      content: request.message.trim(),
+      timestamp: now
+    };
+
+    // Add user message to conversation
+    conversation.messages.push(userMessage);
+
+    // Generate AI response with CRO focus
+    const assistantMessage = await this.generateGongResponse(conversation, userMessage);
+    conversation.messages.push(assistantMessage);
+    
+    // Update conversation stage based on content and message count
+    conversation.conversation_stage = this.determineGongConversationStage(conversation);
+    conversation.updated_at = new Date().toISOString();
+
+    // Update conversation in storage
+    this.gongConversations.set(request.conversation_id, conversation);
+
+    console.log(`💬 Processed CRO message in conversation ${request.conversation_id}`);
+
+    return {
+      user_message: userMessage,
+      assistant_message: assistantMessage,
+      conversation_stage: conversation.conversation_stage
+    };
+  }
+
+  /**
+   * Generate initial CRO guidance message based on Gong call context
+   * Why this matters: Sets the tone for conversion optimization guidance that leads to actionable improvements.
+   */
+  private async generateInitialGongMessage(conversation: GongChatConversation): Promise<ChatMessage> {
+    const context = conversation.gong_call_context;
+    
+    const systemPrompt = this.buildGongSystemPrompt();
+    const initialPrompt = `
+GONG CALL CONTEXT FOR CRO ANALYSIS:
+- Call Title: "${context.title}"
+- Call Date: "${context.date}"
+- Duration: ${context.duration} minutes
+- Participants: ${context.participants.join(', ')}
+- Sentiment: ${context.sentiment}
+- Call Summary: "${context.callSummary}"
+- Pain Points Identified: ${context.painPoints.map((p: any) => `"${p.description}" (${p.category}, confidence: ${p.confidence})`).join(', ')}
+- CRO Opportunity: Ad Copy Ideas: ${context.croOpportunity.adCopyIdeas.join(', ')}
+
+You're guiding a Conversion Rate Optimization Manager who has analyzed this customer call and wants to improve conversion rates.
+
+CRITICAL INSTRUCTION:
+Generate a compelling opening that identifies the strongest conversion opportunities from this call analysis, then asks about their current optimization focus.
+
+OPENING STRUCTURE:
+1. Quickly highlight the top 2-3 conversion insights from the call analysis
+2. Connect pain points to specific landing page optimization opportunities
+3. Provide immediate actionable CRO recommendations
+4. Ask about their current conversion challenges or optimization priorities
+
+EXAMPLE TONE:
+"Great call analysis! I can see some strong conversion optimization opportunities here. Based on the pain points and customer language patterns, here are the highest-impact areas to focus on for improving your conversion rates...
+
+What's your current biggest conversion challenge, or where would you like to start optimizing first?"
+
+Generate a practical, CRO-focused opening that identifies specific conversion opportunities and provides actionable optimization guidance.`;
+
+    try {
+      const completion = await this.client!.messages.create({
+        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+        max_tokens: 400,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: [{ role: "user", content: initialPrompt }]
+      });
+
+      const content = completion.content[0];
+      const responseText = content.type === 'text' ? content.text : 'Welcome to CRO optimization guidance.';
+
+      return {
+        id: uuidv4(),
+        role: 'assistant',
+        content: responseText,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Error generating initial Gong message:', error);
+      
+      // Fallback initial message with CRO focus
+      const painPointSummary = context.painPoints.slice(0, 3).map((p: any) => p.description).join(', ');
+      const sentimentInsight = context.sentiment === 'positive' ? 'successful conversion factors' : 'conversion barriers';
+      
+      return {
+        id: uuidv4(),
+        role: 'assistant',
+        content: `Excellent call analysis! I can see some strong conversion optimization opportunities based on this ${context.sentiment} call.
+
+**Top CRO Insights:**
+• **Pain Points to Address:** ${painPointSummary}
+• **Customer Language Patterns:** Perfect for Google Ads headlines that resonate
+• **Sentiment Analysis:** This call reveals ${sentimentInsight} we can leverage
+
+**Immediate Action Items:**
+1. **Landing Page Optimization:** Address the friction points mentioned in the call
+2. **Google Ads Copy:** Use the exact phrases customers used to describe their challenges
+3. **Conversion Flow:** Optimize based on what resonated (or didn't) with this prospect
+
+What's your biggest conversion challenge right now, or would you like me to dive deeper into any of these optimization opportunities?`,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Generate CRO-focused AI response using Claude with call context
+   * Why this matters: Maintains conversation flow while providing actionable conversion optimization guidance.
+   */
+  private async generateGongResponse(conversation: GongChatConversation, userMessage: ChatMessage): Promise<ChatMessage> {
+    const systemPrompt = this.buildGongSystemPrompt();
+    const conversationHistory = this.buildGongConversationContext(conversation);
+
+    try {
+      // Build messages array for Claude
+      const messages = conversation.messages.slice(0, -1).map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      }));
+
+      // Add the new user message
+      messages.push({
+        role: 'user' as const,
+        content: userMessage.content
+      });
+
+      const completion = await this.client!.messages.create({
+        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+        max_tokens: 500,
+        temperature: 0.7,
+        system: systemPrompt + "\n\n" + conversationHistory,
+        messages: messages
+      });
+
+      const content = completion.content[0];
+      const responseText = content.type === 'text' ? content.text : 'Could you tell me more about your conversion optimization goals?';
+
+      return {
+        id: uuidv4(),
+        role: 'assistant',
+        content: responseText,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Error generating Gong response:', error);
+      
+      // Fallback response with CRO focus
+      return {
+        id: uuidv4(),
+        role: 'assistant',
+        content: 'That\'s a great point. How do you think this insight could impact your conversion rates? What specific optimization would you like to explore?',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Build CRO-focused system prompt for Gong call optimization
+   * Why this matters: This is the heart of the CRO feature - transforming call insights into 
+   * actionable conversion rate optimization and landing page improvement guidance.
+   */
+  private buildGongSystemPrompt(): string {
+    return `
+You are an elite Conversion Rate Optimization expert who helps CRO managers transform customer call insights into actionable landing page improvements and Google Ads optimizations.
+
+EXPERTISE FOCUS:
+Analyze customer calls to identify conversion barriers, optimization opportunities, and messaging that resonates. Guide CRO managers through systematic optimization processes that increase conversion rates.
+
+YOUR APPROACH:
+1. Identify conversion friction points from call insights
+2. Extract customer language patterns for compelling copy
+3. Recommend specific landing page optimizations
+4. Suggest Google Ads improvements based on prospect behavior
+5. Provide A/B testing strategies and measurement frameworks
+6. Focus on psychological triggers and conversion psychology
+
+CRO OPTIMIZATION FRAMEWORK:
+
+CONVERSION BARRIER ANALYSIS:
+- Friction Points: Where prospects hesitate or raise objections
+- Trust Issues: What creates doubt or uncertainty
+- Value Clarity: Where messaging fails to communicate value
+- Process Confusion: Steps that create friction in conversion flow
+- Price Sensitivity: How cost objections manifest
+- Competitive Concerns: What alternatives prospects consider
+
+CUSTOMER LANGUAGE EXTRACTION:
+- Exact phrases prospects use to describe problems
+- Emotional triggers that resonate positively
+- Objections and concerns in their own words
+- Success criteria and desired outcomes
+- Decision-making factors and priorities
+- Pain point descriptions for authentic copy
+
+LANDING PAGE OPTIMIZATION AREAS:
+- Headlines: Match customer language and pain points
+- Value Propositions: Address specific concerns raised in calls
+- Social Proof: Counter objections with relevant testimonials
+- Call-to-Action: Remove friction based on hesitation patterns
+- Form Optimization: Reduce abandonment based on objections
+- Trust Signals: Address specific trust concerns
+- Page Flow: Optimize based on information-seeking behavior
+
+GOOGLE ADS OPTIMIZATION:
+- Headlines: Use exact customer language for relevance
+- Descriptions: Address pain points mentioned in calls
+- Landing Page Alignment: Ensure message match from ad to page
+- Audience Insights: Target based on demographic patterns
+- Negative Keywords: Exclude based on mismatched expectations
+- Ad Extensions: Highlight features that resonate with prospects
+
+PSYCHOLOGICAL CONVERSION TRIGGERS:
+- Urgency: Based on timeline concerns from calls
+- Scarcity: Address competitive pressure mentioned
+- Social Proof: Counter skepticism with relevant cases
+- Authority: Establish credibility for trust concerns
+- Reciprocity: Offer value to overcome price sensitivity
+- Commitment: Guide through decision-making process
+
+A/B TESTING STRATEGY:
+- Hypothesis: Based on specific call insights
+- Variables: Test elements that caused friction
+- Success Metrics: Align with business impact mentioned
+- Statistical Significance: Ensure valid results
+- Implementation: Prioritize highest-impact tests
+- Learning: Extract insights for future optimization
+
+CONVERSATION STAGES:
+
+1. **Opportunity Assessment (Messages 1-4):**
+   - Identify top conversion opportunities from call
+   - Understand current optimization priorities
+   - Assess existing conversion challenges
+   - Establish optimization goals and metrics
+
+2. **Implementation Planning (Messages 5-8):**
+   - Develop specific optimization strategies
+   - Prioritize improvements by impact/effort
+   - Create actionable test plans
+   - Define success criteria and timelines
+
+3. **Testing Strategy (Messages 9-12):**
+   - Design A/B testing framework
+   - Recommend measurement approaches
+   - Suggest statistical analysis methods
+   - Plan iteration and learning cycles
+
+4. **Optimization Refinement (Messages 13+):**
+   - Analyze results and extract insights
+   - Recommend next-level optimizations
+   - Scale successful tests across channels
+   - Develop systematic optimization processes
+
+COMMUNICATION STYLE:
+- Data-driven but practical optimization guidance
+- Focus on measurable conversion improvements
+- Use conversion psychology principles
+- Speak like an experienced CRO professional
+- Make complex optimization concepts actionable
+- Build confidence through proven frameworks
+
+CRITICAL - NEVER INCLUDE:
+- Generic CRO advice not tied to the specific call
+- Optimization recommendations without call context
+- Multiple questions in sequence - ask ONE question and stop
+- Stage directions or meta-commentary about the conversation
+- Numbered lists that look AI-generated
+- Structured advice formats that seem mechanical
+
+CONVERSATION RULES:
+- Ask ONE specific question per response about their optimization goals
+- Tie all recommendations directly to the call insights provided
+- Focus on actionable next steps they can implement immediately
+- Wait for their response before providing additional guidance
+- Keep responses conversational and focused on their specific situation
+
+CRO METRICS TO REFERENCE:
+- Conversion rate improvements (typical 15-40% lifts)
+- Click-through rate increases from better ad copy
+- Form completion rate improvements
+- Bounce rate reductions from better message match
+- Cost per acquisition decreases from optimization
+- Customer lifetime value increases from better qualification
+
+LANDING PAGE ELEMENTS TO OPTIMIZE:
+- Headlines: Match customer pain points and language
+- Subheadings: Address specific objections raised
+- Hero Images: Reflect customer scenarios and contexts  
+- Value Propositions: Counter concerns with clear benefits
+- Social Proof: Include testimonials addressing specific doubts
+- Forms: Reduce fields based on friction points
+- CTAs: Remove hesitation with clear, benefit-focused language
+- Trust Badges: Address security or credibility concerns
+- FAQ Sections: Answer common objections preemptively
+- Pricing Display: Address cost concerns transparently
+
+GOOGLE ADS OPTIMIZATION TACTICS:
+- Use customer's exact problem descriptions in headlines
+- Address objections directly in ad descriptions
+- Include specific benefits mentioned as important
+- Match ad messaging to landing page content
+- Test emotional vs rational appeals based on call sentiment
+- Include relevant keywords from customer language
+- Use ad extensions to provide additional trust signals
+- Target demographics similar to engaged prospects
+
+CONVERSION PSYCHOLOGY APPLICATIONS:
+- Reciprocity: Offer immediate value before asking for conversion
+- Social Proof: Showcase similar customers' success stories
+- Authority: Establish expertise in areas of customer concern
+- Scarcity: Create urgency around limited availability
+- Commitment: Guide through small commitment escalation
+- Liking: Build rapport through shared values/experiences
+
+Remember: All optimization recommendations must be directly tied to insights from the specific Gong call being analyzed.
+`;
+  }
+
+  /**
+   * Build Gong conversation context for Claude
+   * Why this matters: Provides Claude with full call context for relevant CRO responses.
+   */
+  private buildGongConversationContext(conversation: GongChatConversation): string {
+    const context = conversation.gong_call_context;
+    const painPointsList = context.painPoints.map((p: any) => 
+      `${p.description} (${p.category}, confidence: ${p.confidence})`
+    ).join(', ');
+    
+    return `
+GONG CALL CONTEXT FOR CRO OPTIMIZATION:
+- Call: "${context.title}" (${context.date})
+- Duration: ${context.duration} minutes
+- Participants: ${context.participants.join(', ')}
+- Call Sentiment: ${context.sentiment}
+- Call Summary: "${context.callSummary}"
+- Pain Points: ${painPointsList}
+- CRO Opportunities: ${context.croOpportunity.adCopyIdeas.join(', ')}
+
+CONVERSATION STAGE: ${conversation.conversation_stage}
+MESSAGES SO FAR: ${conversation.messages.length}
+
+Focus all recommendations on conversion optimization opportunities from this specific call.
+`;
+  }
+
+  /**
+   * Determine current Gong conversation stage based on message count and content
+   * Why this matters: Helps guide the CRO optimization conversation through structured stages.
+   */
+  private determineGongConversationStage(conversation: GongChatConversation): string {
+    const messageCount = conversation.messages.length;
+    
+    if (messageCount <= 4) return 'Opportunity Assessment';
+    if (messageCount <= 8) return 'Implementation Planning';
+    if (messageCount <= 12) return 'Testing Strategy';
+    return 'Optimization Refinement';
+  }
+
+  /**
+   * Get Gong conversation by ID
+   * Why this matters: Allows frontend to retrieve CRO conversation history.
+   */
+  getGongConversation(conversationId: string): GongChatConversation | undefined {
+    return this.gongConversations.get(conversationId);
   }
 
   /**
