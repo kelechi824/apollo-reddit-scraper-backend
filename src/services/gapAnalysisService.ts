@@ -8,7 +8,9 @@ import {
   DEFAULT_RETRY_CONFIGS,
   DEFAULT_CIRCUIT_BREAKER_CONFIGS,
   DEFAULT_RATE_LIMITS,
-  createServiceError
+  createServiceError,
+  globalOpenAIQueue,
+  workflowCostTracker
 } from './errorHandling';
 
 export interface GapAnalysisResult {
@@ -125,9 +127,6 @@ class GapAnalysisService {
     return await this.circuitBreaker.execute(async () => {
       return await retryWithBackoff(
         async () => {
-          // Rate limiting before API call
-          await this.rateLimiter.waitForNext();
-
           // Build comprehensive analysis prompt with all context
           const analysisPrompt = this.buildGapAnalysisPrompt(
             keyword, 
@@ -137,26 +136,42 @@ class GapAnalysisService {
             target_audience
           );
 
-          // Use GPT 4.1 nano for large context analysis with timeout protection
-          const completion = await Promise.race([
-            this.client!.chat.completions.create({
-              model: "gpt-4.1-nano-2025-04-14", // Large context window for comprehensive analysis
-              messages: [
-                {
-                  role: "system",
-                  content: this.buildSystemPrompt()
-                },
-                {
-                  role: "user",
-                  content: analysisPrompt
-                }
-              ],
-              temperature: 0.4, // Balanced for analytical insights with some creativity
-              max_tokens: 4000, // Large token limit for comprehensive analysis
-              response_format: { type: "json_object" }
-            }),
-            this.createTimeoutPromise(60000) // 1 minute timeout for gap analysis
-          ]);
+          // Use global OpenAI queue to coordinate requests across all services
+          const completion = await globalOpenAIQueue.queueRequest(async () => {
+            // Use GPT 4.1 nano for large context analysis with timeout protection
+            return await Promise.race([
+              this.client!.chat.completions.create({
+                model: "gpt-4.1-nano-2025-04-14", // Large context window for comprehensive analysis
+                messages: [
+                  {
+                    role: "system",
+                    content: this.buildSystemPrompt()
+                  },
+                  {
+                    role: "user",
+                    content: analysisPrompt
+                  }
+                ],
+                temperature: 0.4, // Balanced for analytical insights with some creativity
+                max_tokens: 4000, // Large token limit for comprehensive analysis
+                response_format: { type: "json_object" }
+              }),
+              this.createTimeoutPromise(60000) // 1 minute timeout for gap analysis
+            ]);
+          });
+
+          // Log token usage and cost calculation for gap analysis
+          if (completion.usage) {
+            const inputTokens = completion.usage.prompt_tokens;
+            const outputTokens = completion.usage.completion_tokens;
+            const totalTokens = completion.usage.total_tokens;
+            
+            console.log(`💰 Gap Analysis Token Usage - Input: ${inputTokens}, Output: ${outputTokens}, Total: ${totalTokens}`);
+            
+            // Add to workflow cost tracker with gpt-4.1-nano pricing
+            const workflowId = `${keyword.replace(/\s+/g, '_')}_${Date.now()}`;
+            workflowCostTracker.addApiCall(workflowId, 'Gap Analysis', inputTokens, outputTokens, 'gpt-4.1-nano');
+          }
 
           const responseContent = completion.choices[0]?.message?.content;
           

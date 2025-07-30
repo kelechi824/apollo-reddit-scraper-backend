@@ -457,6 +457,107 @@ class FirecrawlService {
   }
 
   /**
+   * Take a screenshot of a webpage using Firecrawl
+   * Why this matters: Captures visual content from web pages like Figma prototypes 
+   * that require rendering complex interactive elements.
+   */
+  async takeScreenshot(url: string, options: {
+    fullPage?: boolean;
+    mobileEmulation?: boolean;
+    quality?: number;
+    format?: 'png' | 'jpeg';
+  } = {}): Promise<{ success: boolean; screenshotUrl?: string; error?: string }> {
+    // Ensure client is initialized before proceeding
+    if (!this.client) {
+      console.log('⚠️ Firecrawl client not ready, initializing now...');
+      await this.initializeClient();
+    }
+    
+    if (!this.client) {
+      throw createServiceError(new Error('Firecrawl client failed to initialize'), 'Firecrawl', 'Client check');
+    }
+
+    if (!url || !url.trim()) {
+      throw createServiceError(new Error('URL is required for screenshot'), 'Firecrawl', 'Input validation');
+    }
+
+    console.log(`📸 Taking screenshot of: ${url}`);
+
+    // Production fallback: Skip Firecrawl in production if environment variable is set
+    if (process.env.NODE_ENV === 'production' && process.env.SKIP_FIRECRAWL === 'true') {
+      console.log(`⚠️ Skipping Firecrawl screenshot in production (fallback mode)`);
+      return {
+        success: false,
+        error: 'Screenshot functionality disabled in production'
+      };
+    }
+
+    // Use circuit breaker and retry logic for the screenshot operation
+    return await this.circuitBreaker.execute(async () => {
+      return await retryWithBackoff(
+        async () => {
+          // Rate limiting before API call
+          await this.rateLimiter.waitForNext();
+
+          console.log(`📡 Making Firecrawl screenshot API call for: ${url}`);
+          const screenshotStartTime = Date.now();
+          
+                     try {
+             const screenshotResponse = await Promise.race([
+               (async () => {
+                 // Using scrape endpoint with actions for screenshot
+                 const result = await this.client!.scrapeUrl(url, {
+                   formats: ['markdown'],
+                   onlyMainContent: false,
+                   actions: [
+                     {"type": "wait", "milliseconds": 8000}, // Wait longer for complex pages like Figma
+                     {"type": "screenshot"} // Take screenshot
+                   ]
+                 });
+                 
+                 const duration = Date.now() - screenshotStartTime;
+                 console.log(`✅ Firecrawl screenshot completed in ${duration}ms`);
+                 return result;
+               })(),
+               this.createTimeoutPromise(60000) // 60 second timeout for complex pages
+             ]);
+
+                           if (!screenshotResponse.success) {
+                throw new Error('Failed to get screenshot from Firecrawl');
+              }
+
+              // Extract screenshot URL from actions response
+              const screenshotUrl = screenshotResponse.actions?.screenshots?.[0];
+             
+             if (!screenshotUrl) {
+               throw new Error('No screenshot URL returned from Firecrawl actions');
+             }
+
+             console.log(`✅ Screenshot captured successfully: ${screenshotUrl}`);
+             
+             return {
+               success: true,
+               screenshotUrl: screenshotUrl
+             };
+
+          } catch (error) {
+            const duration = Date.now() - screenshotStartTime;
+            console.error(`❌ Firecrawl screenshot failed after ${duration}ms:`, error);
+            
+            return {
+              success: false,
+              error: `Screenshot failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+            };
+          }
+        },
+        DEFAULT_RETRY_CONFIGS.firecrawl,
+        'Firecrawl Screenshot',
+        `URL: ${url}`
+      );
+    });
+  }
+
+  /**
    * Test Firecrawl connection and functionality
    * Why this matters: Validates that Firecrawl integration is working before processing real keywords.
    */

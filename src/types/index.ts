@@ -24,6 +24,7 @@ export interface ApiInfoResponse {
       cro: string;
       gongAnalysis: string;
       gongChat: string;
+      screenshot: string;
     };
   };
 }

@@ -14,6 +14,7 @@ import gongRoutes from './routes/gong';
 import gongAnalysisRoutes from './routes/gongAnalysis';
 import gongChatRoutes from './routes/gongChat';
 import croRoutes from './routes/cro';
+import screenshotRoutes from './routes/screenshot';
 
 // Load environment variables
 dotenv.config();
@@ -45,6 +46,7 @@ app.use('/api/gong', gongRoutes);
 app.use('/api/gong-analysis', gongAnalysisRoutes);
 app.use('/api/gong-chat', gongChatRoutes);
 app.use('/api/cro', croRoutes);
+app.use('/api', screenshotRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -75,7 +77,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         blogCreator: '/api/blog-creator/*',
         cro: '/api/cro/*',
         gongAnalysis: '/api/gong-analysis/*',
-        gongChat: '/api/gong-chat/*'
+        gongChat: '/api/gong-chat/*',
+        screenshot: '/api/screenshot/*'
       }
     }
   });

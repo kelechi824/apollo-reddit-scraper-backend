@@ -233,7 +233,7 @@ Generate a practical, action-oriented opening that identifies the engagement opp
 
     try {
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+        model: "claude-3-5-sonnet-20240620", // Fixed model name - using valid Claude 3.5 Sonnet
         max_tokens: 300,
         temperature: 0.7,
         system: systemPrompt,
@@ -712,7 +712,7 @@ ${markdown_data}
 Please use this processed data as context to create a comprehensive playbook following the specified format.`;
 
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514', // Updated to latest Claude Sonnet 4 for enhanced content generation
+        model: 'claude-3-5-sonnet-20241022', // Using valid Claude 3.5 Sonnet model
         max_tokens: 4000,
         temperature: 0.7,
         system: system_prompt,
