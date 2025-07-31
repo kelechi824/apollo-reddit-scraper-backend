@@ -59,7 +59,7 @@ class PlaywrightService {
         };
       } else {
         // Use regular puppeteer for local development
-        puppeteer = await import('puppeteer');
+        puppeteer = await import('puppeteer-core');
       }
 
       this.browser = await puppeteer.launch(launchOptions);
@@ -135,7 +135,7 @@ class PlaywrightService {
       console.log(`⏰ Waiting ${waitTime}ms for page to fully load...`);
       
       // Wait for the page to be fully interactive
-      await page.waitForTimeout(waitTime);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
 
       // Additional wait for any animations or dynamic content
       try {
@@ -219,7 +219,7 @@ class PlaywrightService {
               });
             }, currentHeight);
             
-            await page.waitForTimeout(1000);
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
           
           console.log(`✅ Final detected height: ${currentHeight}px`);
@@ -228,7 +228,7 @@ class PlaywrightService {
           await page.evaluate(() => {
             window.scrollTo(0, 0);
           });
-          await page.waitForTimeout(2000);
+          await new Promise(resolve => setTimeout(resolve, 2000));
           
           console.log('✅ Aggressive full page scroll completed, ready for screenshot');
         } catch (error) {
@@ -236,7 +236,7 @@ class PlaywrightService {
         }
         
         // Final wait for stability
-        await page.waitForTimeout(2000);
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
       console.log(`📷 Capturing screenshot...`);
