@@ -1,4 +1,4 @@
-import { chromium, Browser, Page } from 'playwright';
+import { Browser, Page } from 'puppeteer-core';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -34,8 +34,10 @@ class PlaywrightService {
    */
   private async getBrowser(): Promise<Browser> {
     if (!this.browser) {
-      console.log('🚀 Launching Chromium browser for screenshots...');
-      this.browser = await chromium.launch({
+      console.log('🚀 Launching Puppeteer browser for screenshots...');
+      const isVercel = !!process.env.VERCEL_ENV;
+      let puppeteer: any;
+      let launchOptions: any = {
         headless: true,
         args: [
           '--no-sandbox',
@@ -44,8 +46,28 @@ class PlaywrightService {
           '--disable-gpu',
           '--disable-features=VizDisplayCompositor'
         ]
-      });
-      console.log('✅ Chromium browser launched successfully');
+      };
+
+      if (isVercel) {
+        // Use @sparticuz/chromium for Vercel serverless
+        const chromium = (await import('@sparticuz/chromium')).default;
+        puppeteer = await import('puppeteer-core');
+        launchOptions = {
+          ...launchOptions,
+          args: chromium.args,
+          executablePath: await chromium.executablePath(),
+        };
+      } else {
+        // Use regular puppeteer for local development
+        puppeteer = await import('puppeteer');
+      }
+
+      this.browser = await puppeteer.launch(launchOptions);
+      console.log('✅ Puppeteer browser launched successfully');
+    }
+    
+    if (!this.browser) {
+      throw new Error('Failed to initialize browser');
     }
     return this.browser;
   }
@@ -86,7 +108,7 @@ class PlaywrightService {
       page = await browser.newPage();
 
       // Set viewport for consistent screenshots
-      await page.setViewportSize({ width, height });
+      await page.setViewport({ width, height });
 
       // Configure page for better compatibility with complex apps
       await page.setExtraHTTPHeaders({
@@ -131,7 +153,7 @@ class PlaywrightService {
         
         try {
           // Disable viewport size restrictions for true full page
-          await page.setViewportSize({ width: 1920, height: 1080 });
+          await page.setViewport({ width: 1920, height: 1080 });
           
           // Aggressive scrolling to find true page height for Figma prototypes
           let previousHeight = 0;

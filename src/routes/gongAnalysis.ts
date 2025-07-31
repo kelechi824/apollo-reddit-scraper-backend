@@ -116,7 +116,7 @@ interface LandingPageAnalysisRequest {
  */
 interface LandingPageAnalysisResult {
   url: string;
-  screenshot: ScreenshotResult;
+  screenshot: ScreenshotResult | null;
   extractedContent: PageTextContent;
   gongInsights: {
     totalCallsAnalyzed: number;
@@ -876,24 +876,45 @@ router.post('/analyze-landing-page', async (req: Request, res: Response): Promis
 
     console.log(`📊 Analyzing ${url} against ${finalCallInsights.length} call insights`);
 
-    // Step 1: Capture screenshot of the landing page
+    // Step 1: Capture screenshot of the landing page (with fallback for serverless issues)
     console.log(`📸 Step 1: Capturing landing page screenshot...`);
-    const screenshot: ScreenshotResult = await screenshotService.captureScreenshot(url, {
-      viewport: { width: 1920, height: 1080 },
-      timeout: 60000
-    });
+    let screenshot: ScreenshotResult | null = null;
+    
+    try {
+      screenshot = await screenshotService.captureScreenshot(url, {
+        viewport: { width: 1920, height: 1080 },
+        timeout: 60000
+      });
 
-    if (screenshot.error) {
-      console.warn(`⚠️ Screenshot capture had issues: ${screenshot.error}`);
-    } else {
-      console.log(`✅ Step 1 complete: Screenshot captured successfully`);
+      if (screenshot.error) {
+        console.warn(`⚠️ Screenshot capture had issues: ${screenshot.error}`);
+      } else {
+        console.log(`✅ Step 1 complete: Screenshot captured successfully`);
+      }
+    } catch (screenshotError) {
+      console.warn(`⚠️ Screenshot service failed (common in serverless):`, screenshotError);
+      // Continue without screenshot - we can still do text analysis
+      screenshot = null;
     }
 
-    // Step 2: Extract page text content
+    // Step 2: Extract page text content (with fallback for service issues)
     console.log(`📝 Step 2: Extracting page text content...`);
-    const pageContent: PageTextContent = await copyAnalysisService.extractPageText(url);
+    let pageContent: PageTextContent | null = null;
     
-    console.log(`✅ Step 2 complete: Extracted ${pageContent.headings.length} headings and ${pageContent.buttonTexts.length} buttons`);
+    try {
+      pageContent = await copyAnalysisService.extractPageText(url);
+      console.log(`✅ Step 2 complete: Extracted ${pageContent.headings.length} headings and ${pageContent.buttonTexts.length} buttons`);
+    } catch (contentError) {
+      console.warn(`⚠️ Page content extraction failed:`, contentError);
+      // Create minimal fallback content matching PageTextContent interface
+      pageContent = {
+        title: 'Analysis unavailable',
+        headings: ['Unable to extract headings'],
+        bodyText: 'Page content extraction failed - using call insights only',
+        buttonTexts: [],
+        links: []
+      };
+    }
 
     // Step 3: Extract Gong insights from analyzed calls (handle both analyzed and basic call objects)
     const allPainPoints: ExtractedPainPoint[] = [];
@@ -961,14 +982,20 @@ router.post('/analyze-landing-page', async (req: Request, res: Response): Promis
     }
     
     // Identify missing topics by comparing pain points to page content
-    const missingTopics = allPainPoints
+    const missingTopics = pageContent ? allPainPoints
       .filter(pp => !pageContent.bodyText.toLowerCase().includes(pp.text.toLowerCase().substring(0, 20)))
       .slice(0, 5)
-      .map(pp => `${pp.category}: ${pp.text.substring(0, 100)}...`);
+      .map(pp => `${pp.category}: ${pp.text.substring(0, 100)}...`) : [];
 
     // Generate CRO recommendations based on call insights + page content
     console.log(`🧠 Step 4: Generating CRO recommendations...`);
-    const croRecommendations = generateAdvancedCRORecommendations(finalCallInsights, pageContent);
+    const croRecommendations = generateAdvancedCRORecommendations(finalCallInsights, pageContent || {
+      title: 'Fallback Analysis',
+      headings: ['Fallback Analysis'],
+      bodyText: 'Analysis based on call insights only',
+      buttonTexts: [],
+      links: []
+    });
 
     // Calculate analysis metadata
     const totalPainPoints = allPainPoints.length;
@@ -984,11 +1011,19 @@ router.post('/analyze-landing-page', async (req: Request, res: Response): Promis
     const duration = Date.now() - startTime;
     console.log(`🎉 Landing page CRO analysis workflow completed in ${duration}ms`);
 
-    // Build response with Gong insights
+    // Build response with Gong insights (ensure pageContent is never null)
+    const finalPageContent = pageContent || {
+      title: 'Fallback Analysis',
+      headings: ['Analysis Unavailable'],
+      bodyText: 'Content extraction failed',
+      buttonTexts: [],
+      links: []
+    };
+    
     const result: LandingPageAnalysisResult = {
       url,
       screenshot,
-      extractedContent: pageContent,
+      extractedContent: finalPageContent,
       gongInsights: {
         totalCallsAnalyzed: finalCallInsights.length,
         keyPainPoints: allPainPoints.slice(0, 10), // Top 10 pain points

@@ -1,4 +1,4 @@
-import { chromium, Browser, Page } from 'playwright';
+import { Browser, Page } from 'puppeteer-core';
 import OpenAI from 'openai';
 import insightsDatabase from './insightsDatabase';
 import { ExtractedPainPoint, CustomerPhrase } from '../types';
@@ -79,16 +79,34 @@ class CopyAnalysisService {
   }
 
   /**
-   * Initialize Playwright browser on demand
+   * Initialize Puppeteer browser on demand
    * Why this matters: Browser initialization is expensive, so we only do it when needed.
    */
   private async initializeBrowser(): Promise<void> {
     if (!this.browser) {
-      this.browser = await chromium.launch({
+      const isVercel = !!process.env.VERCEL_ENV;
+      let puppeteer: any;
+      let launchOptions: any = {
         headless: true,
-        args: ['--no-sandbox', '--disable-dev-shm-usage']
-      });
-      console.log('✅ Playwright browser initialized for text extraction');
+        args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+      };
+
+      if (isVercel) {
+        // Use @sparticuz/chromium for Vercel serverless
+        const chromium = (await import('@sparticuz/chromium')).default;
+        puppeteer = await import('puppeteer-core');
+        launchOptions = {
+          ...launchOptions,
+          args: chromium.args,
+          executablePath: await chromium.executablePath(),
+        };
+      } else {
+        // Use regular puppeteer for local development
+        puppeteer = await import('puppeteer');
+      }
+
+      this.browser = await puppeteer.launch(launchOptions);
+      console.log('✅ Puppeteer browser initialized for text extraction');
     }
   }
 
