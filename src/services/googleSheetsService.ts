@@ -7,9 +7,10 @@ class GoogleSheetsService {
 
   constructor() {
     // Delay initialization to allow environment variables to load
-    setTimeout(() => {
-      this.initializeClient();
-    }, 100);
+    // Commented out to prevent warning when Google Sheets credentials are not needed
+    // setTimeout(() => {
+    //   this.initializeClient();
+    // }, 100);
   }
 
   /**

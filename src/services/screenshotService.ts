@@ -1,4 +1,4 @@
-import { chromium, Browser, Page } from 'playwright';
+import { Browser, Page } from 'puppeteer-core';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ScreenshotResult {
@@ -15,10 +15,10 @@ interface ScreenshotResult {
 }
 
 /**
- * Serverless-Compatible Screenshot Service using Playwright
+ * Serverless-Compatible Screenshot Service using Puppeteer + Chromium
  * Why this matters: Captures visual snapshots of landing pages entirely in memory,
  * returning base64 data directly to frontend for AI-powered CRO analysis.
- * No filesystem dependencies - works in Vercel/Netlify serverless environments.
+ * Uses @sparticuz/chromium for Vercel serverless compatibility.
  */
 class ScreenshotService {
   private browser: Browser | null = null;
@@ -28,15 +28,16 @@ class ScreenshotService {
   }
 
   /**
-   * Initialize Playwright browser
+   * Initialize Puppeteer browser with serverless-compatible Chromium
    * Why this matters: Browser initialization is expensive, so we reuse the same
    * browser instance across multiple screenshot requests for efficiency.
    */
   private async initializeBrowser(): Promise<void> {
     if (!this.browser) {
       try {
-        // Launch headless Chrome with optimized settings for serverless
-        this.browser = await chromium.launch({
+        const isVercel = !!process.env.VERCEL_ENV;
+        let puppeteer: any;
+        let launchOptions: any = {
           headless: true,
           args: [
             '--no-sandbox',
@@ -49,10 +50,26 @@ class ScreenshotService {
             '--single-process', // Better for serverless
             '--no-zygote', // Better for serverless
           ]
-        });
-        console.log('✅ Playwright browser initialized for serverless screenshots');
+        };
+
+        if (isVercel) {
+          // Use @sparticuz/chromium for Vercel serverless
+          const chromium = (await import('@sparticuz/chromium')).default;
+          puppeteer = await import('puppeteer-core');
+          launchOptions = {
+            ...launchOptions,
+            args: chromium.args,
+            executablePath: await chromium.executablePath(),
+          };
+        } else {
+          // Use regular puppeteer for local development
+          puppeteer = await import('puppeteer-core');
+        }
+
+        this.browser = await puppeteer.launch(launchOptions);
+        console.log('✅ Browser initialized for serverless screenshots');
       } catch (error) {
-        console.error('❌ Failed to initialize Playwright browser:', error);
+        console.error('❌ Failed to initialize browser:', error);
         throw new Error('Browser initialization failed');
       }
     }
@@ -85,10 +102,11 @@ class ScreenshotService {
         throw new Error('Browser not available');
       }
 
-      // Create new page with specified viewport
-      const page: Page = await this.browser.newPage({
-        viewport: viewport
-      });
+      // Create new page - Puppeteer's newPage() accepts no arguments
+      const page: Page = await this.browser.newPage();
+      
+      // Set viewport after page creation - this is how Puppeteer API works
+      await page.setViewport(viewport);
 
       // Set timeout for page operations
       page.setDefaultTimeout(timeout);
@@ -103,7 +121,7 @@ class ScreenshotService {
         });
 
         // Wait for dynamic content to load
-        await page.waitForTimeout(3000);
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
         // Wait for specific selector if provided
         if (waitForSelector) {
