@@ -8,7 +8,6 @@
       "maxDuration": 300
     }
   },
-  "serverExternalPackages": ["@sparticuz/chromium", "puppeteer-core"],
   "rewrites": [
     {
       "source": "/(.*)",
