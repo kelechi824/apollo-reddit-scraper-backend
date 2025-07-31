@@ -102,7 +102,7 @@ class CopyAnalysisService {
         };
       } else {
         // Use regular puppeteer for local development
-        puppeteer = await import('puppeteer');
+        puppeteer = await import('puppeteer-core');
       }
 
       this.browser = await puppeteer.launch(launchOptions);
@@ -134,7 +134,7 @@ class CopyAnalysisService {
       });
       
       // Wait a bit more for dynamic content to load
-      await page.waitForTimeout(3000);
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       // Extract structured content
       const content = await page.evaluate(() => {

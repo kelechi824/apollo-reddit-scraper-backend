@@ -63,7 +63,7 @@ class ScreenshotService {
           };
         } else {
           // Use regular puppeteer for local development
-          puppeteer = await import('puppeteer');
+          puppeteer = await import('puppeteer-core');
         }
 
         this.browser = await puppeteer.launch(launchOptions);
@@ -121,7 +121,7 @@ class ScreenshotService {
         });
 
         // Wait for dynamic content to load
-        await page.waitForTimeout(3000);
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
         // Wait for specific selector if provided
         if (waitForSelector) {
