@@ -540,6 +540,9 @@ MESSAGES SO FAR: ${conversation.messages.length}
     }
 
     console.log('🤖 Generating content with Claude...');
+    console.log('📝 BACKEND - System Prompt:', request.system_prompt);
+    console.log('📝 BACKEND - User Prompt:', request.user_prompt);
+    console.log('📝 BACKEND - Brand Kit:', request.brand_kit);
 
     // Use circuit breaker and retry logic for content generation
     return await this.circuitBreaker.execute(async () => {
@@ -552,8 +555,8 @@ MESSAGES SO FAR: ${conversation.messages.length}
           const response = await Promise.race([
             this.client!.messages.create({
               model: 'claude-sonnet-4-20250514',
-              max_tokens: 4000,
-              temperature: 0.7,
+              max_tokens: 6000,
+              temperature: 0.9,
               system: request.system_prompt,
               messages: [
                 {
@@ -562,7 +565,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
                 }
               ]
             }),
-            this.createTimeoutPromise(90000) // 1.5 minute timeout for content generation
+            this.createTimeoutPromise(120000) // 2 minute timeout for longer content generation
           ]);
 
           if (!response.content || response.content.length === 0) {
@@ -576,8 +579,15 @@ MESSAGES SO FAR: ${conversation.messages.length}
               throw new Error('Claude returned empty content');
             }
             
+            console.log('📥 BACKEND - Raw Claude Response:', content);
+            
+            // Process brand kit variables in the generated content
+            const processedContent = this.processLiquidVariables(content, request.brand_kit);
+            
+            console.log('✅ BACKEND - Processed Content (with variables):', processedContent);
+            
             return {
-              content,
+              content: processedContent,
               title: request.post_context?.title || '',
               description: 'Generated SEO-optimized content'
             };
@@ -1293,6 +1303,64 @@ Focus all recommendations on conversion optimization opportunities from this spe
    */
   getGongConversation(conversationId: string): GongChatConversation | undefined {
     return this.gongConversations.get(conversationId);
+  }
+
+  /**
+   * Process liquid variables in generated content
+   * Why this matters: Replaces brand kit variables like {{ brand_kit.cta_text }} with actual values.
+   */
+  private processLiquidVariables(text: string, brandKit: any): string {
+    if (!brandKit) return text;
+    
+    let processed = text;
+    
+    // Replace standard brand kit variables
+    if (brandKit.url) {
+      processed = processed.replace(/\{\{\s*brand_kit\.url\s*\}\}/g, brandKit.url);
+    }
+    if (brandKit.aboutBrand) {
+      processed = processed.replace(/\{\{\s*brand_kit\.about_brand\s*\}\}/g, brandKit.aboutBrand);
+    }
+    if (brandKit.idealCustomerProfile) {
+      processed = processed.replace(/\{\{\s*brand_kit\.ideal_customer_profile\s*\}\}/g, brandKit.idealCustomerProfile);
+    }
+    if (brandKit.competitors) {
+      processed = processed.replace(/\{\{\s*brand_kit\.competitors\s*\}\}/g, brandKit.competitors);
+    }
+    if (brandKit.brandPointOfView) {
+      processed = processed.replace(/\{\{\s*brand_kit\.brand_point_of_view\s*\}\}/g, brandKit.brandPointOfView);
+    }
+    if (brandKit.authorPersona) {
+      processed = processed.replace(/\{\{\s*brand_kit\.author_persona\s*\}\}/g, brandKit.authorPersona);
+    }
+    if (brandKit.toneOfVoice) {
+      processed = processed.replace(/\{\{\s*brand_kit\.tone_of_voice\s*\}\}/g, brandKit.toneOfVoice);
+    }
+    if (brandKit.headerCaseType) {
+      processed = processed.replace(/\{\{\s*brand_kit\.header_case_type\s*\}\}/g, brandKit.headerCaseType);
+    }
+    if (brandKit.writingRules) {
+      processed = processed.replace(/\{\{\s*brand_kit\.writing_rules\s*\}\}/g, brandKit.writingRules);
+    }
+    if (brandKit.ctaText) {
+      processed = processed.replace(/\{\{\s*brand_kit\.cta_text\s*\}\}/g, brandKit.ctaText);
+    }
+    if (brandKit.ctaDestination) {
+      processed = processed.replace(/\{\{\s*brand_kit\.cta_destination\s*\}\}/g, brandKit.ctaDestination);
+    }
+    
+    // Replace custom variables
+    if (brandKit.customVariables) {
+      Object.keys(brandKit.customVariables).forEach(key => {
+        const value = brandKit.customVariables[key];
+        if (value) {
+          const regex = new RegExp(`\\{\\{\\s*brand_kit\\.${key}\\s*\\}\\}`, 'g');
+          processed = processed.replace(regex, value);
+        }
+      });
+    }
+    
+    return processed;
   }
 
   /**

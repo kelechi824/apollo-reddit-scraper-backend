@@ -11,7 +11,7 @@ interface ContentCreationRequest {
     content_opportunity: string;
     audience_summary: string;
   };
-  brand_kit: any;
+  brand_kit?: any; // Optional since variables are processed on frontend
   system_prompt: string;
   user_prompt: string;
 }
@@ -24,7 +24,7 @@ interface ContentCreationRequest {
  */
 router.post('/generate', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { post_context, brand_kit, system_prompt, user_prompt }: ContentCreationRequest = req.body;
+    const { post_context, system_prompt, user_prompt, brand_kit }: ContentCreationRequest = req.body;
 
     if (!post_context || !system_prompt || !user_prompt) {
       return res.status(400).json({

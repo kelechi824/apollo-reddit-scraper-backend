@@ -39,6 +39,8 @@ interface WorkflowRequest {
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
   brand_kit?: any;
+  system_prompt?: string;
+  user_prompt?: string;
 }
 
 interface WorkflowProgressCallback {
@@ -93,7 +95,7 @@ class WorkflowOrchestrator {
     progressCallback?: WorkflowProgressCallback,
     jobId?: string
   ): Promise<BlogContentResult> {
-    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit } = request;
+    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit, system_prompt, user_prompt } = request;
 
     if (!keyword || keyword.trim().length === 0) {
       throw createServiceError(new Error('Keyword is required for content generation pipeline'), 'Workflow Orchestrator', 'Input validation');
@@ -228,7 +230,9 @@ class WorkflowOrchestrator {
             deepResearchResult!,
             firecrawlResult!,
             content_length,
-            brand_kit
+            brand_kit,
+            system_prompt,
+            user_prompt
           );
 
           // Save progress
@@ -345,20 +349,27 @@ class WorkflowOrchestrator {
     deepResearch: DeepResearchResult,
     competitorAnalysis: FirecrawlSearchResult,
     contentLength: string,
-    brandKit?: any
+    brandKit?: any,
+    customSystemPrompt?: string,
+    customUserPrompt?: string
   ): Promise<{ content: string; title?: string; description?: string }> {
     
-    // Build comprehensive system prompt for Claude
-    const systemPrompt = this.buildClaudeSystemPrompt(contentLength);
-    
-    // Build user prompt with all context
-    const userPrompt = this.buildClaudeUserPrompt(
+    // Use custom prompts if provided, otherwise use default prompts with context
+    const systemPrompt = customSystemPrompt || this.buildClaudeSystemPrompt(contentLength);
+    const userPrompt = customUserPrompt || this.buildClaudeUserPrompt(
       keyword,
       gapAnalysis,
       deepResearch,
       competitorAnalysis,
       brandKit
     );
+
+    console.log('🔧 Using prompts:', {
+      custom_system: !!customSystemPrompt,
+      custom_user: !!customUserPrompt,
+      system_length: systemPrompt.length,
+      user_length: userPrompt.length
+    });
 
     // Generate content with Claude Sonnet 4
     const result = await claudeService.generateContent({
@@ -695,15 +706,8 @@ Generate comprehensive, high-quality content that establishes this article as th
       optimizedContent = optimizedSections.join('\n');
     }
 
-    // Ensure proper conclusion section exists
-    if (!optimizedContent.toLowerCase().includes('## conclusion') && 
-        !optimizedContent.toLowerCase().includes('## summary') &&
-        !optimizedContent.toLowerCase().includes('## key takeaways')) {
-      optimizationsApplied++;
-      optimizedContent += '\n\n## Key Takeaways\n\nThis comprehensive guide covered the essential aspects of ' + 
-                         (keyword || 'this topic') + '. The key points to remember are the actionable insights and ' +
-                         'practical applications that can be immediately implemented for best results.';
-    }
+    // Note: Content now ends naturally with brand-integrated conclusions
+    // No need to auto-append generic conclusions
 
     return {
       content: optimizedContent,
