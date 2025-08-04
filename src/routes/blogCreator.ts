@@ -125,7 +125,7 @@ function deleteJobData(jobId: string): boolean {
  */
 router.post('/generate-content', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit } = req.body;
+    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit, system_prompt, user_prompt } = req.body;
 
     if (!keyword || keyword.trim().length === 0) {
       return res.status(400).json({
@@ -142,7 +142,9 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
       target_audience,
       content_length,
       focus_areas,
-      brand_kit
+      brand_kit,
+      system_prompt,
+      user_prompt
     });
 
     console.log(`✅ SYNCHRONOUS content generation completed for keyword: "${keyword}"`);
@@ -167,7 +169,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
  */
 router.post('/generate-content-async', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit } = req.body;
+    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit, system_prompt, user_prompt } = req.body;
 
     if (!keyword || keyword.trim().length === 0) {
       return res.status(400).json({
@@ -194,7 +196,9 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       target_audience,
       content_length,
       focus_areas,
-      brand_kit
+      brand_kit,
+      system_prompt,
+      user_prompt
     }, {
       onProgress: (stage: string, message: string, progress: number) => {
         updateJobData(jobId, {
@@ -358,7 +362,7 @@ router.get('/job-status/:jobId', (req: Request, res: Response): any => {
  */
 router.post('/bulk-generate', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { keywords, target_audience, content_length = 'medium', focus_areas = [], brand_kit } = req.body;
+    const { keywords, target_audience, content_length = 'medium', focus_areas = [], brand_kit, system_prompt, user_prompt } = req.body;
 
     if (!keywords || keywords.length === 0) {
       return res.status(400).json({
@@ -385,7 +389,9 @@ router.post('/bulk-generate', async (req: Request, res: Response): Promise<any> 
             target_audience,
             content_length,
             focus_areas,
-            brand_kit
+            brand_kit,
+            system_prompt,
+            user_prompt
           });
           return { keyword, success: true, data: result };
         } catch (error) {
