@@ -339,9 +339,10 @@ class WorkflowOrchestrator {
   }
 
   /**
-   * Generate content using Claude Sonnet 4 with comprehensive context
+   * Generate content using Claude Sonnet 4 with comprehensive context and completion planning
    * Why this matters: This uses all the gathered intelligence to create superior content
-   * that covers competitor topics PLUS unique insights from deep research.
+   * that covers competitor topics PLUS unique insights from deep research, with intelligent
+   * token management to ensure proper completion.
    */
   private async generateContentWithClaude(
     keyword: string,
@@ -356,13 +357,24 @@ class WorkflowOrchestrator {
     
     // Use custom prompts if provided, otherwise use default prompts with context
     const systemPrompt = customSystemPrompt || this.buildClaudeSystemPrompt(contentLength);
-    const userPrompt = customUserPrompt || this.buildClaudeUserPrompt(
+    const baseUserPrompt = customUserPrompt || this.buildClaudeUserPrompt(
       keyword,
       gapAnalysis,
       deepResearch,
       competitorAnalysis,
       brandKit
     );
+
+    // Simplified completion guidance for pipeline mode (reduced token overhead)
+    const userPrompt = `${baseUserPrompt}
+
+⚠️ CRITICAL COMPLETION REQUIREMENT:
+- MUST end with complete conclusion and call-to-action  
+- Reserve final 15-20% for proper conclusion
+- NEVER end mid-sentence or mid-paragraph
+
+📝 CONCLUSION FORMAT:
+End with: "Getting Started with [Topic]" section, recommended steps (1-3 numbered items), and "Ready to [action]? Apollo provides [features] needed. Try Apollo for free."`;
 
     console.log('🔧 Using prompts:', {
       custom_system: !!customSystemPrompt,
@@ -371,16 +383,21 @@ class WorkflowOrchestrator {
       user_length: userPrompt.length
     });
 
-    // Generate content with Claude Sonnet 4
+    // Generate content with Claude Sonnet 4 (retry logic temporarily disabled)
+    console.log('🔧 Using simplified content generation without retry logic for debugging');
+    
     const result = await claudeService.generateContent({
       system_prompt: systemPrompt,
       user_prompt: userPrompt,
       post_context: { keyword, contentLength },
-      brand_kit: brandKit
+      brand_kit: brandKit,
+      content_length: contentLength as 'short' | 'medium' | 'long'
     });
 
     return result;
   }
+
+
 
   /**
    * Build comprehensive system prompt for Claude content generation
@@ -389,20 +406,21 @@ class WorkflowOrchestrator {
    */
   private buildClaudeSystemPrompt(contentLength: string): string {
     const lengthGuidance = {
-      short: '1500-2000 words',
-      medium: '2500-3500 words',
-      long: '4000-6000 words'
+      short: '1200-1500 words',
+      medium: '1800-2200 words', 
+      long: '2000-2500 words'
     };
 
     return `${CLAUDE_BLOG_CONTENT_SYSTEM_PROMPT}
 
 TARGET CONTENT LENGTH: ${lengthGuidance[contentLength as keyof typeof lengthGuidance]}
 
-ADDITIONAL LENGTH-SPECIFIC GUIDANCE:
-- Ensure comprehensive coverage without unnecessary padding
-- Focus on quality and actionable insights over word count
-- Include sufficient detail for readers to understand and implement
-- Balance thoroughness with readability and engagement`;
+CRITICAL COMPLETION REQUIREMENTS:
+⚠️  MUST complete article with proper conclusion within target length
+⚠️  Reserve 20% of content for conclusion and call-to-action
+⚠️  NEVER end mid-sentence or incomplete thoughts
+- Include strong conclusion with clear takeaways
+- End with compelling call-to-action section`;
   }
 
   /**

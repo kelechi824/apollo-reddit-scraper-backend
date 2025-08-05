@@ -522,6 +522,98 @@ MESSAGES SO FAR: ${conversation.messages.length}
   }
 
   /**
+   * Validate content completeness and detect truncation
+   * Why this matters: Ensures users receive complete articles with proper conclusions
+   * rather than content that cuts off mid-sentence.
+   */
+  private validateContentCompleteness(content: string): { 
+    isComplete: boolean; 
+    issues: string[]; 
+    confidence: number 
+  } {
+    const issues: string[] = [];
+    let confidence = 1.0;
+
+    // Check for incomplete sentences at the end
+    const lastSentence = content.trim().split(/[.!?]/).pop()?.trim() || '';
+    if (lastSentence.length > 20 && !content.trim().match(/[.!?]\s*$/)) {
+      issues.push('Content ends mid-sentence');
+      confidence -= 0.4;
+    }
+
+    // Check for natural conclusion indicators (more strict)
+    const conclusionIndicators = [
+      'conclusion', 'summary', 'takeaway', 'next steps', 'getting started',
+      'ready to', 'try apollo', 'contact us', 'learn more', 'implementation',
+      'final thoughts', 'wrapping up', 'in summary', 'to conclude', 'moving forward'
+    ];
+    const hasConclusion = conclusionIndicators.some(indicator => 
+      content.toLowerCase().includes(indicator)
+    );
+    
+    if (!hasConclusion) {
+      issues.push('No natural conclusion found - article appears incomplete');
+      confidence -= 0.5; // More penalty for missing conclusion
+    }
+
+    // Check content length distribution (should have good section balance)
+    const sections = content.split(/\n#{1,3}\s/).length;
+    if (sections < 3) {
+      issues.push('Insufficient content structure');
+      confidence -= 0.2;
+    }
+
+    // Check for abrupt ending patterns (enhanced for better detection)
+    const abruptPatterns = [
+      /\n\n$/, // Double newline ending (common in truncation)
+      /:\s*$/, // Ending with colon (incomplete list/explanation)
+      /,\s*$/, // Ending with comma
+      /and\s*$/, // Ending with "and"
+      /the\s*$/, // Ending with article
+      /based on\s*$/, // Ending with "based on" (specific pattern from user example)
+      /of\s*$/, // Ending with "of"
+      /to\s*$/, // Ending with "to"
+      /for\s*$/, // Ending with "for" 
+      /in\s*$/, // Ending with "in"
+      /with\s*$/, // Ending with "with"
+      /that\s*$/, // Ending with "that"
+      /responses based on\s*$/, // Full phrase pattern from user example
+    ];
+    
+    if (abruptPatterns.some(pattern => pattern.test(content))) {
+      issues.push('Content ends abruptly');
+      confidence -= 0.3;
+    }
+
+    const isComplete = confidence >= 0.7;
+    
+    console.log(`📊 Content completeness: ${isComplete ? '✅' : '❌'} (confidence: ${confidence.toFixed(2)})`);
+    if (issues.length > 0) {
+      console.log(`⚠️ Content issues detected: ${issues.join(', ')}`);
+    }
+
+    return { isComplete, issues, confidence };
+  }
+
+  /**
+   * Calculate dynamic token limit based on content length with completion buffer
+   * Why this matters: Ensures sufficient tokens for Claude to complete articles properly
+   * by accounting for prompt overhead and reserving buffer space for conclusions.
+   */
+  private calculateTokenLimit(contentLength?: 'short' | 'medium' | 'long'): number {
+    // Maximum possible limits for 4-model pipeline - Claude Sonnet 4 can handle very high token counts
+    const tokenLimits = {
+      short: 12000,   // ~9000 words - massive increase to handle 4-model pipeline overhead  
+      medium: 15000,  // ~11250 words - massive increase to handle 4-model pipeline overhead
+      long: 18000     // ~13500 words - massive increase to handle 4-model pipeline overhead
+    };
+
+    const limit = tokenLimits[contentLength || 'medium'];
+    console.log(`📊 Using ${limit} tokens for ${contentLength || 'medium'} content (MAXIMUM for pipeline)`);
+    return limit;
+  }
+
+  /**
    * Generate content using Claude with Reddit context and brand kit
    * Why this matters: Creates SEO-optimized content by combining Reddit insights with brand positioning.
    */
@@ -530,6 +622,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
     user_prompt: string;
     post_context: any;
     brand_kit: any;
+    content_length?: 'short' | 'medium' | 'long';
   }): Promise<{ content: string; title?: string; description?: string }> {
     if (!this.client) {
       throw createServiceError(new Error('Claude client not initialized'), 'Claude Sonnet 4', 'Client check');
@@ -543,6 +636,10 @@ MESSAGES SO FAR: ${conversation.messages.length}
     console.log('📝 BACKEND - System Prompt:', request.system_prompt);
     console.log('📝 BACKEND - User Prompt:', request.user_prompt);
     console.log('📝 BACKEND - Brand Kit:', request.brand_kit);
+    console.log('📝 BACKEND - Content Length:', request.content_length);
+
+    // Calculate dynamic token limit based on content length
+    const maxTokens = this.calculateTokenLimit(request.content_length);
 
     // Use circuit breaker and retry logic for content generation
     return await this.circuitBreaker.execute(async () => {
@@ -555,7 +652,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
           const response = await Promise.race([
             this.client!.messages.create({
               model: 'claude-sonnet-4-20250514',
-              max_tokens: 6000,
+              max_tokens: maxTokens,
               temperature: 0.9,
               system: request.system_prompt,
               messages: [
@@ -580,6 +677,23 @@ MESSAGES SO FAR: ${conversation.messages.length}
             }
             
             console.log('📥 BACKEND - Raw Claude Response:', content);
+            console.log(`📏 BACKEND - Content length: ${content.length} characters`);
+            console.log(`📊 BACKEND - Using token limit: ${maxTokens}`);
+            
+            // Validate content completeness
+            const validation = this.validateContentCompleteness(content);
+            
+            if (!validation.isComplete) {
+              // Log the validation issues for monitoring
+              console.log(`⚠️ Content validation failed: ${validation.issues.join(', ')}`);
+              console.log(`📊 Confidence score: ${validation.confidence.toFixed(2)}`);
+              
+              // Log validation issues but continue processing (disable retry for now)
+              console.log('⚠️ Content validation failed but continuing with current content');
+              console.log('🔧 Retry logic temporarily disabled for debugging');
+            } else {
+              console.log('✅ Content validation passed - article appears complete');
+            }
             
             // Process brand kit variables in the generated content
             const processedContent = this.processLiquidVariables(content, request.brand_kit);

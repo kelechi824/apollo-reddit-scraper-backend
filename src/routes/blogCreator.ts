@@ -136,6 +136,8 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
 
     console.log(`🚀 Starting SYNCHRONOUS content generation for keyword: "${keyword}"`);
 
+
+
     // Execute the 4-model pipeline synchronously
     const result = await workflowOrchestrator.executeContentPipeline({
       keyword: keyword.trim(),
