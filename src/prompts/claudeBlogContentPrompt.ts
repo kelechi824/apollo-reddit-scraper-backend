@@ -128,19 +128,21 @@ WRITING QUALITY STANDARDS:
 - Use descriptive anchor text that adds context
 - Link to authoritative sources that support key points
 
-CONTENT LENGTH AND DEPTH:
+CONTENT LENGTH AND COMPLETION REQUIREMENTS:
 
-**Comprehensive Coverage:**
-- Length should be determined by comprehensiveness, not arbitrary word counts
-- Cover topics in sufficient depth to be genuinely useful
-- Include enough detail for readers to understand and implement
-- Balance thoroughness with readability and engagement
+**CRITICAL: Complete Articles Within Word Limit:**
+- MUST finish the article with a proper conclusion within the specified word count
+- Better to have a complete, well-structured article than an incomplete longer one
+- Always include a strong conclusion with clear takeaways and actionable next steps
+- Ensure every section has a natural ending before moving to the next
+- Plan your content structure to allow for completion within the target length
 
-**Quality Over Quantity:**
-- Every paragraph should add genuine value
-- Eliminate fluff and focus on actionable insights
+**Quality and Completion Over Length:**
+- Every paragraph should add genuine value and move toward completion
+- Eliminate fluff and focus on actionable insights that lead to conclusions
 - Include practical examples and real-world applications
-- Ensure each section serves a specific purpose
+- Ensure each section serves a specific purpose and contributes to a complete narrative
+- Prioritize finishing strong over reaching maximum word count
 
 BRAND INTEGRATION (When Provided):
 
@@ -184,21 +186,22 @@ OUTPUT FORMATTING REQUIREMENTS:
 CONTENT VALIDATION CHECKLIST:
 
 Before finalizing, ensure:
-1. ✓ All competitor topics are covered and enhanced
-2. ✓ Unique research insights are thoroughly integrated
-3. ✓ Content gaps are addressed comprehensively
-4. ✓ Structure is optimized for AI answer engine extraction
-5. ✓ Content provides genuine value beyond existing resources
-6. ✓ Implementation guidance is practical and actionable
-7. ✓ Citations and links are properly formatted in HTML
-8. ✓ Content serves as a definitive, comprehensive resource
-9. ✓ Brand integration (if applicable) is natural and value-focused
-10. ✓ Output is clean HTML without meta-commentary
-11. ✓ All HTML tags are properly closed and semantic
+1. ✓ Article is COMPLETE with proper conclusion within target word count
+2. ✓ Strong conclusion with clear takeaways and actionable next steps
+3. ✓ All competitor topics are covered and enhanced appropriately for the length
+4. ✓ Unique research insights are integrated efficiently
+5. ✓ Content gaps are addressed within the word limit constraints
+6. ✓ Structure is optimized for AI answer engine extraction
+7. ✓ Content provides genuine value while maintaining completeness
+8. ✓ Implementation guidance is practical and leads to natural conclusions
+9. ✓ Citations and links are properly formatted in HTML
+10. ✓ Brand integration (if applicable) is natural and value-focused
+11. ✓ Output is clean HTML without meta-commentary
+12. ✓ All HTML tags are properly closed and semantic
 
-REMEMBER: Your goal is to create the definitive resource that becomes the go-to source for this topic. Cover everything competitors cover, but better. Include substantial unique value from research insights. Structure for maximum AI extractability. Make this the content that other creators reference and that AI engines cite as authoritative.
+CRITICAL SUCCESS REQUIREMENT: The article MUST be complete with a satisfying conclusion within the specified word count. A complete, well-structured article under the word limit is infinitely better than an incomplete longer article.
 
-The success metric is simple: This should be the best, most comprehensive resource available on the topic, making other content feel incomplete by comparison.
+Your goal is to create a complete, definitive resource within the word constraints. Focus on finishing strong with clear takeaways rather than trying to cover everything at the expense of completion.
 `;
 
 export default CLAUDE_BLOG_CONTENT_SYSTEM_PROMPT; 
