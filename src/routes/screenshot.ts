@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { firecrawlService } from '../services/firecrawlService';
 import { playwrightService } from '../services/playwrightService';
 
 const router = Router();
@@ -68,14 +67,14 @@ router.get('/screenshot/test', async (req: Request, res: Response): Promise<any>
     
     console.log(`🧪 Testing screenshot functionality with: ${testUrl}`);
 
-    const result = await firecrawlService.takeScreenshot(testUrl, {
-      fullPage: true,
-      mobileEmulation: false
+    const result = await playwrightService.takeScreenshot(testUrl, {
+      fullPage: true
     });
 
     return res.json({
       success: result.success,
-      screenshotUrl: result.screenshotUrl,
+      screenshotPath: result.screenshotPath,
+      screenshotBase64: result.screenshotBase64,
       error: result.error,
       testUrl: testUrl,
       timestamp: new Date().toISOString()
@@ -209,25 +208,25 @@ router.post('/screenshot/save', async (req: Request, res: Response): Promise<any
 
     console.log(`💾 Screenshot + Save request received for: ${url}`);
 
-    // Take screenshot using Firecrawl service
-    const result = await firecrawlService.takeScreenshot(url, {
+    // Take screenshot using Playwright service
+    const result = await playwrightService.takeScreenshot(url, {
       fullPage: options.fullPage !== false,
-      mobileEmulation: options.mobileEmulation || false,
       quality: options.quality || 80,
       format: options.format || 'png'
     });
 
-    if (result.success && result.screenshotUrl) {
-      // Save to file if it's base64 data
-      if (result.screenshotUrl.startsWith('data:image')) {
-        const fs = require('fs');
-        const path = require('path');
-        
-        const base64Data = result.screenshotUrl.replace(/^data:image\/\w+;base64,/, '');
-        const imageBuffer = Buffer.from(base64Data, 'base64');
-        
+    if (result.success && (result.screenshotBase64 || result.screenshotPath)) {
+      const fs = require('fs');
+      const path = require('path');
+      
+      let filePath: string;
+      let imageBuffer: Buffer;
+      
+      if (result.screenshotBase64) {
+        // Save base64 data to file
+        imageBuffer = Buffer.from(result.screenshotBase64, 'base64');
         const savedFilename = filename || `screenshot-${Date.now()}.png`;
-        const filePath = path.join(__dirname, '../../screenshots', savedFilename);
+        filePath = path.join(__dirname, '../../screenshots', savedFilename);
         
         // Ensure screenshots directory exists
         const screenshotsDir = path.join(__dirname, '../../screenshots');
@@ -236,18 +235,25 @@ router.post('/screenshot/save', async (req: Request, res: Response): Promise<any
         }
         
         fs.writeFileSync(filePath, imageBuffer);
-        
-        console.log(`✅ Screenshot saved to: ${filePath}`);
-        
-        return res.json({
-          success: true,
-          screenshotUrl: result.screenshotUrl,
-          savedPath: filePath,
-          filename: savedFilename,
-          size: `${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`,
-          timestamp: new Date().toISOString()
-        });
+      } else if (result.screenshotPath) {
+        // File already exists at screenshotPath
+        filePath = result.screenshotPath;
+        imageBuffer = fs.readFileSync(filePath);
+      } else {
+        throw new Error('No screenshot data available');
       }
+      
+      console.log(`✅ Screenshot saved to: ${filePath}`);
+      
+      return res.json({
+        success: true,
+        screenshotPath: filePath,
+        screenshotBase64: result.screenshotBase64,
+        savedPath: filePath,
+        filename: path.basename(filePath),
+        size: `${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`,
+        timestamp: new Date().toISOString()
+      });
     }
 
     return res.status(500).json({
@@ -271,18 +277,11 @@ router.post('/screenshot/save', async (req: Request, res: Response): Promise<any
  */
 router.get('/screenshot/status', async (req: Request, res: Response): Promise<any> => {
   try {
-    const firecrawlStatus = firecrawlService.getServiceStatus();
     const playwrightStatus = playwrightService.getStatus();
 
     return res.json({
       success: true,
       services: {
-        firecrawl: {
-          initialized: firecrawlStatus.initialized,
-          hasApiKey: firecrawlStatus.hasApiKey,
-          circuitBreakerState: firecrawlStatus.circuitBreakerState,
-          rateLimitActive: firecrawlStatus.rateLimitActive
-        },
         playwright: {
           browserActive: playwrightStatus.browserActive,
           screenshotsDirectory: playwrightStatus.screenshotsDirectory
