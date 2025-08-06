@@ -1,4 +1,8 @@
-import { firecrawlService, FirecrawlSearchResult } from './firecrawlService';
+import dotenv from 'dotenv';
+// Load environment variables before importing any services
+dotenv.config();
+
+import FirecrawlService, { ArticleContent, FirecrawlExtractionResult } from './firecrawlService';
 import { deepResearchService, DeepResearchResult } from './deepResearchService';
 import { gapAnalysisService, GapAnalysisResult } from './gapAnalysisService';
 import { claudeService } from './claudeService';
@@ -20,7 +24,7 @@ interface BlogContentResult {
     aeo_optimized: boolean;
   };
   workflow_data: {
-    firecrawl_analysis: FirecrawlSearchResult;
+    firecrawl_analysis: ArticleContent;
     deep_research: DeepResearchResult;
     gap_analysis: GapAnalysisResult;
   };
@@ -54,7 +58,7 @@ interface WorkflowState {
   currentStage: 'firecrawl' | 'deep_research' | 'gap_analysis' | 'content_generation' | 'completed' | 'error';
   startTime: number;
   completedStages: {
-    firecrawl?: FirecrawlSearchResult;
+    firecrawl?: ArticleContent;
     deep_research?: DeepResearchResult;
     gap_analysis?: GapAnalysisResult;
     content_generation?: any;
@@ -76,8 +80,10 @@ class WorkflowOrchestrator {
   private workflowStates = new Map<string, WorkflowState>();
   private readonly WORKFLOW_TIMEOUT = 20 * 60 * 1000; // 20 minutes
   private readonly MAX_WORKFLOW_RETRIES = 2;
+  private firecrawlService: FirecrawlService;
 
   constructor() {
+    this.firecrawlService = new FirecrawlService();
     // Set up automatic cleanup of expired workflows every 5 minutes
     setInterval(() => {
       this.cleanupExpiredWorkflows();
@@ -137,7 +143,7 @@ class WorkflowOrchestrator {
           );
 
           console.log('📊 Stage 1: Firecrawl competitor analysis');
-          firecrawlResult = await firecrawlService.searchAndAnalyzeCompetitors(keyword);
+          firecrawlResult = await this.firecrawlService.searchAndAnalyzeCompetitors(keyword);
           
           // Save progress
           workflowState.completedStages.firecrawl = firecrawlResult;
@@ -348,7 +354,7 @@ class WorkflowOrchestrator {
     keyword: string,
     gapAnalysis: GapAnalysisResult,
     deepResearch: DeepResearchResult,
-    competitorAnalysis: FirecrawlSearchResult,
+    competitorAnalysis: ArticleContent,
     contentLength: string,
     brandKit?: any,
     customSystemPrompt?: string,
@@ -432,7 +438,7 @@ CRITICAL COMPLETION REQUIREMENTS:
     keyword: string,
     gapAnalysis: GapAnalysisResult,
     deepResearch: DeepResearchResult,
-    competitorAnalysis: FirecrawlSearchResult,
+    competitorAnalysis: ArticleContent,
     brandKit?: any
   ): string {
     
@@ -788,7 +794,8 @@ Generate comprehensive, high-quality content that establishes this article as th
     };
 
     try {
-      serviceTests.firecrawl = await firecrawlService.testConnection();
+              const firecrawlResult = await this.firecrawlService.testConnection();
+              serviceTests.firecrawl = firecrawlResult.success;
       serviceTests.deepResearch = await deepResearchService.testConnection();
       serviceTests.gapAnalysis = await gapAnalysisService.testConnection();
       serviceTests.claude = await claudeService.testConnection();
@@ -924,7 +931,7 @@ Generate comprehensive, high-quality content that establishes this article as th
    */
   getWorkflowStatus(): Record<string, any> {
     return {
-      firecrawl: firecrawlService.getServiceStatus(),
+      firecrawl: this.firecrawlService.getServiceStatus(),
       deepResearch: deepResearchService.getServiceStatus(),
       gapAnalysis: gapAnalysisService.getServiceStatus(),
       claude: claudeService.getServiceStatus(),

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { DeepResearchResult } from './deepResearchService';
-import { FirecrawlSearchResult } from './firecrawlService';
+import FirecrawlService, { ArticleContent } from './firecrawlService';
 import { 
   retryWithBackoff, 
   CircuitBreaker, 
@@ -53,7 +53,7 @@ export interface GapAnalysisResult {
 export interface GapAnalysisRequest {
   keyword: string;
   deepResearchResult: DeepResearchResult;
-  competitorAnalysis: FirecrawlSearchResult;
+  competitorAnalysis: ArticleContent;
   focus_on_gaps?: boolean;
   target_audience?: string;
 }
@@ -121,7 +121,7 @@ class GapAnalysisService {
     }
 
     console.log(`📊 Starting gap analysis for keyword: "${keyword}"`);
-    console.log(`📚 Analyzing ${competitorAnalysis.top_results.length} competitor sources vs deep research insights`);
+    console.log(`📚 Analyzing ${competitorAnalysis.top_results?.length || 0} competitor sources vs deep research insights`);
 
     // Use circuit breaker and retry logic for the entire operation
     return await this.circuitBreaker.execute(async () => {
@@ -220,7 +220,7 @@ class GapAnalysisService {
             analysis_metadata: {
               model_used: "gpt-4.1-nano-2025-04-14",
               timestamp: new Date().toISOString(),
-              competitor_sources_analyzed: competitorAnalysis.top_results.length,
+              competitor_sources_analyzed: competitorAnalysis.top_results?.length || 0,
               research_data_points: deepResearchResult.research_findings.key_insights.length + 
                                     deepResearchResult.research_findings.content_opportunities.length
             }
@@ -260,7 +260,7 @@ class GapAnalysisService {
   private buildGapAnalysisPrompt(
     keyword: string, 
     deepResearch: DeepResearchResult, 
-    competitorAnalysis: FirecrawlSearchResult,
+    competitorAnalysis: ArticleContent,
     focusOnGaps: boolean,
     targetAudience?: string
   ): string {
@@ -274,7 +274,7 @@ DEEP RESEARCH FINDINGS:
 ${JSON.stringify(deepResearch.research_findings, null, 2)}
 
 COMPETITOR CONTENT ANALYSIS:
- ${competitorAnalysis.top_results.map((result: any, index: number) => `
+ ${competitorAnalysis.top_results?.map((result: any, index: number) => `
 Competitor ${index + 1}: ${result.title}
 URL: ${result.url}
 Word Count: ${result.word_count}
@@ -286,7 +286,7 @@ Content Structure:
 - Lists: ${result.content_structure.numbered_lists + result.content_structure.bullet_points}
 
 Content Preview: ${result.content.substring(0, 500)}...
-`).join('\n---\n')}
+`).join('\n---\n') || 'No competitor content available for analysis'}
 
 ANALYSIS REQUIREMENTS:
 Compare the independent deep research findings with what competitors are currently covering. Identify content gaps, opportunities for differentiation, and strategies for creating superior content.

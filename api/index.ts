@@ -15,6 +15,11 @@ import gongRoutes from '../src/routes/gong';
 import gongAnalysisRoutes from '../src/routes/gongAnalysis';
 import gongChatRoutes from '../src/routes/gongChat';
 import screenshotRoutes from '../src/routes/screenshot';
+import vocExtractionRoutes from '../src/routes/vocExtraction';
+import articleExtractionRoutes from '../src/routes/articleExtraction';
+import contentAnalysisRoutes from '../src/routes/contentAnalysis';
+import personaPainPointMatchingRoutes from '../src/routes/personaPainPointMatching';
+import enhancedPersonaDetectionRoutes from '../src/routes/enhancedPersonaDetection';
 
 // Load environment variables
 dotenv.config();
@@ -50,6 +55,11 @@ app.use('/api/gong', gongRoutes);
 app.use('/api/gong-analysis', gongAnalysisRoutes);
 app.use('/api/gong-chat', gongChatRoutes);
 app.use('/api/screenshot', screenshotRoutes);
+app.use('/api/voc-extraction', vocExtractionRoutes);
+app.use('/api/article-extraction', articleExtractionRoutes);
+app.use('/api/content-analysis', contentAnalysisRoutes);
+app.use('/api/persona-pain-point-matching', personaPainPointMatchingRoutes);
+app.use('/api/enhanced-persona-detection', enhancedPersonaDetectionRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -81,7 +91,12 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         cro: '/api/cro/*',
         gongAnalysis: '/api/gong-analysis/*',
         gongChat: '/api/gong-chat/*',
-        screenshot: '/api/screenshot/*'
+        screenshot: '/api/screenshot/*',
+        vocExtraction: '/api/voc-extraction/*',
+        articleExtraction: '/api/article-extraction/*',
+        contentAnalysis: '/api/content-analysis/*',
+        personaPainPointMatching: '/api/persona-pain-point-matching/*',
+        enhancedPersonaDetection: '/api/enhanced-persona-detection/*'
       }
     }
   });
