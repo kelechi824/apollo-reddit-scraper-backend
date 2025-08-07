@@ -295,147 +295,39 @@ router.get('/quick-analysis-test', async (req, res) => {
   }
 });
 
-// File-based job storage for serverless persistence
-// Why this matters: In-memory Map gets reset on each serverless function call,
-// but /tmp directory persists for ~15 minutes in Vercel, perfect for job tracking
-import fs from 'fs';
-import path from 'path';
-
-const JOBS_DIR = '/tmp/voc-jobs';
-
-// Ensure jobs directory exists
-if (!fs.existsSync(JOBS_DIR)) {
-  fs.mkdirSync(JOBS_DIR, { recursive: true });
-}
-
-// Job storage utilities
-const getJobPath = (jobId: string) => path.join(JOBS_DIR, `${jobId}.json`);
-
-const saveJob = (jobId: string, jobData: any) => {
-  try {
-    fs.writeFileSync(getJobPath(jobId), JSON.stringify(jobData));
-  } catch (error) {
-    console.error(`Failed to save job ${jobId}:`, error);
-  }
-};
-
-const getJob = (jobId: string) => {
-  try {
-    const jobPath = getJobPath(jobId);
-    if (fs.existsSync(jobPath)) {
-      return JSON.parse(fs.readFileSync(jobPath, 'utf8'));
-    }
-    return null;
-  } catch (error) {
-    console.error(`Failed to read job ${jobId}:`, error);
-    return null;
-  }
-};
-
 /**
- * Start async VoC analysis job
- * Why this matters: Allows analysis to continue server-side while user navigates away.
+ * Synchronous VoC analysis (serverless-optimized)
+ * Why this matters: Performs complete analysis synchronously within request timeout,
+ * avoiding file system persistence issues in serverless environments.
  */
-router.post('/start-analysis', async (req, res) => {
+router.post('/analyze-synchronous', async (req, res) => {
   try {
-    const { daysBack = 180, maxCalls = 250 } = req.body;
-    const jobId = `voc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Optimize defaults for serverless timeout constraints
+    const { daysBack = 90, maxCalls = 100 } = req.body;
     
-    console.log(`🚀 Starting async VoC analysis job ${jobId} (${daysBack} days, max ${maxCalls} calls)`);
+    console.log(`🚀 Starting synchronous VoC analysis (${daysBack} days, max ${maxCalls} calls)`);
+    const startTime = Date.now();
     
-    // Store job as processing
-    saveJob(jobId, {
-      status: 'processing',
-      startTime: new Date().toISOString(),
-      daysBack,
-      maxCalls
-    });
+    const vocAnalyzer = new VoCThematicAnalyzer();
+    const liquidResult = await vocAnalyzer.getLiquidVariables(daysBack, maxCalls);
     
-    // Start analysis in background
-    (async () => {
-      try {
-        const vocAnalyzer = new VoCThematicAnalyzer();
-        const liquidResult = await vocAnalyzer.getLiquidVariables(daysBack, maxCalls);
-        
-        // Update job with results
-        const existingJob = getJob(jobId) || {};
-        saveJob(jobId, {
-          status: 'completed',
-          startTime: existingJob.startTime,
-          completedTime: new Date().toISOString(),
-          data: liquidResult
-        });
-        
-        console.log(`✅ VoC analysis job ${jobId} completed successfully`);
-        
-      } catch (error: any) {
-        console.error(`❌ VoC analysis job ${jobId} failed:`, error.message);
-        const existingJob = getJob(jobId) || {};
-        saveJob(jobId, {
-          status: 'failed',
-          startTime: existingJob.startTime,
-          failedTime: new Date().toISOString(),
-          error: error.message
-        });
-      }
-    })();
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ VoC analysis completed in ${processingTime}ms`);
     
     res.json({
       success: true,
-      jobId,
-      message: 'VoC analysis job started',
-      estimatedTime: '3-5 minutes',
+      data: liquidResult,
+      processingTime,
+      message: `Successfully extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls`,
       timestamp: new Date().toISOString()
     });
 
   } catch (error: any) {
-    console.error('❌ Error starting VoC analysis job:', error.message);
+    console.error('❌ Error in synchronous VoC analysis:', error.message);
     res.status(500).json({
       success: false,
       error: error.message,
-      message: 'Failed to start VoC analysis job',
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-/**
- * Check VoC analysis job status
- * Why this matters: Allows frontend to poll for job completion.
- */
-router.get('/job-status/:jobId', async (req, res) => {
-  try {
-    const { jobId } = req.params;
-    const job = getJob(jobId);
-    
-    if (!job) {
-      res.status(404).json({
-        success: false,
-        error: 'Job not found',
-        message: `Analysis job ${jobId} not found`,
-        timestamp: new Date().toISOString()
-      });
-      return;
-    }
-    
-    res.json({
-      success: true,
-      jobId,
-      status: job.status,
-      startTime: job.startTime,
-      completedTime: job.completedTime,
-      failedTime: job.failedTime,
-      data: job.data,
-      error: job.error,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error: any) {
-    console.error('❌ Error checking job status:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      message: 'Failed to check job status',
+      message: 'Failed to complete VoC analysis',
       timestamp: new Date().toISOString()
     });
   }
