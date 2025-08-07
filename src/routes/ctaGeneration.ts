@@ -20,7 +20,7 @@ const router = Router();
  */
 router.post('/generate-from-url', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { url, enhanced_analysis = true } = req.body;
+    const { url, enhanced_analysis = true, voc_kit_data } = req.body;
 
     if (!url) {
       return res.status(400).json({
@@ -70,7 +70,15 @@ router.post('/generate-from-url', async (req: Request, res: Response): Promise<a
     // Step 4: Match persona to pain points
     console.log('🎯 Step 4: Matching persona to VoC pain points...');
     const painPointMatcher = new PersonaPainPointMatcher();
-    const painPointMatch = await painPointMatcher.matchPersonaToPainPoints(basicAnalysis);
+    
+    // Use VoC Kit data if provided, otherwise fall back to fresh analysis
+    let vocPainPoints = undefined;
+    if (voc_kit_data && voc_kit_data.extractedPainPoints) {
+      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points`);
+      vocPainPoints = voc_kit_data.extractedPainPoints;
+    }
+    
+    const painPointMatch = await painPointMatcher.matchPersonaToPainPoints(basicAnalysis, vocPainPoints);
 
     console.log(`✅ Matched ${painPointMatch.matched_pain_points.length} pain points (${painPointMatch.matching_confidence}% confidence)`);
 
@@ -90,6 +98,221 @@ router.post('/generate-from-url', async (req: Request, res: Response): Promise<a
           processing_time_ms: processingTime,
           stages_completed: enhanced_analysis ? 5 : 4,
           article_word_count: extractionResult.data.wordCount,
+          enhanced_analysis_used: enhanced_analysis
+        }
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ CTA generation pipeline failed:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'CTA generation pipeline failed',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/cta-generation/generate-from-text
+ * Complete pipeline: Analyze text → detect persona → match pain points → generate CTAs
+ * Why this matters: End-to-end CTA generation from direct text/HTML input using all analysis layers.
+ */
+router.post('/generate-from-text', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { text, enhanced_analysis = true, voc_kit_data } = req.body;
+
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        error: 'Text content is required'
+      });
+    }
+
+    console.log(`🎯 Starting CTA generation pipeline for text content (${text.length} chars)`);
+    const startTime = Date.now();
+
+    // Create article data structure from text
+    const articleData = {
+      title: 'Direct Text Input',
+      content: text,
+      wordCount: text.split(/\s+/).length,
+      url: 'text-input',
+      extractedAt: new Date().toISOString(),
+      metadata: {
+        description: 'Direct text/HTML input for CTA generation',
+        author: 'User Input',
+        publishDate: new Date().toISOString(),
+        tags: ['direct-input', 'text-content']
+      }
+    };
+
+    console.log(`✅ Text processed: ${articleData.wordCount} words`);
+
+    // Step 2: Analyze content for basic persona detection
+    console.log('🧠 Step 2: Analyzing content for persona detection...');
+    const contentAnalysisService = new ContentAnalysisService();
+    const basicAnalysis = await contentAnalysisService.analyzeArticleContent(articleData);
+
+    console.log(`✅ Basic persona detected: ${basicAnalysis.persona} (${basicAnalysis.confidence_score}% confidence)`);
+
+    // Step 3: Enhanced persona detection (optional)
+    let enhancedPersona: EnhancedPersonaResult | undefined;
+    if (enhanced_analysis) {
+      console.log('🔍 Step 3: Running enhanced persona detection...');
+      const enhancedDetector = new EnhancedPersonaDetector();
+      enhancedPersona = await enhancedDetector.enhancePersonaDetection(
+        articleData,
+        basicAnalysis
+      );
+      console.log(`✅ Enhanced persona analysis complete: ${enhancedPersona?.primary_persona.confidence}% confidence`);
+    }
+
+    // Step 4: Match persona to pain points
+    console.log('🎯 Step 4: Matching persona to VoC pain points...');
+    const painPointMatcher = new PersonaPainPointMatcher();
+    
+    // Use VoC Kit data if provided, otherwise fall back to fresh analysis
+    let vocPainPoints = undefined;
+    if (voc_kit_data && voc_kit_data.extractedPainPoints) {
+      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points`);
+      vocPainPoints = voc_kit_data.extractedPainPoints;
+    }
+    
+    const painPointMatch = await painPointMatcher.matchPersonaToPainPoints(basicAnalysis, vocPainPoints);
+
+    console.log(`✅ Matched ${painPointMatch.matched_pain_points.length} pain points (${painPointMatch.matching_confidence}% confidence)`);
+
+    // Step 5: Generate hyper-relevant CTAs
+    console.log('✨ Step 5: Generating hyper-relevant CTAs...');
+    const ctaService = new CTAGenerationService();
+    const ctaResult = await ctaService.generateCTAs(painPointMatch, enhancedPersona, 'text-input');
+
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ CTA generation complete in ${processingTime}ms`);
+
+    return res.json({
+      success: true,
+      data: {
+        ...ctaResult,
+        pipeline_metadata: {
+          processing_time_ms: processingTime,
+          stages_completed: enhanced_analysis ? 5 : 4,
+          article_word_count: articleData.wordCount,
+          enhanced_analysis_used: enhanced_analysis
+        }
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ CTA generation pipeline failed:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'CTA generation pipeline failed',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/cta-generation/generate-from-markdown
+ * Complete pipeline: Parse markdown → detect persona → match pain points → generate CTAs
+ * Why this matters: End-to-end CTA generation from markdown content with proper parsing.
+ */
+router.post('/generate-from-markdown', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { markdown, enhanced_analysis = true, voc_kit_data } = req.body;
+
+    if (!markdown) {
+      return res.status(400).json({
+        success: false,
+        error: 'Markdown content is required'
+      });
+    }
+
+    console.log(`🎯 Starting CTA generation pipeline for markdown content (${markdown.length} chars)`);
+    const startTime = Date.now();
+
+    // Simple markdown to text conversion for analysis
+    // This removes markdown syntax but preserves the structure
+    const textContent = markdown
+      .replace(/#{1,6}\s+/g, '') // Remove headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.*?)\*/g, '$1') // Remove italic
+      .replace(/`(.*?)`/g, '$1') // Remove inline code
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to just text
+      .replace(/[-*+]\s+/g, '') // Remove list markers
+      .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
+      .trim();
+
+    // Create article data structure from markdown
+    const articleData = {
+      title: 'Markdown Content Input',
+      content: textContent,
+      wordCount: textContent.split(/\s+/).length,
+      url: 'markdown-input',
+      extractedAt: new Date().toISOString(),
+      metadata: {
+        description: 'Markdown content input for CTA generation',
+        author: 'User Input',
+        publishDate: new Date().toISOString(),
+        tags: ['direct-input', 'markdown-content']
+      }
+    };
+
+    console.log(`✅ Markdown processed: ${articleData.wordCount} words`);
+
+    // Step 2: Analyze content for basic persona detection
+    console.log('🧠 Step 2: Analyzing content for persona detection...');
+    const contentAnalysisService = new ContentAnalysisService();
+    const basicAnalysis = await contentAnalysisService.analyzeArticleContent(articleData);
+
+    console.log(`✅ Basic persona detected: ${basicAnalysis.persona} (${basicAnalysis.confidence_score}% confidence)`);
+
+    // Step 3: Enhanced persona detection (optional)
+    let enhancedPersona: EnhancedPersonaResult | undefined;
+    if (enhanced_analysis) {
+      console.log('🔍 Step 3: Running enhanced persona detection...');
+      const enhancedDetector = new EnhancedPersonaDetector();
+      enhancedPersona = await enhancedDetector.enhancePersonaDetection(
+        articleData,
+        basicAnalysis
+      );
+      console.log(`✅ Enhanced persona analysis complete: ${enhancedPersona?.primary_persona.confidence}% confidence`);
+    }
+
+    // Step 4: Match persona to pain points
+    console.log('🎯 Step 4: Matching persona to VoC pain points...');
+    const painPointMatcher = new PersonaPainPointMatcher();
+    
+    // Use VoC Kit data if provided, otherwise fall back to fresh analysis
+    let vocPainPoints = undefined;
+    if (voc_kit_data && voc_kit_data.extractedPainPoints) {
+      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points`);
+      vocPainPoints = voc_kit_data.extractedPainPoints;
+    }
+    
+    const painPointMatch = await painPointMatcher.matchPersonaToPainPoints(basicAnalysis, vocPainPoints);
+
+    console.log(`✅ Matched ${painPointMatch.matched_pain_points.length} pain points (${painPointMatch.matching_confidence}% confidence)`);
+
+    // Step 5: Generate hyper-relevant CTAs
+    console.log('✨ Step 5: Generating hyper-relevant CTAs...');
+    const ctaService = new CTAGenerationService();
+    const ctaResult = await ctaService.generateCTAs(painPointMatch, enhancedPersona, 'markdown-input');
+
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ CTA generation complete in ${processingTime}ms`);
+
+    return res.json({
+      success: true,
+      data: {
+        ...ctaResult,
+        pipeline_metadata: {
+          processing_time_ms: processingTime,
+          stages_completed: enhanced_analysis ? 5 : 4,
+          article_word_count: articleData.wordCount,
           enhanced_analysis_used: enhanced_analysis
         }
       }
