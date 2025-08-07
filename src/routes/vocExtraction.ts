@@ -295,8 +295,42 @@ router.get('/quick-analysis-test', async (req, res) => {
   }
 });
 
-// Simple in-memory job storage (in production, use Redis or database)
-const analysisJobs = new Map();
+// File-based job storage for serverless persistence
+// Why this matters: In-memory Map gets reset on each serverless function call,
+// but /tmp directory persists for ~15 minutes in Vercel, perfect for job tracking
+import fs from 'fs';
+import path from 'path';
+
+const JOBS_DIR = '/tmp/voc-jobs';
+
+// Ensure jobs directory exists
+if (!fs.existsSync(JOBS_DIR)) {
+  fs.mkdirSync(JOBS_DIR, { recursive: true });
+}
+
+// Job storage utilities
+const getJobPath = (jobId: string) => path.join(JOBS_DIR, `${jobId}.json`);
+
+const saveJob = (jobId: string, jobData: any) => {
+  try {
+    fs.writeFileSync(getJobPath(jobId), JSON.stringify(jobData));
+  } catch (error) {
+    console.error(`Failed to save job ${jobId}:`, error);
+  }
+};
+
+const getJob = (jobId: string) => {
+  try {
+    const jobPath = getJobPath(jobId);
+    if (fs.existsSync(jobPath)) {
+      return JSON.parse(fs.readFileSync(jobPath, 'utf8'));
+    }
+    return null;
+  } catch (error) {
+    console.error(`Failed to read job ${jobId}:`, error);
+    return null;
+  }
+};
 
 /**
  * Start async VoC analysis job
@@ -310,7 +344,7 @@ router.post('/start-analysis', async (req, res) => {
     console.log(`🚀 Starting async VoC analysis job ${jobId} (${daysBack} days, max ${maxCalls} calls)`);
     
     // Store job as processing
-    analysisJobs.set(jobId, {
+    saveJob(jobId, {
       status: 'processing',
       startTime: new Date().toISOString(),
       daysBack,
@@ -324,9 +358,10 @@ router.post('/start-analysis', async (req, res) => {
         const liquidResult = await vocAnalyzer.getLiquidVariables(daysBack, maxCalls);
         
         // Update job with results
-        analysisJobs.set(jobId, {
+        const existingJob = getJob(jobId) || {};
+        saveJob(jobId, {
           status: 'completed',
-          startTime: analysisJobs.get(jobId).startTime,
+          startTime: existingJob.startTime,
           completedTime: new Date().toISOString(),
           data: liquidResult
         });
@@ -335,9 +370,10 @@ router.post('/start-analysis', async (req, res) => {
         
       } catch (error: any) {
         console.error(`❌ VoC analysis job ${jobId} failed:`, error.message);
-        analysisJobs.set(jobId, {
+        const existingJob = getJob(jobId) || {};
+        saveJob(jobId, {
           status: 'failed',
-          startTime: analysisJobs.get(jobId).startTime,
+          startTime: existingJob.startTime,
           failedTime: new Date().toISOString(),
           error: error.message
         });
@@ -370,7 +406,7 @@ router.post('/start-analysis', async (req, res) => {
 router.get('/job-status/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
-    const job = analysisJobs.get(jobId);
+    const job = getJob(jobId);
     
     if (!job) {
       res.status(404).json({
