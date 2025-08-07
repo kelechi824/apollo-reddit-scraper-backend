@@ -319,7 +319,8 @@ Generate a 4-part CTA structure following Apollo's format:
    - BENEFIT-FORWARD COPY: Lead with outcomes and results, not features
    - URGENCY CUES: Create time-sensitive motivation without being pushy
    - PERSONA-TAILORED HOOKS: Use language that resonates with specific sales roles (SDRs, AEs, Sales Leaders, etc.)
-   Address sales team challenges using customer language from quotes above.
+   - VARIED OPENINGS: Avoid starting every CTA with "Sales team..." - use diverse openings like "Accelerate your prospecting", "Transform your pipeline", "Stop wasting time on", "Identify high-quality prospects", etc.
+   Address specific go-to-market challenges using customer language from quotes above.
 
 4. ACTION BUTTON: Must be one of these exact options with arrow:
    - "Try Apollo Free →"
@@ -336,14 +337,20 @@ CRO BEST PRACTICES TO APPLY:
   * AEs: Emphasize deal velocity, conversion rates, quota achievement  
   * Sales Leaders: Highlight team performance, predictable revenue, scaling
   * Marketers: Lead quality, attribution, campaign effectiveness
+- VARIED OPENING STYLES: Use diverse description openings to avoid repetition:
+  * Problem-focused: "Stop wasting time on...", "Eliminate the guesswork from...", "Struggling with..."
+  * Action-oriented: "Accelerate your...", "Transform your...", "Optimize your..."
+  * Benefit-forward: "Achieve quota faster by...", "Increase pipeline velocity with...", "Double your..."
+  * Question-based: "Ready to close more deals?", "Tired of missing targets?"
+  * Direct statements: "Modern revenue teams rely on...", "Top-performing reps use..."
 - VOC LIQUID VARIABLES: Use the provided liquid variables to inject actual customer pain point language
 - Use customer's actual language and terminology from the quotes
-- Address specific sales team challenges that Apollo solves
+- Address specific go-to-market challenges that Apollo solves (without always starting with "Sales team...")
 - Position Apollo as the AI-powered go-to-market platform solution
 - Create urgency around sales performance and revenue growth
 - Match the messaging to the ${strategy} stage
 - Include social proof elements when relevant
-- Make the value proposition crystal clear for sales teams
+- Make the value proposition crystal clear for sales professionals
 - Ensure the action is obvious and low-risk
 
 RESPONSE FORMAT:
@@ -355,7 +362,9 @@ Respond with valid JSON containing these exact fields:
   "action_button": "Must be exactly one of: 'Try Apollo Free →', 'Start Your Free Trial →', 'Schedule a Demo →', 'Start a Trial →', 'Request a Demo →'"
 }
 
-REMEMBER: You MUST target Apollo's core sales audience (Sales Leaders, SDRs, BDRs, AEs, Marketers) NOT the article's persona. If the article is about Customer Success Directors, your CTA should still appeal to sales professionals who might be reading it to understand their CS counterparts to understand how to reach them using Apollo. Focus on sales team challenges like prospecting, pipeline building, quota achievement, and revenue growth - NOT customer retention or success metrics. 
+REMEMBER: You MUST target Apollo's core sales audience (Sales Leaders, SDRs, BDRs, AEs, Marketers) NOT the article's persona. If the article is about Customer Success Directors, your CTA should still appeal to sales professionals who might be reading it to understand their CS counterparts to understand how to reach them using Apollo. Focus on go-to-market challenges like prospecting, pipeline building, quota achievement, and revenue growth - NOT customer retention or success metrics.
+
+CRITICAL: Vary your description openings across all three positions (beginning/middle/end). Do NOT start all CTAs with "Sales team..." - use the diverse opening styles provided above to create unique, engaging copy for each position.
 
 STRONGLY ENCOURAGED: Use the provided VoC liquid variables in your CTA copy to inject authentic customer language and pain points directly from Gong call analysis.`;
   }
@@ -380,6 +389,7 @@ BEGINNING/AWARENESS STRATEGY:
 - Use empathetic language that shows you understand their struggle
 - Introduce Apollo as the category leader/solution provider
 - Keep CTA low-commitment (free trial, assessment, resources)
+- OPENING VARIETY: Use empathetic/problem-recognition openings like "Struggling with low-quality leads?", "Tired of manual prospecting?", "Ready to streamline your outreach?"
 - Avoid being too sales-heavy or feature-focused`,
       
       'middle-consideration': `
@@ -392,6 +402,7 @@ MIDDLE/CONSIDERATION STRATEGY:
 - Address common objections and concerns
 - Use social proof and credibility indicators
 - Compare against status quo or inferior solutions
+- OPENING VARIETY: Use comparison/differentiation openings like "Modern revenue teams rely on...", "Top performers use...", "While others struggle with..."
 - CTA can be more specific (demo, consultation, ROI calculator)`,
       
       'end-conversion': `
@@ -404,6 +415,7 @@ END/CONVERSION STRATEGY:
 - Address final concerns and remove friction
 - Emphasize immediate value and quick wins
 - Use stronger social proof (customer stories, results)
+- OPENING VARIETY: Use action/urgency openings like "Transform your pipeline today", "Start closing more deals now", "Accelerate your quota achievement"
 - CTA should be direct and action-oriented (demo, trial, contact sales)`
     };
 
