@@ -58,7 +58,7 @@ class VoCDataExtractor {
    * Extract call summaries for VoC analysis
    * Why this matters: Provides structured call data that gpt-4.1-nano can analyze for pain points.
    */
-  async extractCallSummaries(daysBack: number = 30, maxCalls: number = 50): Promise<VoCExtractionResult> {
+  async extractCallSummaries(daysBack: number = 180, maxCalls: number = 250): Promise<VoCExtractionResult> {
     try {
       console.log(`🚀 Starting VoC call summary extraction (${daysBack} days, max ${maxCalls} calls)`);
       

@@ -69,22 +69,137 @@ VALIDATION CONTEXT:
 ✅ Calls processed: ${callCount}+ customer conversations
 ✅ Data authenticity: Current sales pipeline insights
 
-EXTRACT 8-12 THEMES focusing on:
-- Budget/ROI concerns and financial justification
-- Pipeline visibility issues and sales transparency
-- Lead quality problems and data accuracy
-- Integration challenges with existing systems
-- Manual inefficiencies and time waste
-- Compliance concerns and security requirements
-- Team adoption issues and change resistance
-- Competitive pressure and market positioning
-- Time constraints and resource limitations
-- Scale limitations and growth bottlenecks
-- Quota attainment and performance pressure
-- Revenue uncertainty and forecasting challenges
+🎯 EXTRACT EXACTLY 20-25 DISTINCT BUSINESS PAIN POINT THEMES (you MUST provide at least 20 unique pain point themes) focusing on:
+
+CRITICAL: Extract the customer's BUSINESS PROBLEMS that brought them to Apollo, NOT complaints about Apollo itself.
+
+🚨 IGNORE ALL CURRENT APOLLO PERFORMANCE DISCUSSIONS:
+- If customers are discussing Apollo's current data quality, skip it
+- If they mention Apollo integration issues, skip it  
+- If they talk about Apollo's features not working, skip it
+- ONLY extract business problems from BEFORE they used Apollo or problems with NON-APOLLO systems
+
+Focus on their PRE-APOLLO challenges and ongoing business struggles across ALL AREAS:
+
+SALES PROCESS & EFFICIENCY:
+- Manual prospecting and research inefficiencies
+- Time waste on repetitive sales tasks  
+- Sales process inefficiencies and bottlenecks
+- Territory planning and account prioritization issues
+- Cold calling and outreach challenges
+- Follow-up and nurturing process gaps
+
+DATA & LEAD QUALITY:
+- Poor lead quality and data accuracy issues
+- Difficulty finding accurate contact information
+- Outdated or incomplete contact databases
+- Lead scoring and qualification challenges
+- CRM data hygiene and management issues
+- Duplicate data and record management problems
+
+PIPELINE & FORECASTING:
+- Pipeline visibility and forecasting challenges
+- Revenue predictability and growth constraints
+- Deal progression and conversion tracking issues
+- Sales cycle length and velocity problems
+- Win rate and loss analysis gaps
+
+OUTREACH & COMMUNICATION:
+- Struggles with outreach personalization at scale
+- Email deliverability and outreach effectiveness
+- Sequence automation and cadence optimization
+- Multi-channel coordination challenges
+- Response rate and engagement issues
+- Message testing and optimization barriers
+
+TEAM & SCALING:
+- Sales team productivity and quota pressure
+- Team scaling and onboarding challenges
+- Rep performance consistency issues
+- Training and skill development gaps
+- Manager visibility and coaching challenges
+- Territory coverage and capacity planning
+
+COMPETITIVE & MARKET:
+- Competitive intelligence and market research gaps
+- Market penetration and expansion challenges
+- Account-based marketing coordination issues
+- Industry-specific prospecting difficulties
+- Geographic or vertical market challenges
+
+BUDGET & ROI:
+- Sales tool ROI justification challenges
+- Budget constraints and cost optimization
+- Technology stack consolidation needs
+- Resource allocation and efficiency issues
+
+INTEGRATION & WORKFLOW:
+- Tool integration and workflow inefficiencies
+- Cross-platform data synchronization issues
+- Reporting and analytics limitations
+- Workflow automation gaps
+- User adoption and change management challenges
 
 ⚠️ CRITICAL: Only use DIRECT quotes from the actual call data provided below.
 📍 SOURCE MAPPING: For each quote, identify the exact call summary it came from and provide surrounding context.
+
+🔗 MANDATORY SOURCE EXCERPTS: Every pain point MUST include sourceExcerpts array with call details.
+   - Extract the exact quote from the call summary
+   - Include the call title and date 
+   - Provide surrounding context from the call summary
+   - Reference the source call for transparency
+
+📋 COMPREHENSIVE EXTRACTION REQUIREMENTS:
+   - Minimum 20 pain point themes (aim for 22-25)
+   - Cover diverse customer segments and use cases
+   - Include both high-frequency (common) and specialized pain points
+   - MANDATORY: Each theme MUST have 2-4 actual customerQuotes from the call data
+   - MANDATORY: Each theme MUST have complete sourceExcerpts with call context
+   - Validate each theme appears across multiple calls
+   
+🗣️ CUSTOMER QUOTES REQUIREMENT: Every pain point MUST include customerQuotes array with direct quotes from calls. NO GENERIC OR MADE-UP QUOTES - only exact customer language from the provided call summaries.
+
+🚫 WHAT NOT TO EXTRACT:
+- Complaints about Apollo features or UI
+- Feedback on Apollo pricing or support
+- Requests for Apollo product improvements
+- Technical issues with Apollo platform
+
+✅ WHAT TO EXTRACT - LOOK FOR HISTORICAL CONTEXT:
+- "Before Apollo..." or "Prior to using Apollo..." statements
+- "We used to..." or "Previously we..." descriptions
+- References to old tools/processes they replaced
+- Mentions of why they originally sought a solution
+- Comparisons to their previous state/methods
+- Business challenges that led them to evaluate Apollo initially
+- Ongoing non-Apollo operational inefficiencies they mention
+- Problems they describe about other vendors/tools they use
+
+EXAMPLE GOOD QUOTES (with historical context):
+- "Before Apollo, we were spending 4 hours a day just finding contact info"
+- "We used to miss quota because our leads from LinkedIn Sales Navigator were low quality"
+- "Previously we couldn't scale outreach without hiring more people"
+- "Our old CRM made pipeline forecasting a complete guessing game"
+- "With our previous data provider, contact accuracy was only 60%"
+- "Before we had this solution, manual prospecting took our entire morning"
+
+EXAMPLE BAD QUOTES (DON'T EXTRACT):
+- "Apollo's interface could be more intuitive"
+- "I wish Apollo had better reporting"
+- "Apollo pricing is too high for our budget"
+
+🎯 ACCURATE THEME CATEGORIZATION:
+Create precise, specific themes based on the expanded categories above. Examples:
+- "Manual Prospecting Research Time Waste" (SALES PROCESS)
+- "Contact Data Accuracy and Completeness Issues" (DATA & LEAD QUALITY)  
+- "Pipeline Forecasting Visibility Gaps" (PIPELINE & FORECASTING)
+- "Email Deliverability and Response Rate Challenges" (OUTREACH & COMMUNICATION)
+- "Sales Team Scaling and Onboarding Difficulties" (TEAM & SCALING)
+- "Competitive Intelligence Research Inefficiencies" (COMPETITIVE & MARKET)
+- "Sales Tool ROI Justification Pressure" (BUDGET & ROI)
+- "CRM Integration and Workflow Fragmentation" (INTEGRATION & WORKFLOW)
+
+Be SPECIFIC with theme names - avoid generic categories. Each theme should represent a distinct business challenge with focused customer quotes.
 
 Return valid JSON with validation metadata and source excerpts:
 {
@@ -132,7 +247,7 @@ ${callData}`;
    * Analyze calls for thematic pain points
    * Why this matters: Extracts recurring customer pain themes for CTA targeting.
    */
-  async analyzeThemes(daysBack: number = 30, maxCalls: number = 25): Promise<VoCAnalysisResult> {
+  async analyzeThemes(daysBack: number = 180, maxCalls: number = 250): Promise<VoCAnalysisResult> {
     const startTime = Date.now();
     
     try {
@@ -224,7 +339,7 @@ ${callData}`;
    * Get liquid variables for VoC Kit
    * Why this matters: Formats pain points as liquid variables for the VoC Kit page.
    */
-  async getLiquidVariables(daysBack: number = 30, maxCalls: number = 25): Promise<{
+  async getLiquidVariables(daysBack: number = 180, maxCalls: number = 250): Promise<{
     variables: Record<string, string>;
     painPoints: VoCPainPoint[];
     metadata: {

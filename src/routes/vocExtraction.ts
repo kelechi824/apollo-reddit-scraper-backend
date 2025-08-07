@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import VoCDataExtractor from '../services/vocDataExtractor';
 import VoCThematicAnalyzer from '../services/vocThematicAnalyzer';
 
@@ -53,7 +53,7 @@ router.get('/test-connection', async (req, res) => {
  */
 router.post('/extract-summaries', async (req, res) => {
   try {
-    const { daysBack = 30, maxCalls = 50 } = req.body;
+    const { daysBack = 180, maxCalls = 250 } = req.body;
     
     console.log(`🚀 Starting VoC call summary extraction (${daysBack} days, max ${maxCalls} calls)`);
     
@@ -84,7 +84,7 @@ router.post('/extract-summaries', async (req, res) => {
  */
 router.post('/prepare-analysis-data', async (req, res) => {
   try {
-    const { daysBack = 30, maxCalls = 25 } = req.body;
+    const { daysBack = 180, maxCalls = 250 } = req.body;
     
     console.log(`📊 Preparing call data for pain point analysis (${daysBack} days, max ${maxCalls} calls)`);
     
@@ -207,7 +207,7 @@ router.get('/quick-test', async (req, res) => {
  */
 router.post('/analyze-themes', async (req, res) => {
   try {
-    const { daysBack = 30, maxCalls = 25 } = req.body;
+    const { daysBack = 180, maxCalls = 250 } = req.body;
     
     console.log(`🧠 Starting thematic pain point analysis (${daysBack} days, max ${maxCalls} calls)`);
     
@@ -238,7 +238,7 @@ router.post('/analyze-themes', async (req, res) => {
  */
 router.post('/liquid-variables', async (req, res) => {
   try {
-    const { daysBack = 30, maxCalls = 25 } = req.body;
+    const { daysBack = 180, maxCalls = 250 } = req.body;
     
     console.log(`🔧 Generating VoC Kit liquid variables (${daysBack} days, max ${maxCalls} calls)`);
     
@@ -290,6 +290,116 @@ router.get('/quick-analysis-test', async (req, res) => {
       success: false,
       test: 'voc-thematic-analysis',
       error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Simple in-memory job storage (in production, use Redis or database)
+const analysisJobs = new Map();
+
+/**
+ * Start async VoC analysis job
+ * Why this matters: Allows analysis to continue server-side while user navigates away.
+ */
+router.post('/start-analysis', async (req, res) => {
+  try {
+    const { daysBack = 180, maxCalls = 250 } = req.body;
+    const jobId = `voc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    console.log(`🚀 Starting async VoC analysis job ${jobId} (${daysBack} days, max ${maxCalls} calls)`);
+    
+    // Store job as processing
+    analysisJobs.set(jobId, {
+      status: 'processing',
+      startTime: new Date().toISOString(),
+      daysBack,
+      maxCalls
+    });
+    
+    // Start analysis in background
+    (async () => {
+      try {
+        const vocAnalyzer = new VoCThematicAnalyzer();
+        const liquidResult = await vocAnalyzer.getLiquidVariables(daysBack, maxCalls);
+        
+        // Update job with results
+        analysisJobs.set(jobId, {
+          status: 'completed',
+          startTime: analysisJobs.get(jobId).startTime,
+          completedTime: new Date().toISOString(),
+          data: liquidResult
+        });
+        
+        console.log(`✅ VoC analysis job ${jobId} completed successfully`);
+        
+      } catch (error: any) {
+        console.error(`❌ VoC analysis job ${jobId} failed:`, error.message);
+        analysisJobs.set(jobId, {
+          status: 'failed',
+          startTime: analysisJobs.get(jobId).startTime,
+          failedTime: new Date().toISOString(),
+          error: error.message
+        });
+      }
+    })();
+    
+    res.json({
+      success: true,
+      jobId,
+      message: 'VoC analysis job started',
+      estimatedTime: '3-5 minutes',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error starting VoC analysis job:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: 'Failed to start VoC analysis job',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * Check VoC analysis job status
+ * Why this matters: Allows frontend to poll for job completion.
+ */
+router.get('/job-status/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = analysisJobs.get(jobId);
+    
+    if (!job) {
+      res.status(404).json({
+        success: false,
+        error: 'Job not found',
+        message: `Analysis job ${jobId} not found`,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    res.json({
+      success: true,
+      jobId,
+      status: job.status,
+      startTime: job.startTime,
+      completedTime: job.completedTime,
+      failedTime: job.failedTime,
+      data: job.data,
+      error: job.error,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error checking job status:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: 'Failed to check job status',
       timestamp: new Date().toISOString()
     });
   }
