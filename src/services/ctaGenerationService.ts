@@ -217,15 +217,20 @@ class CTAGenerationService {
 
       const ctaData = JSON.parse(responseContent) as CTAStructure;
       
+      // Process VoC liquid variables if pain points are available
+      const processedCTA = personaPainPointMatch.matched_pain_points.length > 0 
+        ? this.processVoCVariables(ctaData, personaPainPointMatch.matched_pain_points)
+        : ctaData;
+      
       // Validate CTA structure
-      this.validateCTAStructure(ctaData, position);
+      this.validateCTAStructure(processedCTA, position);
 
       // Generate shortcode for article injection
-      const shortcode = this.generateShortcode(ctaData, position);
+      const shortcode = this.generateShortcode(processedCTA, position);
 
       return {
         position,
-        cta: ctaData,
+        cta: processedCTA,
         strategy,
         shortcode
       };
@@ -265,10 +270,12 @@ class CTAGenerationService {
     return `
 Generate a hyper-relevant CTA for Apollo using actual customer pain points and persona insights.
 
-PERSONA CONTEXT:
-- Target Persona: ${personaTitle}
-- Seniority Level: ${seniorityLevel}
-- Department: ${department}
+CRITICAL: ALWAYS target Apollo's core sales audience regardless of article topic. The article may be about Customer Success Directors, but your CTA must appeal to sales professionals who are reading it or trying to reach customer success professionals.
+
+TARGET AUDIENCE (FIXED - DO NOT CHANGE):
+- Primary Target: Sales Leaders, SDRs, BDRs, Account Executives, and Marketers focused on lead generation and revenue growth
+- Article Context Persona: ${personaTitle} (use only for context, NOT as CTA target)
+- Article Department: ${department}
 - Solution Readiness: ${solutionReadiness}
 - Article Position: ${position}
 - Strategy: ${strategy}
@@ -285,6 +292,14 @@ ${idx + 1}. ${pp.pain_point.theme}
 ACTUAL CUSTOMER QUOTES:
 ${customerQuotes.map((quote, idx) => `${idx + 1}. "${quote}"`).join('\n')}
 
+AVAILABLE VOC LIQUID VARIABLES:
+${liquidVariables.length > 0 ? liquidVariables.map((variable, idx) => `${idx + 1}. ${variable} - Use this to inject actual customer pain point language`).join('\n') : 'No VoC variables available'}
+
+You can use these liquid variables in your CTA copy to inject authentic customer language:
+- ${liquidVariables.join('\n- ')}
+- Add "_quote" suffix for customer quotes (e.g., {{ pain_points.pipeline_visibility_quote }})
+- Add "_theme" suffix for pain point themes (e.g., {{ pain_points.pipeline_visibility_theme }})
+
 CONTENT CONTEXT:
 - Industry: ${personaPainPointMatch.content_context.industry_context}
 - Article Themes: ${personaPainPointMatch.content_context.article_themes.join(', ')}
@@ -298,31 +313,51 @@ Generate a 4-part CTA structure following Apollo's format:
 
 1. CATEGORY HEADER: Short, ALL CAPS category that captures the value theme (e.g., "DATA-DRIVEN SALES", "REVENUE ACCELERATION", "PIPELINE INTELLIGENCE")
 
-2. HEADLINE: Compelling headline that promises a specific outcome using pain point language (25-40 characters ideal)
+2. HEADLINE: Benefit-forward headline that promises a specific outcome using pain point language (25-40 characters ideal). Lead with the benefit/result, not the feature. USE TITLE CASE - capitalize the first letter of every word (e.g., "Close Funding Faster With Targeted Outreach").
 
-3. DESCRIPTION: 2-3 sentences that speak directly to the persona's pain points using customer language from the quotes above. Address their specific concerns and position Apollo as the solution.
+3. DESCRIPTION: 2-3 sentences using these CRO best practices:
+   - BENEFIT-FORWARD COPY: Lead with outcomes and results, not features
+   - URGENCY CUES: Create time-sensitive motivation without being pushy
+   - PERSONA-TAILORED HOOKS: Use language that resonates with specific sales roles (SDRs, AEs, Sales Leaders, etc.)
+   Address sales team challenges using customer language from quotes above.
 
-4. ACTION BUTTON: Clear, action-oriented CTA button text with arrow (e.g., "Try Apollo Free →", "Get ROI Calculator →", "Book Demo →")
+4. ACTION BUTTON: Must be one of these exact options with arrow:
+   - "Try Apollo Free →"
+   - "Start Your Free Trial →"
+   - "Schedule a Demo →"
+   - "Start a Trial →"
+   - "Request a Demo →"
 
 CRO BEST PRACTICES TO APPLY:
+- BENEFIT-FORWARD COPY: Lead with outcomes (quota achievement, revenue growth, time savings) not features
+- URGENCY CUES: Use time-sensitive language ("accelerate", "faster", "immediately", "now") without being pushy
+- PERSONA-TAILORED HOOKS: Match language to sales roles:
+  * SDRs/BDRs: Focus on prospect quality, outreach efficiency, pipeline building
+  * AEs: Emphasize deal velocity, conversion rates, quota achievement  
+  * Sales Leaders: Highlight team performance, predictable revenue, scaling
+  * Marketers: Lead quality, attribution, campaign effectiveness
+- VOC LIQUID VARIABLES: Use the provided liquid variables to inject actual customer pain point language
 - Use customer's actual language and terminology from the quotes
-- Address specific pain points, don't be generic
-- Create urgency without being pushy
+- Address specific sales team challenges that Apollo solves
+- Position Apollo as the AI-powered go-to-market platform solution
+- Create urgency around sales performance and revenue growth
 - Match the messaging to the ${strategy} stage
 - Include social proof elements when relevant
-- Make the value proposition crystal clear
+- Make the value proposition crystal clear for sales teams
 - Ensure the action is obvious and low-risk
 
 RESPONSE FORMAT:
 Respond with valid JSON containing these exact fields:
 {
   "category_header": "ALL CAPS CATEGORY",
-  "headline": "Compelling headline using pain point language",
-  "description": "2-3 sentences addressing persona pain points with customer language and positioning Apollo as solution",
-  "action_button": "Action text with arrow →"
+  "headline": "Title Case Headline Using Pain Point Language (Every Word Capitalized)",
+  "description": "2-3 sentences addressing pain points with customer language and positioning Apollo as solution",
+  "action_button": "Must be exactly one of: 'Try Apollo Free →', 'Start Your Free Trial →', 'Schedule a Demo →', 'Start a Trial →', 'Request a Demo →'"
 }
 
-Focus on being hyper-relevant to ${personaTitle} using the actual customer pain points and quotes provided.`;
+REMEMBER: You MUST target Apollo's core sales audience (Sales Leaders, SDRs, BDRs, AEs, Marketers) NOT the article's persona. If the article is about Customer Success Directors, your CTA should still appeal to sales professionals who might be reading it to understand their CS counterparts to understand how to reach them using Apollo. Focus on sales team challenges like prospecting, pipeline building, quota achievement, and revenue growth - NOT customer retention or success metrics. 
+
+STRONGLY ENCOURAGED: Use the provided VoC liquid variables in your CTA copy to inject authentic customer language and pain points directly from Gong call analysis.`;
   }
 
   /**
@@ -339,7 +374,9 @@ Focus on being hyper-relevant to ${personaTitle} using the actual customer pain 
       'beginning-awareness': `
 BEGINNING/AWARENESS STRATEGY:
 - Reader is just becoming aware of their problem
-- Focus on pain point recognition and problem validation
+- BENEFIT-FORWARD: Focus on outcomes they'll achieve, not features
+- URGENCY CUES: Use gentle time-sensitive language ("start accelerating", "begin improving")
+- PERSONA-TAILORED HOOKS: Match pain recognition to their specific sales role
 - Use empathetic language that shows you understand their struggle
 - Introduce Apollo as the category leader/solution provider
 - Keep CTA low-commitment (free trial, assessment, resources)
@@ -348,6 +385,9 @@ BEGINNING/AWARENESS STRATEGY:
       'middle-consideration': `
 MIDDLE/CONSIDERATION STRATEGY:
 - Reader understands their problem and is evaluating solutions
+- BENEFIT-FORWARD: Emphasize competitive advantages and measurable outcomes
+- URGENCY CUES: Create scarcity around timing ("meet your quota", "accelerate decision")
+- PERSONA-TAILORED HOOKS: Address specific evaluation criteria by role
 - Focus on differentiation and unique value proposition
 - Address common objections and concerns
 - Use social proof and credibility indicators
@@ -357,6 +397,9 @@ MIDDLE/CONSIDERATION STRATEGY:
       'end-conversion': `
 END/CONVERSION STRATEGY:
 - Reader is ready to take action or make a decision
+- BENEFIT-FORWARD: Emphasize immediate value and quick wins they'll get (meet your quota, hit your numbers, close more deals faster)
+- URGENCY CUES: Strong time-sensitive language ("start today", "immediate access", "don't wait")
+- PERSONA-TAILORED HOOKS: Appeal to their specific success metrics and KPIs
 - Focus on urgency and clear next steps
 - Address final concerns and remove friction
 - Emphasize immediate value and quick wins
@@ -376,12 +419,17 @@ END/CONVERSION STRATEGY:
   private getCTASystemPrompt(): string {
     return `You are an expert CRO (Conversion Rate Optimization) copywriter specializing in creating hyper-relevant CTAs for Apollo, a leading B2B sales intelligence platform. 
 
-Apollo helps sales teams:
-- Find and connect with ideal prospects
-- Automate outreach sequences
-- Track pipeline and forecast accurately
-- Enrich contact and company data
+Apollo is an AI-powered go-to-market platform that helps sales professionals:
+- Find and connect with ideal prospects using AI-driven prospecting
+- Automate outreach sequences and personalize at scale
+- Track pipeline and forecast accurately with integrated sales tools
+- Enrich contact and company data from vast B2B database
 - Increase sales productivity and quota achievement
+- Manage entire go-to-market process from single command center
+
+FIXED TARGET AUDIENCE: Sales Leaders, SDRs, BDRs, Account Executives, and Marketers focused on lead generation and revenue growth.
+
+CRITICAL INSTRUCTION: ALWAYS create CTAs for Apollo's core sales audience listed above, regardless of what persona the article is about. If analyzing an article about Customer Success Directors for example, your CTA must still target sales professionals, not CS professionals. Use the article context only for pain point relevance, never for persona targeting.
 
 Your expertise includes:
 - Using Voice of Customer data to create authentic messaging
@@ -400,12 +448,15 @@ Key Apollo differentiators:
 Your CTAs must:
 - Follow the exact 4-part structure provided
 - Use actual customer language from pain point data
-- Be hyper-relevant to the specific persona
+- Target sales professionals who need go-to-market solutions
+- Address sales team challenges: prospecting, lead generation, pipeline management, hitting quota, etc.
+- Speak to Apollo's core audience: Sales Leaders, SDRs, BDRs, AEs, Marketers
+- Position Apollo as the AI-powered go-to-market platform solution
 - Apply proven CRO principles
 - Maintain Apollo's professional, results-driven brand voice
-- Drive measurable conversion actions
+- Drive measurable conversion actions from sales professionals
 
-Always prioritize customer language and pain point relevance over generic sales messaging.`;
+Always prioritize customer language and sales team pain points. Focus on go-to-market challenges that Apollo solves for sales professionals.`;
   }
 
   /**
@@ -424,9 +475,26 @@ Always prioritize customer language and pain point relevance over generic sales 
       console.warn(`⚠️ Category header should be ALL CAPS for ${position} CTA`);
     }
 
-    // Validate action button has arrow
-    if (!cta.action_button.includes('→')) {
-      console.warn(`⚠️ Action button should include arrow (→) for ${position} CTA`);
+    // Validate headline is in title case
+    const titleCaseHeadline = cta.headline.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+    if (cta.headline !== titleCaseHeadline) {
+      console.warn(`⚠️ Headline should be in Title Case for ${position} CTA. Expected: "${titleCaseHeadline}", Got: "${cta.headline}"`);
+    }
+
+    // Validate action button is one of approved options
+    const approvedButtons = [
+      'Try Apollo Free →',
+      'Start Your Free Trial →',
+      'Schedule a Demo →',
+      'Start a Trial →',
+      'Request a Demo →'
+    ];
+    
+    if (!approvedButtons.includes(cta.action_button)) {
+      console.warn(`⚠️ Action button "${cta.action_button}" is not an approved option for ${position} CTA`);
+      console.warn(`⚠️ Approved options: ${approvedButtons.join(', ')}`);
     }
 
     // Validate length constraints
@@ -526,6 +594,77 @@ Always prioritize customer language and pain point relevance over generic sales 
     }
 
     return Math.max(0, Math.min(100, Math.round(confidence)));
+  }
+
+  /**
+   * Process VoC liquid variables in CTA content
+   * Why this matters: Dynamically replaces VoC variables like {{ pain_points.pipeline_visibility }}
+   * with actual customer language and pain point descriptions for authentic messaging.
+   */
+  private processVoCVariables(
+    ctaContent: CTAStructure, 
+    vocPainPoints: Array<{
+      pain_point: any;
+      relevance_score: number;
+      matching_reason: string;
+      liquid_variable: string;
+      customer_quotes: string[];
+    }>
+  ): CTAStructure {
+    console.log('🔄 Processing VoC liquid variables in CTA content...');
+    
+    // Create variable lookup map from matched pain points
+    const variableMap = new Map<string, string>();
+    
+    vocPainPoints.forEach(match => {
+      const { pain_point, customer_quotes } = match;
+      
+      // Map liquid variable patterns to actual content
+      const variableKey = pain_point.liquidVariable;
+      const painPointDescription = pain_point.description;
+      const topCustomerQuote = customer_quotes[0]; // Use the top customer quote
+      
+      // Store multiple replacement options
+      variableMap.set(`pain_points.${variableKey}`, painPointDescription);
+      variableMap.set(`pain_points.${variableKey}_quote`, topCustomerQuote);
+      variableMap.set(`pain_points.${variableKey}_theme`, pain_point.theme);
+    });
+    
+    // Process each CTA component
+    const processedCTA: CTAStructure = {
+      category_header: this.replaceVoCVariables(ctaContent.category_header, variableMap),
+      headline: this.replaceVoCVariables(ctaContent.headline, variableMap),
+      description: this.replaceVoCVariables(ctaContent.description, variableMap),
+      action_button: ctaContent.action_button // Action buttons should not contain variables
+    };
+    
+    console.log(`✅ VoC variable processing complete - ${variableMap.size} variables available`);
+    return processedCTA;
+  }
+  
+  /**
+   * Replace VoC variables in text content
+   * Why this matters: Handles the actual text replacement of liquid variables with VoC content.
+   */
+  private replaceVoCVariables(text: string, variableMap: Map<string, string>): string {
+    if (!text) return text;
+    
+    let processed = text;
+    const variablePattern = /\{\{\s*([^}]+)\s*\}\}/g;
+    
+    processed = processed.replace(variablePattern, (match, variableName) => {
+      const trimmedName = variableName.trim();
+      
+      if (variableMap.has(trimmedName)) {
+        console.log(`🔄 Replacing ${match} with VoC content`);
+        return variableMap.get(trimmedName) || match;
+      }
+      
+      // Return original if no replacement found
+      return match;
+    });
+    
+    return processed;
   }
 
   /**
