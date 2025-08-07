@@ -4,6 +4,7 @@ import PersonaPainPointMatcher, { PersonaPainPointMatch } from '../services/pers
 import EnhancedPersonaDetector, { EnhancedPersonaResult } from '../services/enhancedPersonaDetector';
 import ContentAnalysisService from '../services/contentAnalysisService';
 import FirecrawlService from '../services/firecrawlService';
+import CTAInsertionEngine, { CTAInsertionOptions } from '../services/ctaInsertionEngine';
 
 const router = Router();
 
@@ -100,6 +101,11 @@ router.post('/generate-from-url', async (req: Request, res: Response): Promise<a
           article_word_count: extractionResult.data.wordCount,
           enhanced_analysis_used: enhanced_analysis
         }
+      },
+      article_content: {
+        content: extractionResult.data.content,
+        structure: extractionResult.data.structure,
+        insertion_points: extractionResult.data.ctaInsertionPoints || []
       }
     });
 
@@ -132,20 +138,9 @@ router.post('/generate-from-text', async (req: Request, res: Response): Promise<
     console.log(`🎯 Starting CTA generation pipeline for text content (${text.length} chars)`);
     const startTime = Date.now();
 
-    // Create article data structure from text
-    const articleData = {
-      title: 'Direct Text Input',
-      content: text,
-      wordCount: text.split(/\s+/).length,
-      url: 'text-input',
-      extractedAt: new Date().toISOString(),
-      metadata: {
-        description: 'Direct text/HTML input for CTA generation',
-        author: 'User Input',
-        publishDate: new Date().toISOString(),
-        tags: ['direct-input', 'text-content']
-      }
-    };
+    // Process text content with structure analysis
+    const firecrawlService = new FirecrawlService();
+    const articleData = firecrawlService.processTextContent(text);
 
     console.log(`✅ Text processed: ${articleData.wordCount} words`);
 
@@ -201,6 +196,11 @@ router.post('/generate-from-text', async (req: Request, res: Response): Promise<
           article_word_count: articleData.wordCount,
           enhanced_analysis_used: enhanced_analysis
         }
+      },
+      article_content: {
+        content: articleData.content,
+        structure: articleData.structure,
+        insertion_points: articleData.ctaInsertionPoints || []
       }
     });
 
@@ -233,33 +233,9 @@ router.post('/generate-from-markdown', async (req: Request, res: Response): Prom
     console.log(`🎯 Starting CTA generation pipeline for markdown content (${markdown.length} chars)`);
     const startTime = Date.now();
 
-    // Simple markdown to text conversion for analysis
-    // This removes markdown syntax but preserves the structure
-    const textContent = markdown
-      .replace(/#{1,6}\s+/g, '') // Remove headers
-      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
-      .replace(/\*(.*?)\*/g, '$1') // Remove italic
-      .replace(/`(.*?)`/g, '$1') // Remove inline code
-      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to just text
-      .replace(/[-*+]\s+/g, '') // Remove list markers
-      .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
-      .trim();
-
-    // Create article data structure from markdown
-    const articleData = {
-      title: 'Markdown Content Input',
-      content: textContent,
-      wordCount: textContent.split(/\s+/).length,
-      url: 'markdown-input',
-      extractedAt: new Date().toISOString(),
-      metadata: {
-        description: 'Markdown content input for CTA generation',
-        author: 'User Input',
-        publishDate: new Date().toISOString(),
-        tags: ['direct-input', 'markdown-content']
-      }
-    };
+    // Process markdown content with structure analysis
+    const firecrawlService = new FirecrawlService();
+    const articleData = firecrawlService.processMarkdownContent(markdown);
 
     console.log(`✅ Markdown processed: ${articleData.wordCount} words`);
 
@@ -315,6 +291,11 @@ router.post('/generate-from-markdown', async (req: Request, res: Response): Prom
           article_word_count: articleData.wordCount,
           enhanced_analysis_used: enhanced_analysis
         }
+      },
+      article_content: {
+        content: articleData.content,
+        structure: articleData.structure,
+        insertion_points: articleData.ctaInsertionPoints || []
       }
     });
 
@@ -542,6 +523,425 @@ router.post('/preview', async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({
       success: false,
       error: 'CTA preview failed',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/cta-generation/insert-ctas
+ * Insert generated CTAs into article content for preview and export
+ * Why this matters: Creates preview-ready HTML with CTAs inserted at optimal positions.
+ */
+router.post('/insert-ctas', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { 
+      article_content, 
+      cta_generation_result, 
+      options 
+    } = req.body;
+
+    if (!article_content || !cta_generation_result) {
+      return res.status(400).json({
+        success: false,
+        error: 'article_content and cta_generation_result are required'
+      });
+    }
+
+    console.log(`🎯 Inserting CTAs into article: "${article_content.title}"`);
+    const startTime = Date.now();
+
+    const insertionEngine = new CTAInsertionEngine();
+    const insertionOptions: CTAInsertionOptions = {
+      format: 'html',
+      style: 'full',
+      includeContainer: true,
+      responsiveDesign: true,
+      apolloBranding: true,
+      ...options
+    };
+
+    const result = await insertionEngine.insertCTAsIntoArticle(
+      article_content,
+      cta_generation_result,
+      insertionOptions
+    );
+
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ CTA insertion complete in ${processingTime}ms`);
+
+    return res.json({
+      success: true,
+      data: {
+        ...result,
+        processing_metadata: {
+          processing_time_ms: processingTime,
+          insertion_options: insertionOptions
+        }
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ CTA insertion failed:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'CTA insertion failed',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/cta-generation/generate-and-insert
+ * Complete pipeline: Generate CTAs and insert them into article for immediate preview
+ * Why this matters: One-step process to get preview-ready article with CTAs inserted.
+ */
+router.post('/generate-and-insert', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { 
+      url, 
+      text, 
+      markdown, 
+      enhanced_analysis = true, 
+      voc_kit_data,
+      insertion_options 
+    } = req.body;
+
+    // Determine input method
+    let inputMethod = 'url';
+    let inputContent = url;
+    
+    if (text) {
+      inputMethod = 'text';
+      inputContent = text;
+    } else if (markdown) {
+      inputMethod = 'markdown';
+      inputContent = markdown;
+    }
+
+    if (!inputContent) {
+      return res.status(400).json({
+        success: false,
+        error: 'One of url, text, or markdown is required'
+      });
+    }
+
+    console.log(`🎯 Starting complete CTA generation and insertion pipeline (${inputMethod})`);
+    const startTime = Date.now();
+
+    // Step 1: Extract/Process article content
+    const firecrawlService = new FirecrawlService();
+    let articleData;
+
+    if (inputMethod === 'url') {
+      const extractionResult = await firecrawlService.extractArticleContent(inputContent);
+      if (!extractionResult.success || !extractionResult.data) {
+        return res.status(400).json({
+          success: false,
+          error: `Article extraction failed: ${extractionResult.error}`,
+          stage: 'extraction'
+        });
+      }
+      articleData = extractionResult.data;
+    } else if (inputMethod === 'text') {
+      articleData = firecrawlService.processTextContent(inputContent);
+    } else {
+      articleData = firecrawlService.processMarkdownContent(inputContent);
+    }
+
+    console.log(`✅ Content processed: ${articleData.wordCount} words`);
+
+    // Step 2: Analyze content for persona detection
+    const contentAnalysisService = new ContentAnalysisService();
+    const basicAnalysis = await contentAnalysisService.analyzeArticleContent(articleData);
+
+    // Step 3: Enhanced persona detection (optional)
+    let enhancedPersona: EnhancedPersonaResult | undefined;
+    if (enhanced_analysis) {
+      const enhancedDetector = new EnhancedPersonaDetector();
+      enhancedPersona = await enhancedDetector.enhancePersonaDetection(
+        articleData,
+        basicAnalysis
+      );
+    }
+
+    // Step 4: Match persona to pain points
+    const painPointMatcher = new PersonaPainPointMatcher();
+    let vocPainPoints = undefined;
+    if (voc_kit_data && voc_kit_data.extractedPainPoints) {
+      vocPainPoints = voc_kit_data.extractedPainPoints;
+    }
+    const painPointMatch = await painPointMatcher.matchPersonaToPainPoints(basicAnalysis, vocPainPoints);
+
+    // Step 5: Generate CTAs
+    const ctaService = new CTAGenerationService();
+    const ctaResult = await ctaService.generateCTAs(painPointMatch, enhancedPersona, inputContent);
+
+    // Step 6: Insert CTAs into article
+    const insertionEngine = new CTAInsertionEngine();
+    const insertionOptionsConfig: CTAInsertionOptions = {
+      format: 'html',
+      style: 'full',
+      includeContainer: true,
+      responsiveDesign: true,
+      apolloBranding: true,
+      ...insertion_options
+    };
+
+    const insertionResult = await insertionEngine.insertCTAsIntoArticle(
+      articleData,
+      ctaResult,
+      insertionOptionsConfig
+    );
+
+    const totalProcessingTime = Date.now() - startTime;
+    console.log(`✅ Complete CTA generation and insertion pipeline complete in ${totalProcessingTime}ms`);
+
+    return res.json({
+      success: true,
+      data: {
+        original_article: articleData,
+        generated_ctas: ctaResult,
+        enhanced_article: insertionResult,
+        pipeline_metadata: {
+          input_method: inputMethod,
+          total_processing_time_ms: totalProcessingTime,
+          stages_completed: enhanced_analysis ? 6 : 5,
+          article_word_count: articleData.wordCount,
+          enhanced_analysis_used: enhanced_analysis,
+          insertion_options: insertionOptionsConfig
+        }
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ Complete CTA generation and insertion pipeline failed:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Complete pipeline failed',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/cta-generation/export-html
+ * Export article with CTAs as clean HTML for copy-paste
+ * Why this matters: Provides production-ready HTML for immediate use in websites, emails, etc.
+ */
+router.post('/export-html', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { 
+      enhanced_article, 
+      export_options 
+    } = req.body;
+
+    if (!enhanced_article) {
+      return res.status(400).json({
+        success: false,
+        error: 'enhanced_article with inserted CTAs is required'
+      });
+    }
+
+    console.log(`📤 Exporting HTML for article: "${enhanced_article.originalArticle.title}"`);
+
+    // Apply export-specific formatting
+    const exportOptions = {
+      includeInlineStyles: true,
+      emailOptimized: false,
+      includeApolloMeta: true,
+      ...export_options
+    };
+
+    let exportHTML = enhanced_article.enhancedHtml;
+
+    // Add export-specific metadata and styling
+    if (exportOptions.includeApolloMeta) {
+      const apolloMeta = `
+<!-- Generated by Apollo CTA Creator -->
+<!-- Article: ${enhanced_article.originalArticle.title} -->
+<!-- Generated: ${new Date().toISOString()} -->
+<!-- CTAs Inserted: ${enhanced_article.insertionMetadata.totalCTAsInserted} -->
+`;
+      exportHTML = apolloMeta + exportHTML;
+    }
+
+    // Email optimization
+    if (exportOptions.emailOptimized) {
+      // Convert responsive styles to fixed widths for email clients
+      exportHTML = exportHTML.replace(/max-width:\s*600px/g, 'width: 600px');
+      exportHTML = exportHTML.replace(/border-radius:\s*[^;]+;/g, ''); // Remove border-radius for Outlook
+    }
+
+    const exportResult = {
+      html: exportHTML,
+      metadata: {
+        original_title: enhanced_article.originalArticle.title,
+        word_count: enhanced_article.insertionMetadata.enhancedWordCount,
+        ctas_count: enhanced_article.insertionMetadata.totalCTAsInserted,
+        export_timestamp: new Date().toISOString(),
+        export_options: exportOptions
+      }
+    };
+
+    return res.json({
+      success: true,
+      data: exportResult
+    });
+
+  } catch (error: any) {
+    console.error('❌ HTML export failed:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'HTML export failed',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/cta-generation/insertion-engine/status
+ * Get CTA insertion engine status
+ * Why this matters: Health check for the insertion engine service.
+ */
+router.get('/insertion-engine/status', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const insertionEngine = new CTAInsertionEngine();
+    const serviceStatus = insertionEngine.getServiceStatus();
+
+    return res.json({
+      success: true,
+      status: serviceStatus,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ CTA insertion engine status check failed:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Status check failed',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/cta-generation/apply-placements
+ * Apply CTA placements and generate final HTML
+ * Why this matters: Processes user's final CTA placement selections and generates
+ * clean, production-ready HTML that can be directly used in CMS platforms.
+ */
+router.post('/apply-placements', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { 
+      original_content, 
+      article_structure, 
+      selected_placements, 
+      input_method 
+    } = req.body;
+
+    // Validate required fields
+    if (!original_content || !article_structure || !selected_placements) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: original_content, article_structure, selected_placements'
+      });
+    }
+
+    console.log('Applying CTA placements:', {
+      content_length: original_content.length,
+      placement_count: Object.keys(selected_placements).length,
+      input_method
+    });
+
+    // Initialize CTA insertion engine
+    const ctaEngine = new CTAInsertionEngine();
+
+    // Generate final HTML with selected CTAs
+    const finalHtml = await ctaEngine.generateFinalHTML({
+      originalContent: original_content,
+      articleStructure: article_structure,
+      selectedPlacements: selected_placements,
+      inputMethod: input_method
+    });
+
+    // Generate alternative formats
+    const alternativeFormats = await ctaEngine.generateAlternativeFormats({
+      originalContent: original_content,
+      selectedPlacements: selected_placements,
+      inputMethod: input_method
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        final_html: finalHtml,
+        formats: alternativeFormats,
+        placement_summary: {
+          total_ctas: Object.keys(selected_placements).length,
+          positions: Object.keys(selected_placements).map(key => {
+            const [type, index] = key.split('_');
+            return { type, paragraph_index: parseInt(index) };
+          })
+        },
+        generation_metadata: {
+          timestamp: new Date().toISOString(),
+          input_method,
+          content_length: original_content.length
+        }
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error applying CTA placements:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to apply CTA placements',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/cta-generation/preview-placement
+ * Generate preview HTML for specific CTA placement
+ * Why this matters: Allows real-time preview of individual CTA placements
+ * without generating the complete final HTML.
+ */
+router.post('/preview-placement', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { 
+      content_snippet, 
+      cta_variant, 
+      placement_position 
+    } = req.body;
+
+    if (!content_snippet || !cta_variant) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: content_snippet, cta_variant'
+      });
+    }
+
+    const ctaEngine = new CTAInsertionEngine();
+    const previewHtml = await ctaEngine.renderCTAPreview({
+      contentSnippet: content_snippet,
+      ctaVariant: cta_variant,
+      position: placement_position || 'middle'
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        preview_html: previewHtml
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error generating CTA preview:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to generate CTA preview',
       details: error.message
     });
   }
