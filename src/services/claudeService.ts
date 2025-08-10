@@ -633,8 +633,8 @@ MESSAGES SO FAR: ${conversation.messages.length}
     }
 
     console.log('🤖 Generating content with Claude...');
-    console.log('📝 BACKEND - System Prompt:', request.system_prompt);
-    console.log('📝 BACKEND - User Prompt:', request.user_prompt);
+    console.log('📝 BACKEND - System Prompt (raw):', request.system_prompt);
+    console.log('📝 BACKEND - User Prompt (raw):', request.user_prompt);
     console.log('📝 BACKEND - Brand Kit:', request.brand_kit);
     console.log('📝 BACKEND - Content Length:', request.content_length);
 
@@ -648,17 +648,24 @@ MESSAGES SO FAR: ${conversation.messages.length}
           // Rate limiting before API call
           await this.rateLimiter.waitForNext();
 
+          // Pre-process prompts with brand kit variables for robustness
+          const processedSystemPrompt = this.processLiquidVariables(request.system_prompt, request.brand_kit);
+          const processedUserPrompt = this.processLiquidVariables(request.user_prompt, request.brand_kit);
+
+          console.log('🧪 BACKEND - System Prompt (processed):', processedSystemPrompt);
+          console.log('🧪 BACKEND - User Prompt (processed):', processedUserPrompt);
+
           // Generate content with timeout protection
           const response = await Promise.race([
             this.client!.messages.create({
               model: 'claude-sonnet-4-20250514',
               max_tokens: maxTokens,
               temperature: 0.9,
-              system: request.system_prompt,
+              system: processedSystemPrompt,
               messages: [
                 {
                   role: 'user',
-                  content: request.user_prompt
+                  content: processedUserPrompt
                 }
               ]
             }),

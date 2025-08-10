@@ -115,13 +115,13 @@ class DeepResearchService {
           // Rate limiting before API call
           await this.rateLimiter.waitForNext();
 
-          // Try o3 deep research first, fallback to GPT-4 if it fails
+          // Use GPT-5 nano for deep research with retry logic
           try {
-            console.log(`🔬 Attempting o3 Deep Research for keyword: "${keyword}"`);
-            return await this.performO3DeepResearch(keyword, research_depth, focus_areas, exclude_topics, startTime);
-          } catch (o3Error) {
-            console.warn(`⚠️ o3 Deep Research failed, falling back to GPT-4: ${o3Error instanceof Error ? o3Error.message : 'Unknown error'}`);
-            return await this.performGPT4Research(keyword, research_depth, focus_areas, exclude_topics, startTime);
+            console.log(`🔬 Performing Deep Research with gpt-5-nano for keyword: "${keyword}"`);
+            return await this.performGpt5DeepResearch(keyword, research_depth, focus_areas, exclude_topics, startTime);
+          } catch (g5Error) {
+            console.warn(`⚠️ gpt-5-nano Deep Research attempt failed, retrying with gpt-5-nano fallback: ${g5Error instanceof Error ? g5Error.message : 'Unknown error'}`);
+            return await this.performGpt5FallbackResearch(keyword, research_depth, focus_areas, exclude_topics, startTime);
           }
         },
         DEFAULT_RETRY_CONFIGS.openai,
@@ -140,86 +140,39 @@ class DeepResearchService {
   }
 
   /**
-   * Attempt deep research with o3 model
-   * Why this matters: o3 model provides superior research capabilities but may not be available to all API keys
+   * Deep research with gpt-5-nano
+   * Why this matters: Aligns with requested model and simplifies the pipeline to a single provider.
    */
-  private async performO3DeepResearch(
-    keyword: string, 
-    research_depth: string, 
-    focus_areas: string[], 
-    exclude_topics: string[], 
+  private async performGpt5DeepResearch(
+    keyword: string,
+    research_depth: string,
+    focus_areas: string[],
+    exclude_topics: string[],
     startTime: number
   ): Promise<DeepResearchResult> {
-    // Create comprehensive research prompt for the keyword
     const researchPrompt = this.buildDeepResearchPrompt(keyword, research_depth, focus_areas, exclude_topics);
 
-    // Use o4-mini-deep-research for research as requested
-    console.log(`🔧 Using o4-mini-deep-research for deep research on: "${keyword}"`);
-    const modelUsed = "o4-mini-deep-research-2025-06-26";
-    
     const completion = await globalOpenAIQueue.queueRequest(async () => {
       return await Promise.race([
-        this.client!.responses.create({
-          model: modelUsed,
-          input: [
-            {
-              role: "developer",
-              content: [
-                {
-                  type: "input_text",
-                  text: this.buildSystemPrompt()
-                }
-              ]
-            },
-            {
-              role: "user", 
-              content: [
-                {
-                  type: "input_text",
-                  text: researchPrompt
-                }
-              ]
-            }
+        this.client!.chat.completions.create({
+          model: 'gpt-5-nano-2025-08-07',
+          messages: [
+            { role: 'system', content: this.buildSystemPrompt() },
+            { role: 'user', content: researchPrompt }
           ],
-          reasoning: {
-            summary: "auto"
-          },
-          tools: [
-            {
-              type: "web_search_preview"
-            }
-          ],
-          background: true // Use background mode for long-running Deep Research
+          max_completion_tokens: 4000,
+          response_format: { type: 'json_object' }
         }),
-        this.createTimeoutPromise(180000) // 3 minute timeout for o4-mini-deep-research
+        this.createTimeoutPromise(180000)
       ]);
     });
-    
-    console.log(`✅ o4-mini-deep-research Deep Research completed successfully`);
 
-    // Log token usage and cost calculation for responses API
-    if (completion.usage) {
-      const inputTokens = completion.usage.input_tokens;
-      const outputTokens = completion.usage.output_tokens;
-      const totalTokens = inputTokens + outputTokens;
-      
-      console.log(`💰 Deep Research Token Usage - Input: ${inputTokens}, Output: ${outputTokens}, Total: ${totalTokens}`);
-      
-      // Add to workflow cost tracker with o4-mini-deep-research pricing
-      const workflowId = `${keyword.replace(/\s+/g, '_')}_${startTime}`;
-      workflowCostTracker.addApiCall(workflowId, 'Deep Research (o4-mini)', inputTokens, outputTokens, 'o4-mini-deep-research');
-    }
-
-    console.log(`📊 Response output items: ${completion.output?.length || 0}`);
-
-    // Extract content using the official parsing method from documentation
-    const responseContent = this.extractResponseContentFromDocumentation(completion);
-    
+    const responseContent = completion.choices[0]?.message?.content;
     if (!responseContent) {
-      throw new Error(`Empty response from ${modelUsed}`);
+      throw new Error('Empty response from gpt-5-nano deep research');
     }
 
-    return this.parseResearchResponse(responseContent, keyword, startTime, modelUsed);
+    return this.parseResearchResponse(responseContent, keyword, startTime, 'gpt-5-nano');
   }
 
   /**
@@ -259,50 +212,41 @@ class DeepResearchService {
   }
 
   /**
-   * Fallback to GPT-4 for research when o3 fails
-   * Why this matters: Ensures the workflow never fails completely due to o3 availability issues
+   * Fallback attempt also using gpt-5-nano
+   * Why this matters: Keeps the model consistent per requirement while providing a second attempt with tighter timeout.
    */
-  private async performGPT4Research(
-    keyword: string, 
-    research_depth: string, 
-    focus_areas: string[], 
-    exclude_topics: string[], 
+  private async performGpt5FallbackResearch(
+    keyword: string,
+    research_depth: string,
+    focus_areas: string[],
+    exclude_topics: string[],
     startTime: number
   ): Promise<DeepResearchResult> {
-    console.log(`🔧 Using GPT-4 fallback for deep research on: "${keyword}"`);
-    
+    console.log(`🔧 Retrying deep research with gpt-5-nano fallback for: "${keyword}"`);
+
     const researchPrompt = this.buildDeepResearchPrompt(keyword, research_depth, focus_areas, exclude_topics);
 
     const completion = await globalOpenAIQueue.queueRequest(async () => {
       return await Promise.race([
         this.client!.chat.completions.create({
-          model: "gpt-4.1-nano-2025-04-14", // Use available GPT-4 model
+          model: 'gpt-5-nano-2025-08-07',
           messages: [
-            {
-              role: "system",
-              content: this.buildSystemPrompt()
-            },
-            {
-              role: "user",
-              content: researchPrompt
-            }
+            { role: 'system', content: this.buildSystemPrompt() },
+            { role: 'user', content: researchPrompt }
           ],
-          temperature: 0.7,
-          max_tokens: 4000,
-          response_format: { type: "json_object" }
+          max_completion_tokens: 3500,
+          response_format: { type: 'json_object' }
         }),
-        this.createTimeoutPromise(120000) // 2 minute timeout for GPT-4
+        this.createTimeoutPromise(120000)
       ]);
     });
 
     const responseContent = completion.choices[0]?.message?.content;
-    
     if (!responseContent) {
-      throw new Error('Empty response from GPT-4 fallback research');
+      throw new Error('Empty response from gpt-5-nano fallback research');
     }
 
-    console.log(`✅ GPT-4 fallback research completed for "${keyword}"`);
-    return this.parseResearchResponse(responseContent, keyword, startTime, "gpt-4.1-nano-2025-04-14");
+    return this.parseResearchResponse(responseContent, keyword, startTime, 'gpt-5-nano');
   }
 
   /**
@@ -643,7 +587,7 @@ Response format: Always respond with valid JSON following the exact structure pr
     return {
       initialized: !!this.client,
       hasApiKey: !!process.env.OPENAI_API_KEY,
-      model: "o4-mini-deep-research-2025-06-26",
+      model: "gpt-5-nano-2025-08-07",
       circuitBreakerState: this.circuitBreaker.getState(),
       rateLimitActive: Date.now() - (this.rateLimiter as any).lastRequestTime < DEFAULT_RATE_LIMITS.openai_deep_research
     };

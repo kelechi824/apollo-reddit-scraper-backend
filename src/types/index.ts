@@ -31,6 +31,7 @@ export interface ApiInfoResponse {
     personaPainPointMatching: string;
     enhancedPersonaDetection: string;
     ctaGeneration: string;
+    competitorConquesting: string;
   };
   };
 }

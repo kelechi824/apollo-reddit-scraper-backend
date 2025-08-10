@@ -130,7 +130,7 @@ class OpenAIService {
           }
         ],
         temperature: 0.3,
-        max_tokens: 500,
+        max_completion_tokens: 500,
         response_format: { type: "json_object" }
       });
 
@@ -233,7 +233,7 @@ Respond only with valid JSON.`;
             content: "Respond with just the word 'success' if you can read this message."
           }
         ],
-        max_tokens: 10,
+        max_completion_tokens: 10,
         temperature: 0
       });
 
@@ -300,7 +300,7 @@ ${raw_data}
 Please convert this into clean, structured markdown format that preserves all the important information while making it easy to process programmatically. Remember that any abbreviations should be interpreted in their executive/business context.`
           }
         ],
-        max_tokens: 4000,
+        max_completion_tokens: 4000,
         temperature: 0.3, // Lower temperature for more consistent formatting
       });
 

@@ -137,26 +137,19 @@ class GapAnalysisService {
           );
 
           // Use global OpenAI queue to coordinate requests across all services
-          const completion = await globalOpenAIQueue.queueRequest(async () => {
-            // Use GPT 4.1 nano for large context analysis with timeout protection
+           const completion = await globalOpenAIQueue.queueRequest(async () => {
+            // Use GPT-5 nano for large context analysis with timeout protection
             return await Promise.race([
               this.client!.chat.completions.create({
-                model: "gpt-4.1-nano-2025-04-14", // Large context window for comprehensive analysis
+                model: 'gpt-5-nano-2025-08-07',
                 messages: [
-                  {
-                    role: "system",
-                    content: this.buildSystemPrompt()
-                  },
-                  {
-                    role: "user",
-                    content: analysisPrompt
-                  }
+                  { role: 'system', content: this.buildSystemPrompt() },
+                  { role: 'user', content: analysisPrompt }
                 ],
-                temperature: 0.4, // Balanced for analytical insights with some creativity
-                max_tokens: 4000, // Large token limit for comprehensive analysis
-                response_format: { type: "json_object" }
+                max_completion_tokens: 4000,
+                response_format: { type: 'json_object' }
               }),
-              this.createTimeoutPromise(60000) // 1 minute timeout for gap analysis
+              this.createTimeoutPromise(60000)
             ]);
           });
 
@@ -168,9 +161,9 @@ class GapAnalysisService {
             
             console.log(`💰 Gap Analysis Token Usage - Input: ${inputTokens}, Output: ${outputTokens}, Total: ${totalTokens}`);
             
-            // Add to workflow cost tracker with gpt-4.1-nano pricing
+            // Add to workflow cost tracker (tracked under gpt-5-nano)
             const workflowId = `${keyword.replace(/\s+/g, '_')}_${Date.now()}`;
-            workflowCostTracker.addApiCall(workflowId, 'Gap Analysis', inputTokens, outputTokens, 'gpt-4.1-nano');
+            workflowCostTracker.addApiCall(workflowId, 'Gap Analysis', inputTokens, outputTokens, 'gpt-5-nano');
           }
 
           const responseContent = completion.choices[0]?.message?.content;
@@ -218,7 +211,7 @@ class GapAnalysisService {
               audience_need_match: typeof analysisData.gap_score?.audience_need_match === 'number' ? Math.min(Math.max(analysisData.gap_score.audience_need_match, 0), 1) : 0.8
             },
             analysis_metadata: {
-              model_used: "gpt-4.1-nano-2025-04-14",
+              model_used: 'gpt-5-nano-2025-08-07',
               timestamp: new Date().toISOString(),
               competitor_sources_analyzed: competitorAnalysis.top_results?.length || 0,
               research_data_points: deepResearchResult.research_findings.key_insights.length + 

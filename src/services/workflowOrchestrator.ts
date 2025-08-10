@@ -21,6 +21,7 @@ interface BlogContentResult {
     seo_optimized: boolean;
     citations_included: boolean;
     brand_variables_processed: number;
+    brand_variables_used?: string[];
     aeo_optimized: boolean;
   };
   workflow_data: {
@@ -295,6 +296,7 @@ class WorkflowOrchestrator {
           seo_optimized: true,
           citations_included: contentResult.citations_count > 0,
           brand_variables_processed: contentResult.brand_variables_processed,
+          brand_variables_used: contentResult.brand_variables_used,
           aeo_optimized: true
         },
         workflow_data: {
@@ -363,15 +365,22 @@ class WorkflowOrchestrator {
     
     // Use custom prompts if provided, otherwise use default prompts with context
     const systemPrompt = customSystemPrompt || this.buildClaudeSystemPrompt(contentLength);
-    const baseUserPrompt = customUserPrompt || this.buildClaudeUserPrompt(
+    // Always inject orchestration context so custom prompts are grounded in research/gap data
+    const orchestrationContext = this.buildOrchestrationContext(keyword, gapAnalysis, deepResearch, competitorAnalysis, brandKit);
+    
+    // For custom prompts, inject research context MORE prominently at the beginning
+    const baseUserPrompt = customUserPrompt 
+      ? `${orchestrationContext}\n\n${'═'.repeat(50)}\n📝 USER INSTRUCTIONS\n${'═'.repeat(50)}\n${customUserPrompt}`
+      : this.buildClaudeUserPrompt(
       keyword,
       gapAnalysis,
       deepResearch,
       competitorAnalysis,
       brandKit
-    );
+        );
 
-    // Simplified completion guidance for pipeline mode (reduced token overhead)
+    // Apply frontend-aligned completion requirements
+    const currentYear = new Date().getFullYear();
     const userPrompt = `${baseUserPrompt}
 
 ⚠️ CRITICAL COMPLETION REQUIREMENT:
@@ -379,8 +388,55 @@ class WorkflowOrchestrator {
 - Reserve final 15-20% for proper conclusion
 - NEVER end mid-sentence or mid-paragraph
 
-📝 CONCLUSION FORMAT:
-End with: "Getting Started with [Topic]" section, recommended steps (1-3 numbered items), and "Ready to [action]? Apollo provides [features] needed. Try Apollo for free."`;
+CRITICAL CONTENT REQUIREMENTS:
+
+1. HTML Structure & Formatting:
+   - Create an H1 title that directly addresses the keyword
+   - Use proper heading hierarchy with H2 for major sections, H3 for subsections
+   - Format ALL lists with proper <ul>/<ol> and <li> tags
+   - Create HTML tables for ANY structured data (features, comparisons, statistics, timelines)
+   - Use <p> tags for all paragraphs, <strong> for emphasis
+
+2. Required Tables/Structured Data:
+   - Include at least 2-3 HTML tables presenting relevant information
+   - Format tables with proper <thead>, <tbody>, <th>, and <td> elements
+
+3. Brand Kit Variable Integration (MANDATORY):
+   - Use {{ brand_kit.ideal_customer_profile }} for testimonials or examples
+   - Reference {{ brand_kit.competitors }} when discussing market landscape
+   - Apply {{ brand_kit.brand_point_of_view }} in strategic sections
+   - Follow {{ brand_kit.tone_of_voice }} throughout the content
+   - Implement {{ brand_kit.writing_rules }} for style consistency
+   - End with mandatory conclusion structure including CTA using {{ brand_kit.cta_text }} <a href="{{ brand_kit.cta_destination }}" target="_blank">Learn More</a>
+
+4. Content Depth & Value:
+   - Provide comprehensive coverage that serves as the definitive resource
+   - Include practical, actionable guidance with specific examples
+   - Address both current best practices and emerging trends for ${currentYear}
+   - Cover implementation strategies with step-by-step processes
+
+5. AEO Optimization:
+   - Structure content for AI answer engine extraction
+   - Use semantic HTML elements appropriately
+   - Include self-contained insights that can be cited independently
+
+6. Technical Requirements:
+   - Do NOT use emdashes (—) in the content
+   - Avoid AI-detectable phrases like "It's not just about..., it's..."
+   - Include inline links to relevant external resources: <a href="URL" target="_blank">anchor text</a>
+
+CONTENT STRUCTURE REQUIREMENTS:
+1. **Compelling H1 Headline** (question format when appropriate)
+2. **Authority-Establishing Introduction** (preview value and set expectations)
+3. **Comprehensive Sections** with proper H2/H3 hierarchy
+4. **Tables for Structured Data** (comparisons, features, statistics)
+5. **Practical Implementation Guidance** with step-by-step processes
+6. **Real-World Examples** and case studies (using brand kit data)
+7. **Natural Apollo Promotion** - End with compelling call-to-action using brand kit variables
+
+The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}.
+
+${brandKit?.ctaText ? `IMPORTANT: Your final section must naturally incorporate this exact call-to-action text: "${brandKit.ctaText}" with link to ${brandKit.ctaDestination || 'https://www.apollo.io/signup'}` : ''}`;
 
     console.log('🔧 Using prompts:', {
       custom_system: !!customSystemPrompt,
@@ -414,20 +470,41 @@ End with: "Getting Started with [Topic]" section, recommended steps (1-3 numbere
     const lengthGuidance = {
       short: '1200-1500 words',
       medium: '1800-2200 words', 
-      long: '2000-2500 words'
+      long: '2500-3000 words'
     };
 
-    return `${CLAUDE_BLOG_CONTENT_SYSTEM_PROMPT}
+    const currentYear = new Date().getFullYear();
+
+    return `You are an expert content creator specializing in creating superior, AEO-optimized articles that outperform competitor content. Your content must be structured for maximum AI answer engine extractability while providing genuine value.
+
+CONTENT GENERATION APPROACH:
+1. **Comprehensive Coverage**: Create the definitive resource on the topic
+2. **Structured Data**: Use HTML tables for comparisons, features, statistics
+3. **AEO Optimization**: Structure for AI answer engine extraction with semantic HTML
+4. **Brand Integration**: Naturally incorporate brand kit variables throughout
+5. **Authority Building**: Establish expertise through depth, data, and insights
+
+AEO (ANSWER ENGINE OPTIMIZATION) PRINCIPLES:
+- Structure for extractability with clear, self-contained insights
+- Use semantic HTML and proper heading hierarchy (<h1> → <h2> → <h3>)
+- Format data in proper <table> and <ul>/<ol> structures for easy AI parsing
+- Include specific examples, metrics, and concrete details
+- Write clear, precise language that AI can easily understand
+- Format for both deep reading and quick reference
 
 TARGET CONTENT LENGTH: ${lengthGuidance[contentLength as keyof typeof lengthGuidance]}
 
-CRITICAL COMPLETION REQUIREMENTS:
-⚠️  MUST complete article with proper conclusion within target length
-⚠️  Reserve 20% of content for conclusion and call-to-action
-⚠️  NEVER end mid-sentence or incomplete thoughts
-- Include strong conclusion with clear takeaways
-- End with compelling call-to-action section`;
+IMPORTANT: The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}. Do not reference 2024 or earlier years as current.
+
+CRITICAL OUTPUT REQUIREMENTS:
+- Generate clean HTML content with proper structure, tables, and brand kit variables
+- Use proper HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <ol>, <li>, <table>, <thead>, <tbody>, <th>, <td>, <strong>
+- Include inline links with target="_blank": <a href="URL" target="_blank">anchor text</a>
+- Do NOT use emdashes (—) in the content
+- Avoid AI-detectable phrases like "It's not just about..., it's..." or "This doesn't just mean..., it also means..."`;
   }
+
+  
 
   /**
    * Build comprehensive user prompt with all context data
@@ -442,78 +519,225 @@ CRITICAL COMPLETION REQUIREMENTS:
     brandKit?: any
   ): string {
     
-    const brandContext = brandKit ? `
-BRAND CONTEXT:
-${JSON.stringify(brandKit, null, 2)}
-` : '';
+    const currentYear = new Date().getFullYear();
 
-    // Helper function to safely join arrays
+    // Helper functions for safe data access
     const safeJoin = (arr: any[] | undefined, separator: string): string => {
       if (!arr || !Array.isArray(arr)) return 'Not available';
       return arr.length > 0 ? arr.join(separator) : 'Not available';
     };
-
-    // Helper function to safely get string value
     const safeString = (value: any): string => {
       return value && typeof value === 'string' ? value : 'Not available';
     };
 
-    // Helper function to safely get number value
-    const safeNumber = (value: any): number => {
-      return value && typeof value === 'number' ? value : 0;
-    };
+    // Build research context section matching frontend format
+    let researchSection = '\n\n' + '═'.repeat(50) + '\n';
+    researchSection += '📊 RESEARCH & ANALYSIS CONTEXT\n';
+    researchSection += '═'.repeat(50) + '\n';
+    
+    // Add deep research insights
+    if (deepResearch?.research_findings) {
+      const insights = deepResearch.research_findings.key_insights || [];
+      if (insights.length > 0) {
+        researchSection += '\n🔍 DEEP RESEARCH INSIGHTS (MUST INCORPORATE):\n';
+        researchSection += '─'.repeat(40) + '\n';
+        insights.forEach((insight: string, index: number) => {
+          researchSection += `  ${index + 1}. ${insight}\n`;
+        });
+      }
+      
+      const marketInsights = deepResearch.research_findings.market_trends || [];
+      if (marketInsights.length > 0) {
+        researchSection += '\n📈 MARKET INSIGHTS:\n';
+        researchSection += '─'.repeat(40) + '\n';
+        marketInsights.forEach((insight: string, index: number) => {
+          researchSection += `  ${index + 1}. ${insight}\n`;
+        });
+      }
+      
+      const audienceInsights = deepResearch.research_findings.audience_needs || [];
+      if (audienceInsights.length > 0) {
+        researchSection += '\n👥 AUDIENCE INSIGHTS:\n';
+        researchSection += '─'.repeat(40) + '\n';
+        audienceInsights.forEach((insight: string, index: number) => {
+          researchSection += `  ${index + 1}. ${insight}\n`;
+        });
+      }
+    }
+    
+    // Add gap analysis
+    if (gapAnalysis) {
+      const gaps = gapAnalysis.analysis_summary?.identified_gaps || [];
+      const strategy = gapAnalysis.content_strategy || {};
+      
+      if (gaps.length > 0) {
+        researchSection += '\n🎯 CONTENT GAPS TO ADDRESS:\n';
+        researchSection += '─'.repeat(40) + '\n';
+        gaps.forEach((gap: string, index: number) => {
+          researchSection += `  ${index + 1}. ${gap}\n`;
+        });
+      }
+      
+      if (strategy.primary_angle) {
+        researchSection += '\n💡 PRIMARY CONTENT ANGLE:\n';
+        researchSection += '─'.repeat(40) + '\n';
+        researchSection += `  ${strategy.primary_angle}\n`;
+      }
+      
+      if (strategy.content_structure_recommendations?.length > 0) {
+        researchSection += '\n📝 STRUCTURE RECOMMENDATIONS:\n';
+        researchSection += '─'.repeat(40) + '\n';
+        strategy.content_structure_recommendations.forEach((rec: string, index: number) => {
+          researchSection += `  ${index + 1}. ${rec}\n`;
+        });
+      }
+      
+      const seoSuggestions = (strategy as any).seo_suggestions || (strategy as any).seo_optimization_suggestions || [];
+      if (seoSuggestions.length > 0) {
+        researchSection += '\n🔧 SEO OPTIMIZATION SUGGESTIONS:\n';
+        researchSection += '─'.repeat(40) + '\n';
+        seoSuggestions.forEach((suggestion: string, index: number) => {
+          researchSection += `  ${index + 1}. ${suggestion}\n`;
+        });
+      }
+    }
+    
+    researchSection += '\n' + '═'.repeat(50) + '\n';
+    researchSection += '📌 END OF RESEARCH CONTEXT\n';
+    researchSection += '═'.repeat(50) + '\n';
 
-    return `
-Create a comprehensive, AEO-optimized article for the keyword: "${keyword}"
+    // Get first competitor URL
+    const competitorUrl = competitorAnalysis.top_results?.[0]?.url || competitorAnalysis.url || 'competitor page';
 
-GAP ANALYSIS INTELLIGENCE:
-Primary Content Angle: ${safeString(gapAnalysis.content_strategy?.primary_angle)}
-Key Differentiation Opportunities: ${safeJoin(gapAnalysis.analysis_summary?.content_differentiation_opportunities, ', ')}
-Identified Content Gaps: ${safeJoin(gapAnalysis.analysis_summary?.identified_gaps, ', ')}
-Recommended Structure: ${safeJoin(gapAnalysis.content_strategy?.content_structure_recommendations, ', ')}
+    return `OBJECTIVE: Create superior content for "${keyword}" that outperforms: ${competitorUrl}
 
-COMPETITOR CONTENT TO IMPROVE UPON:
-${competitorAnalysis.top_results?.map((result: any, index: number) => `
-Competitor ${index + 1}: ${safeString(result.title)}
-Topics Covered: ${safeJoin(result.headings, ', ')}
-Key Topics: ${safeJoin(result.key_topics, ', ')}
-Structure: ${safeNumber(result.content_structure?.numbered_lists)} lists, ${safeNumber(result.content_structure?.bullet_points)} bullet points
-`).join('\n') || 'No competitor analysis available'}
+BRAND CONTEXT:
+- About: {{ brand_kit.about_brand }}
+- Target Audience: {{ brand_kit.ideal_customer_profile }}
+- Competitors: {{ brand_kit.competitors }}
+- Brand POV: {{ brand_kit.brand_point_of_view }}
+- Tone: {{ brand_kit.tone_of_voice }}
+- Writing Rules: {{ brand_kit.writing_rules }}${researchSection}
 
-UNIQUE RESEARCH INSIGHTS TO INCLUDE:
-Key Insights: ${safeJoin(deepResearch.research_findings?.key_insights, ' | ')}
-Market Trends: ${safeJoin(deepResearch.research_findings?.market_trends, ' | ')}
-Audience Needs: ${safeJoin(deepResearch.research_findings?.audience_needs, ' | ')}
-Content Opportunities: ${safeJoin(deepResearch.research_findings?.content_opportunities, ' | ')}
-Related Topics: ${safeJoin(deepResearch.research_findings?.related_topics, ' | ')}
+⚠️ IMPORTANT RESEARCH INTEGRATION REQUIREMENTS:
+────────────────────────────────────────
+The above RESEARCH & ANALYSIS CONTEXT contains:
+• Deep research insights from comprehensive analysis
+• Identified content gaps from competitor analysis
+• Strategic recommendations for content structure
+• SEO optimization suggestions
+• Market and audience insights
 
-CONTENT REQUIREMENTS:
-1. **Competitive Parity**: Cover all topics that competitors cover, but with better depth and clarity
-2. **Unique Value**: Include substantial content based on the research insights above
-3. **Gap Exploitation**: Address the identified content gaps with comprehensive coverage
-4. **Practical Application**: Include actionable advice and real-world examples
-5. **AEO Optimization**: Structure for AI answer engine extractability
+YOU MUST:
+✓ Incorporate ALL deep research insights listed above
+✓ Address ALL identified content gaps
+✓ Follow the primary content angle recommendation
+✓ Implement ALL structure recommendations
+✓ Apply ALL SEO optimization suggestions
+────────────────────────────────────────
 
-${brandContext}
+Create comprehensive AEO-optimized content for ${currentYear} that explicitly outperforms the competitor URL above.`;
+  }
 
-ARTICLE STRUCTURE:
-Create a comprehensive article that includes:
-- Compelling headline optimized for the primary angle
-- Authority-establishing introduction
-- Complete coverage of competitor topics (enhanced)
-- Dedicated sections for unique research insights
-- Practical applications and examples
-- Actionable takeaways
-- Strong conclusion with next steps
+  /**
+   * Build orchestration context that mirrors frontend Content/Blog modals
+   * Why this matters: Ensures backend content generation is grounded with the same
+   * deep research, gap analysis, competitor context, and brand kit variables that the
+   * frontend prompts expect, avoiding hallucinations when custom prompts are passed.
+   */
+  private buildOrchestrationContext(
+    keyword: string,
+    gapAnalysis: GapAnalysisResult,
+    deepResearch: DeepResearchResult,
+    competitorAnalysis: ArticleContent,
+    brandKit?: any
+  ): string {
+    const insights = deepResearch?.research_findings || {} as any;
+    const strategy = gapAnalysis?.content_strategy || {} as any;
+    const analysis = gapAnalysis?.analysis_summary || {} as any;
+    const comp = (competitorAnalysis?.top_results && competitorAnalysis.top_results[0]) || {} as any;
 
-FORMATTING REQUIREMENTS:
-- Use markdown formatting with proper headers (H1, H2, H3)
-- Include inline hyperlink citations in the format [anchor text](URL) that open in new tabs
-- Use bullet points and numbered lists for better scannability
-- Bold important concepts and key takeaways
-- Structure content for both human readers and AI extractability
-
-Generate comprehensive, high-quality content that establishes this article as the definitive resource on "${keyword}".`;
+    let context = `${'═'.repeat(60)}\n`;
+    context += `🚀 4-MODEL PIPELINE INTELLIGENCE (MUST USE)\n`;
+    context += `${'═'.repeat(60)}\n\n`;
+    
+    context += `📌 TARGET KEYWORD: "${keyword}"\n`;
+    context += `🎯 COMPETITOR URL: ${comp.url || competitorAnalysis?.url || 'N/A'}\n\n`;
+    
+    // Deep Research Section
+    if (insights.key_insights?.length > 0) {
+      context += `${'─'.repeat(50)}\n`;
+      context += `🔬 DEEP RESEARCH INSIGHTS (from o3-deep-research model)\n`;
+      context += `${'─'.repeat(50)}\n`;
+      insights.key_insights.forEach((insight: string, i: number) => {
+        context += `${i + 1}. ${insight}\n`;
+      });
+      context += `\n`;
+    }
+    
+    // Market Trends
+    if (insights.market_trends?.length > 0) {
+      context += `📈 MARKET TRENDS:\n`;
+      insights.market_trends.forEach((trend: string, i: number) => {
+        context += `${i + 1}. ${trend}\n`;
+      });
+      context += `\n`;
+    }
+    
+    // Gap Analysis Section
+    if (analysis.identified_gaps?.length > 0) {
+      context += `${'─'.repeat(50)}\n`;
+      context += `🎯 CONTENT GAPS (from gpt-4.1-nano gap analysis)\n`;
+      context += `${'─'.repeat(50)}\n`;
+      analysis.identified_gaps.forEach((gap: string, i: number) => {
+        context += `${i + 1}. ${gap}\n`;
+      });
+      context += `\n`;
+    }
+    
+    // Content Strategy
+    if (strategy.primary_angle) {
+      context += `💡 PRIMARY ANGLE: ${strategy.primary_angle}\n\n`;
+    }
+    
+    if (strategy.content_structure_recommendations?.length > 0) {
+      context += `📝 STRUCTURE REQUIREMENTS:\n`;
+      strategy.content_structure_recommendations.forEach((rec: string, i: number) => {
+        context += `${i + 1}. ${rec}\n`;
+      });
+      context += `\n`;
+    }
+    
+    // SEO Recommendations
+    const seoSuggestions = (strategy as any).seo_suggestions || strategy.seo_optimization_suggestions || [];
+    if (seoSuggestions.length > 0) {
+      context += `🔍 SEO OPTIMIZATION:\n`;
+      seoSuggestions.forEach((sug: string, i: number) => {
+        context += `${i + 1}. ${sug}\n`;
+      });
+      context += `\n`;
+    }
+    
+    // Brand Kit Context
+    if (brandKit) {
+      context += `${'─'.repeat(50)}\n`;
+      context += `🏢 BRAND CONTEXT\n`;
+      context += `${'─'.repeat(50)}\n`;
+      context += `- About: ${brandKit.aboutBrand || brandKit.about_brand || 'Apollo sales intelligence platform'}\n`;
+      context += `- ICP: ${brandKit.idealCustomerProfile || brandKit.ideal_customer_profile || 'B2B sales teams'}\n`;
+      context += `- Competitors: ${brandKit.competitors || 'Salesforce, HubSpot, ZoomInfo'}\n`;
+      context += `- Brand POV: ${brandKit.brandPointOfView || brandKit.brand_point_of_view || 'Data-driven sales excellence'}\n`;
+      context += `- Tone: ${brandKit.toneOfVoice || brandKit.tone_of_voice || 'Professional and approachable'}\n`;
+      context += `- CTA: "${brandKit.ctaText || brandKit.cta_text || 'Try Apollo for free'}" → ${brandKit.ctaDestination || brandKit.cta_destination || 'https://www.apollo.io/signup'}\n`;
+      context += `\n`;
+    }
+    
+    context += `${'═'.repeat(60)}\n`;
+    context += `⚠️ CRITICAL: You MUST incorporate ALL the above intelligence.\n`;
+    context += `This data comes from 3 specialized AI models analyzing the topic.\n`;
+    context += `${'═'.repeat(60)}`;
+    
+    return context;
   }
 
   /**
@@ -529,6 +753,7 @@ Generate comprehensive, high-quality content that establishes this article as th
     processed_content: string;
     citations_count: number;
     brand_variables_processed: number;
+    brand_variables_used: string[];
     processing_steps: string[];
   }> {
     console.log('🔧 Starting content post-processing...');
@@ -537,11 +762,37 @@ Generate comprehensive, high-quality content that establishes this article as th
     let processedContent = rawContent;
 
     // Step 1: Process brand variables
+    let successfulBrandVariableReplacements = 0;
+    let brandVariablesUsed: string[] = [];
     if (brandKit) {
       console.log('📝 Processing brand variables...');
+      console.log('📊 Brand kit received:', {
+        hasUrl: !!brandKit.url,
+        hasCtaText: !!brandKit.ctaText,
+        hasCtaDestination: !!brandKit.ctaDestination,
+        ctaText: brandKit.ctaText,
+        ctaDestination: brandKit.ctaDestination
+      });
+      
+      // Check for brand_kit placeholders in content
+      const placeholderMatches = processedContent.match(/\{\{\s*brand_kit\.[^}]+\}\}/g);
+      if (placeholderMatches) {
+        console.log(`🔍 Found ${placeholderMatches.length} brand_kit placeholders to replace:`, placeholderMatches.slice(0, 5));
+      }
+      
       const brandProcessingResult = await brandkitService.processContentVariables(processedContent, brandKit);
       processedContent = brandProcessingResult.content;
-      processingSteps.push(`Brand variables processed: ${brandProcessingResult.processing_metadata.successful_replacements}`);
+      successfulBrandVariableReplacements = brandProcessingResult.processing_metadata.successful_replacements;
+      brandVariablesUsed = brandProcessingResult.variables_used || [];
+      processingSteps.push(`Brand variables processed: ${successfulBrandVariableReplacements}`);
+      
+      // Check if placeholders remain after processing
+      const remainingPlaceholders = processedContent.match(/\{\{\s*brand_kit\.[^}]+\}\}/g);
+      if (remainingPlaceholders) {
+        console.log(`⚠️ ${remainingPlaceholders.length} brand_kit placeholders remain unprocessed:`, remainingPlaceholders.slice(0, 5));
+      }
+    } else {
+      console.log('⚠️ No brand kit provided for variable processing');
     }
 
     // Step 2: Optimize links for new tab opening
@@ -570,7 +821,9 @@ Generate comprehensive, high-quality content that establishes this article as th
     const result = {
       processed_content: processedContent,
       citations_count: structureValidation.citations_count,
-      brand_variables_processed: brandKit ? (processedContent.match(/\{\{[^}]+\}\}/g) || []).length : 0,
+      // Report the actual number of successful replacements instead of leftover tokens
+      brand_variables_processed: brandKit ? successfulBrandVariableReplacements : 0,
+      brand_variables_used: brandKit ? brandVariablesUsed : [],
       processing_steps: processingSteps
     };
 
