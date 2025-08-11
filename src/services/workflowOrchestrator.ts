@@ -17,6 +17,8 @@ interface BlogContentResult {
   metadata: {
     title: string;
     description: string;
+    metaSeoTitle?: string;
+    metaDescription?: string;
     word_count: number;
     seo_optimized: boolean;
     citations_included: boolean;
@@ -292,6 +294,8 @@ class WorkflowOrchestrator {
         metadata: {
           title: rawContentResult.title || `${keyword} - Comprehensive Guide`,
           description: rawContentResult.description || `Everything you need to know about ${keyword}`,
+          metaSeoTitle: rawContentResult.metaSeoTitle,
+          metaDescription: rawContentResult.metaDescription,
           word_count: this.calculateWordCount(contentResult.processed_content),
           seo_optimized: true,
           citations_included: contentResult.citations_count > 0,

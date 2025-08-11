@@ -570,6 +570,26 @@ OUTPUT REQUIREMENTS:
 - End with a contextual conclusion section (NOT "Getting Started with ${keyword}")
 - Include strong call-to-action that naturally incorporates the brand's CTA message
 
+REQUIRED OUTPUT FORMAT:
+You MUST return your response in this exact JSON format:
+{
+  "content": "[Your full markdown-formatted article content here]",
+  "metaSeoTitle": "[SEO-optimized title (max 70 characters including ' | Apollo')]",
+  "metaDescription": "[Compelling meta description (150-160 characters) that avoids formulaic phrases. Must be a complete sentence. Avoid truncation.]"
+}
+
+The metaSeoTitle should:
+- Be under 70 characters total including " | Apollo" suffix
+- Include the target keyword naturally
+- Be compelling and click-worthy
+
+The metaDescription should:
+- Be exactly 150-160 characters
+- Be a complete, natural sentence (not cut off)
+- Avoid formulaic phrases like "Learn how to" or "Discover the"
+- Include the keyword naturally
+- Create urgency or highlight unique value
+
 Generate content that makes the competitor article look incomplete and shallow by comparison.`;
 }
 

@@ -677,15 +677,35 @@ MESSAGES SO FAR: ${conversation.messages.length}
           }
 
           if (response.content[0].type === 'text') {
-            const content = response.content[0].text;
+            const rawContent = response.content[0].text;
             
-            if (!content || content.trim().length === 0) {
+            if (!rawContent || rawContent.trim().length === 0) {
               throw new Error('Claude returned empty content');
             }
             
-            console.log('📥 BACKEND - Raw Claude Response:', content);
-            console.log(`📏 BACKEND - Content length: ${content.length} characters`);
+            console.log('📥 BACKEND - Raw Claude Response:', rawContent);
+            console.log(`📏 BACKEND - Content length: ${rawContent.length} characters`);
             console.log(`📊 BACKEND - Using token limit: ${maxTokens}`);
+            
+            // Try to parse as JSON if it looks like JSON
+            let content: string;
+            let metaSeoTitle: string | undefined;
+            let metaDescription: string | undefined;
+            
+            if (rawContent.trim().startsWith('{') && rawContent.trim().endsWith('}')) {
+              try {
+                const parsed = JSON.parse(rawContent);
+                content = parsed.content || rawContent;
+                metaSeoTitle = parsed.metaSeoTitle;
+                metaDescription = parsed.metaDescription;
+                console.log('✅ Successfully parsed JSON response with meta fields');
+              } catch (e) {
+                console.log('⚠️ Failed to parse as JSON, treating as plain content');
+                content = rawContent;
+              }
+            } else {
+              content = rawContent;
+            }
             
             // Validate content completeness
             const validation = this.validateContentCompleteness(content);
@@ -710,8 +730,10 @@ MESSAGES SO FAR: ${conversation.messages.length}
             return {
               content: processedContent,
               title: request.post_context?.title || '',
-              description: 'Generated SEO-optimized content'
-            };
+              description: metaDescription || 'Generated SEO-optimized content',
+              metaSeoTitle,
+              metaDescription
+            } as any;
           } else {
             throw new Error('Unexpected response format from Claude - expected text content');
           }
@@ -910,14 +932,21 @@ Please use this processed data as context to create a comprehensive playbook fol
 
       console.log(`🔍 Raw Claude response (${content.text.length} chars):`, content.text.substring(0, 500));
 
+      // Clean the response text first (remove markdown code blocks)
+      let cleanedResponse = content.text.trim();
+      cleanedResponse = cleanedResponse.replace(/^```json\s*/i, '');
+      cleanedResponse = cleanedResponse.replace(/\s*```$/i, '');
+      cleanedResponse = cleanedResponse.replace(/^```\s*/i, '');
+
       // Parse the JSON response
       try {
-        const parsed = JSON.parse(content.text);
+        const parsed = JSON.parse(cleanedResponse);
         console.log(`✅ Successfully parsed JSON:`, parsed);
         
+        // Handle both metaSeoTitle/metaDescription and meta_title/meta_description formats
         const result = {
-          metaSeoTitle: parsed.metaSeoTitle || '',
-          metaDescription: parsed.metaDescription || ''
+          metaSeoTitle: parsed.metaSeoTitle || parsed.meta_title || '',
+          metaDescription: parsed.metaDescription || parsed.meta_description || ''
         };
         
         console.log(`✅ Successfully generated meta fields for: ${params.keyword}`, result);
@@ -927,9 +956,9 @@ Please use this processed data as context to create a comprehensive playbook fol
         console.error('❌ Failed to parse meta fields JSON:', parseError);
         console.log('🔧 Attempting fallback regex parsing...');
         
-        // Fallback parsing if JSON is malformed
-        const titleMatch = content.text.match(/"metaSeoTitle"\s*:\s*"([^"]+)"/);
-        const descMatch = content.text.match(/"metaDescription"\s*:\s*"([^"]+)"/);
+        // Fallback parsing if JSON is malformed - check both formats
+        const titleMatch = content.text.match(/"(?:metaSeoTitle|meta_title)"\s*:\s*"([^"]+)"/);
+        const descMatch = content.text.match(/"(?:metaDescription|meta_description)"\s*:\s*"([^"]+)"/);
         
         const fallbackResult = {
           metaSeoTitle: titleMatch ? titleMatch[1] : '',
