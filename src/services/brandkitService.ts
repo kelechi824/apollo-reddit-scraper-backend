@@ -84,7 +84,72 @@ class BrandkitService {
     // Create variable lookup map with defensive programming
     const variableMap = new Map<string, string>();
     
-    // Ensure variables array exists and is actually an array
+    // Map brand kit properties to variables (handle both formats)
+    // Format 1: Direct properties from BrandKitPage (treat as any to handle dynamic structure)
+    const kit = activeBrandKit as any;
+    if (kit) {
+      // Standard brand kit properties - support both camelCase and snake_case
+      if (kit.url) variableMap.set('url', kit.url);
+      
+      // About brand (check both formats)
+      const aboutBrand = kit.aboutBrand || kit.about_brand;
+      if (aboutBrand) variableMap.set('about_brand', aboutBrand);
+      
+      // Ideal customer profile
+      const idealCustomerProfile = kit.idealCustomerProfile || kit.ideal_customer_profile;
+      if (idealCustomerProfile) variableMap.set('ideal_customer_profile', idealCustomerProfile);
+      
+      // Competitors
+      if (kit.competitors) variableMap.set('competitors', kit.competitors);
+      
+      // Brand point of view
+      const brandPointOfView = kit.brandPointOfView || kit.brand_point_of_view;
+      if (brandPointOfView) variableMap.set('brand_point_of_view', brandPointOfView);
+      
+      // Author persona
+      const authorPersona = kit.authorPersona || kit.author_persona;
+      if (authorPersona) variableMap.set('author_persona', authorPersona);
+      
+      // Tone of voice
+      const toneOfVoice = kit.toneOfVoice || kit.tone_of_voice;
+      if (toneOfVoice) variableMap.set('tone_of_voice', toneOfVoice);
+      
+      // Header case type
+      const headerCaseType = kit.headerCaseType || kit.header_case_type;
+      if (headerCaseType) variableMap.set('header_case_type', headerCaseType);
+      
+      // Writing rules
+      const writingRules = kit.writingRules || kit.writing_rules;
+      if (writingRules) variableMap.set('writing_rules', writingRules);
+      
+      // CTA text
+      const ctaText = kit.ctaText || kit.cta_text;
+      if (ctaText) variableMap.set('cta_text', ctaText);
+      
+      // CTA destination
+      const ctaDestination = kit.ctaDestination || kit.cta_destination;
+      if (ctaDestination) variableMap.set('cta_destination', ctaDestination);
+      
+      // Writing sample properties
+      if (kit.writingSample) {
+        if (kit.writingSample.url) variableMap.set('writing_sample_url', kit.writingSample.url);
+        if (kit.writingSample.title) variableMap.set('writing_sample_title', kit.writingSample.title);
+        if (kit.writingSample.body) variableMap.set('writing_sample_body', kit.writingSample.body);
+        if (kit.writingSample.outline) variableMap.set('writing_sample_outline', kit.writingSample.outline);
+      }
+      
+      // Custom variables
+      if (kit.customVariables && typeof kit.customVariables === 'object') {
+        Object.entries(kit.customVariables).forEach(([key, value]) => {
+          if (typeof value === 'string' && value.trim() !== '') {
+            // Store the actual value (not liquid syntax)
+            variableMap.set(key.toLowerCase(), value);
+          }
+        });
+      }
+    }
+    
+    // Format 2: Legacy variables array (if it exists)
     const variables = activeBrandKit?.variables;
     if (variables && Array.isArray(variables)) {
       variables.forEach(variable => {
@@ -92,8 +157,17 @@ class BrandkitService {
           variableMap.set(variable.key.toLowerCase(), variable.value);
         }
       });
+    }
+    
+    if (variableMap.size === 0) {
+      console.warn('⚠️ No brand kit variables found for processing');
     } else {
-      console.warn('⚠️ Brand kit variables not found or invalid, skipping variable processing');
+      console.log(`📊 Loaded ${variableMap.size} brand kit variables for processing`);
+      // Log the first few variables for debugging
+      const entries = Array.from(variableMap.entries()).slice(0, 5);
+      entries.forEach(([key, value]) => {
+        console.log(`  - ${key}: ${value.substring(0, 50)}${value.length > 50 ? '...' : ''}`);
+      });
     }
 
     // Track processing metadata
@@ -105,7 +179,14 @@ class BrandkitService {
     // Process content by replacing variables
     const processedContent = content.replace(this.VARIABLE_PATTERN, (match, variableKey) => {
       totalVariablesFound++;
-      const cleanKey = variableKey.trim().toLowerCase();
+      let cleanKey = variableKey.trim().toLowerCase();
+
+      // Support namespaced variables like {{ brand_kit.cta_text }} or {{ apollo.url }}
+      // by taking the last segment after a dot
+      if (cleanKey.includes('.')) {
+        const parts = cleanKey.split('.').map((p: string) => p.trim()).filter(Boolean);
+        cleanKey = parts[parts.length - 1];
+      }
       
       if (variableMap.has(cleanKey)) {
         const value = variableMap.get(cleanKey)!;

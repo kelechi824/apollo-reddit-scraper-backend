@@ -21,6 +21,7 @@ import contentAnalysisRoutes from '../src/routes/contentAnalysis';
 import personaPainPointMatchingRoutes from '../src/routes/personaPainPointMatching';
 import enhancedPersonaDetectionRoutes from '../src/routes/enhancedPersonaDetection';
 import ctaGenerationRoutes from '../src/routes/ctaGeneration';
+import competitorConquestingRoutes from '../src/routes/competitorConquesting';
 
 // Load environment variables
 dotenv.config();
@@ -62,6 +63,7 @@ app.use('/api/content-analysis', contentAnalysisRoutes);
 app.use('/api/persona-pain-point-matching', personaPainPointMatchingRoutes);
 app.use('/api/enhanced-persona-detection', enhancedPersonaDetectionRoutes);
 app.use('/api/cta-generation', ctaGenerationRoutes);
+app.use('/api/competitor-conquesting', competitorConquestingRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -99,7 +101,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         contentAnalysis: '/api/content-analysis/*',
         personaPainPointMatching: '/api/persona-pain-point-matching/*',
         enhancedPersonaDetection: '/api/enhanced-persona-detection/*',
-        ctaGeneration: '/api/cta-generation/*'
+        ctaGeneration: '/api/cta-generation/*',
+        competitorConquesting: '/api/competitor-conquesting/*'
       }
     }
   });

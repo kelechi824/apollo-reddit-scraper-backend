@@ -85,7 +85,7 @@ Always respond with valid JSON only.`
           }
         ],
         temperature: 0.2, // Low temperature for consistent persona detection
-        max_tokens: 800,
+        max_completion_tokens: 800,
         response_format: { type: "json_object" }
       });
 

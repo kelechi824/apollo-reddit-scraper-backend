@@ -275,7 +275,7 @@ ${callData}`;
           }
         ],
         temperature: 0.1,
-        max_tokens: 3000
+        max_completion_tokens: 3000
       });
 
       const responseContent = completion.choices[0]?.message?.content;

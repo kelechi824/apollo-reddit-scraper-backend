@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import claudeService from '../services/claudeService';
+import { openaiService } from '../services/openaiService';
+import OpenAI from 'openai';
 
 const router = Router();
 
@@ -171,22 +173,87 @@ router.post('/generate-meta', async (req: Request, res: Response): Promise<any> 
       });
     }
 
-    console.log(`🎯 Generating AI meta fields for keyword: "${keyword}"`);
+    console.log(`🎯 Generating AI meta fields for keyword: "${keyword}" (gpt-5-nano primary)`);
 
-    // Generate meta fields using Claude
-    const response = await claudeService.generateMetaFields({
-      keyword,
-      content_preview: content_preview || '',
-      prompt
-    });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({
+        error: 'Meta Generation Failed',
+        message: 'OPENAI_API_KEY is not configured',
+        status: 500,
+        timestamp: new Date().toISOString()
+      });
+    }
 
-    console.log('✅ Meta fields generated successfully');
+    const openai = new OpenAI({ apiKey });
 
-    res.json({
-      metaSeoTitle: response.metaSeoTitle || '',
-      metaDescription: response.metaDescription || '',
-      timestamp: new Date().toISOString()
-    });
+    let metaSeoTitle = '';
+    let metaDescription = '';
+
+    // Helper to normalize any JSON shape
+    const normalize = (raw: string) => {
+      try {
+        const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/i, '');
+        const parsed: any = JSON.parse(cleaned);
+        return {
+          title: parsed.metaSeoTitle || parsed.meta_title || '',
+          description: parsed.metaDescription || parsed.meta_description || ''
+        };
+      } catch {
+        return { title: '', description: '' };
+      }
+    };
+
+    // Try gpt-5-nano first, then gpt-4.1-nano
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-5-nano',
+        messages: [
+          { role: 'system', content: 'You generate concise, high-quality SEO meta titles and descriptions as strict JSON.' },
+          { role: 'user', content: `${prompt}\n\nKeyword: ${keyword}\nContent Preview: ${content_preview || ''}\n\nRespond ONLY as JSON with keys: metaSeoTitle, metaDescription.` }
+        ],
+        max_completion_tokens: 200,
+        response_format: { type: 'json_object' }
+      });
+      const content = completion.choices?.[0]?.message?.content || '';
+      const { title, description } = normalize(content);
+      metaSeoTitle = title; metaDescription = description;
+    } catch (err5) {
+      console.warn('⚠️ gpt-5-nano meta failed, retrying with gpt-4.1-nano...', err5);
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4.1-nano-2025-04-14',
+          messages: [
+            { role: 'system', content: 'You generate concise, high-quality SEO meta titles and descriptions as strict JSON.' },
+            { role: 'user', content: `${prompt}\n\nKeyword: ${keyword}\nContent Preview: ${content_preview || ''}\n\nRespond ONLY as JSON with keys: metaSeoTitle, metaDescription.` }
+          ],
+          max_completion_tokens: 200,
+          response_format: { type: 'json_object' }
+        });
+        const content = completion.choices?.[0]?.message?.content || '';
+        const { title, description } = normalize(content);
+        metaSeoTitle = title; metaDescription = description;
+      } catch (err41) {
+        console.error('❌ OpenAI meta generation failed:', err41);
+      }
+    }
+
+    // As final fallback, try Claude once and attempt to strip code fences
+    if (!metaSeoTitle && !metaDescription) {
+      try {
+        const response = await claudeService.generateMetaFields({ keyword, content_preview: content_preview || '', prompt });
+        // Normalize potential snake_case keys from Claude to our camelCase response
+        const fallbackTitle: string = (response as any).metaSeoTitle || (response as any).meta_title || '';
+        const fallbackDesc: string = (response as any).metaDescription || (response as any).meta_description || '';
+        metaSeoTitle = fallbackTitle;
+        metaDescription = fallbackDesc;
+      } catch (claudeErr) {
+        console.error('❌ Claude fallback for meta failed:', claudeErr);
+      }
+    }
+
+    // Guarantee non-empty by returning empty strings instead of error
+    return res.json({ metaSeoTitle: metaSeoTitle || '', metaDescription: metaDescription || '', timestamp: new Date().toISOString() });
 
   } catch (error) {
     console.error('Meta generation endpoint error:', error);

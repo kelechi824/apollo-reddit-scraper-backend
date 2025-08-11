@@ -272,7 +272,7 @@ Extract pain points, emotional triggers, customer phrases, and competitor mentio
           }
         ],
         temperature: 0.3, // Lower temperature for more consistent analysis
-        max_tokens: 2000,
+        max_completion_tokens: 2000,
         response_format: { type: "json_object" }
       });
 
@@ -393,7 +393,7 @@ Focus on conversion barriers, objections, ad copy opportunities, and conversion 
           }
         ],
         temperature: 0.3,
-        max_tokens: 3000, // More tokens for comprehensive CRO analysis
+        max_completion_tokens: 3000, // More tokens for comprehensive CRO analysis
         response_format: { type: "json_object" }
       });
 
@@ -810,7 +810,7 @@ Focus on conversion barriers, objections, ad copy opportunities, and conversion 
       await this.client.chat.completions.create({
         model: this.model,
         messages: [{ role: 'user', content: 'test' }],
-        max_tokens: 1
+        max_completion_tokens: 1
       });
 
       return {

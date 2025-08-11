@@ -103,7 +103,7 @@ Always respond with valid JSON only.`
           }
         ],
         temperature: 0.1, // Very low temperature for consistent analysis
-        max_tokens: 1200,
+        max_completion_tokens: 1200,
         response_format: { type: "json_object" }
       });
 

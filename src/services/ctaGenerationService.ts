@@ -196,7 +196,7 @@ class CTAGenerationService {
           }
         ],
         temperature: 0.7, // Higher creativity for compelling copy
-        max_tokens: 800,
+        max_completion_tokens: 800,
         response_format: { type: "json_object" }
       });
 
