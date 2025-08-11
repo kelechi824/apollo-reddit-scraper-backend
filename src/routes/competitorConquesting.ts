@@ -3,6 +3,7 @@ import { workflowOrchestrator } from '../services/workflowOrchestrator';
 import FirecrawlService, { ArticleContent } from '../services/firecrawlService';
 import path from 'path';
 import { promises as fs } from 'fs';
+import { createJob, updateJob, getJob, deleteJob, getStoreDiagnostics } from '../services/jobStore';
 
 const router = Router();
 
@@ -30,52 +31,7 @@ interface BulkCompetitorRequest {
   user_prompt?: string;
 }
 
-// In-memory job storage (same pattern as blog creator)
-const jobStorage = new Map<string, any>();
-
-function storeJobData(jobId: string, data: any) {
-  try {
-    jobStorage.set(jobId, {
-      ...data,
-      timestamp: Date.now()
-    });
-  } catch (error) {
-    console.error(`Failed to store job data for ${jobId}:`, error);
-  }
-}
-
-function getJobData(jobId: string) {
-  try {
-    return jobStorage.get(jobId) || null;
-  } catch (error) {
-    console.error(`Failed to retrieve job data for ${jobId}:`, error);
-    return null;
-  }
-}
-
-function updateJobData(jobId: string, updates: any) {
-  try {
-    const existing = jobStorage.get(jobId) || {};
-    const updated = {
-      ...existing,
-      ...updates,
-      timestamp: Date.now()
-    };
-    jobStorage.set(jobId, updated);
-  } catch (error) {
-    console.error(`Failed to update job data for ${jobId}:`, error);
-  }
-}
-
-function deleteJobData(jobId: string): boolean {
-  try {
-    const deletedFromMemory = jobStorage.delete(jobId);
-    return deletedFromMemory;
-  } catch (error) {
-    console.error(`Failed to delete job data for ${jobId}:`, error);
-    return false;
-  }
-}
+// Note: Job storage moved to serverless-safe shared store (Redis if available)
 
 interface ProgressCallback {
   onProgress: (stage: string, message: string, progress: number) => void;
@@ -342,8 +298,8 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
     // Generate unique job ID
     const jobId = `cc_job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Initialize job progress
-    storeJobData(jobId, {
+    // Initialize job progress using serverless-safe store
+    await createJob(jobId, {
       status: 'running',
       progress: 0,
       stage: 'starting',
@@ -365,25 +321,25 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       user_prompt
     }, {
       onProgress: (stage: string, message: string, progress: number) => {
-        updateJobData(jobId, {
+        updateJob(jobId, {
           stage,
           message,
           progress
-        });
+        }).catch((e) => console.error('Failed to update job progress:', e));
       }
     }).then((result: any) => {
-      updateJobData(jobId, {
+      updateJob(jobId, {
         status: 'completed',
         progress: 100,
         message: 'Competitor content generation complete!',
         result
-      });
+      }).catch((e) => console.error('Failed to finalize job:', e));
     }).catch((error: any) => {
-      updateJobData(jobId, {
+      updateJob(jobId, {
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
         message: 'Competitor content generation failed'
-      });
+      }).catch((e) => console.error('Failed to mark job error:', e));
     });
 
     res.json({
@@ -416,41 +372,38 @@ router.get('/job-status/:jobId', (req: Request, res: Response): any => {
       });
     }
 
-    const jobData = getJobData(jobId);
-    
-    if (!jobData) {
-      return res.status(404).json({
-        success: false,
-        error: 'Job not found'
-      });
-    }
-
-    // Check if job has expired (older than 2 hours)
-    const jobAge = Date.now() - jobData.timestamp;
-    const maxAge = 2 * 60 * 60 * 1000; // 2 hours
-    
-    if (jobAge > maxAge) {
-      deleteJobData(jobId);
-      return res.status(410).json({
-        success: false,
-        error: 'Job has expired'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: {
-        jobId,
-        status: jobData.status,
-        progress: jobData.progress || 0,
-        stage: jobData.stage || 'unknown',
-        message: jobData.message || '',
-        keyword: jobData.keyword || '',
-        url: jobData.url || '',
-        result: jobData.result || null,
-        error: jobData.error || null,
-        startTime: jobData.startTime
+    getJob(jobId).then((jobData) => {
+      if (!jobData) {
+        return res.status(404).json({ success: false, error: 'Job not found' });
       }
+
+      // If timestamp exists and clearly expired, return 410 and cleanup
+      const timestamp = jobData.timestamp || 0;
+      const jobAge = Date.now() - timestamp;
+      const maxAge = 2 * 60 * 60 * 1000; // 2 hours
+      if (timestamp && jobAge > maxAge) {
+        deleteJob(jobId).catch(() => {});
+        return res.status(410).json({ success: false, error: 'Job has expired' });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          jobId,
+          status: jobData.status,
+          progress: jobData.progress || 0,
+          stage: jobData.stage || 'unknown',
+          message: jobData.message || '',
+          keyword: jobData.keyword || '',
+          url: jobData.url || '',
+          result: jobData.result || null,
+          error: jobData.error || null,
+          startTime: jobData.startTime
+        }
+      });
+    }).catch((e) => {
+      console.error('❌ Failed to get job status:', e);
+      return res.status(500).json({ success: false, error: 'Failed to retrieve job status' });
     });
   } catch (error) {
     console.error('❌ Failed to get job status:', error);
