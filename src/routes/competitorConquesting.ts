@@ -270,24 +270,44 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
     }
 
     console.log(`🚀 Competitor Conquesting start → keyword="${keyword}", url=${url}`);
-
-    // Execute the pipeline using the shared function
-    const result = await executeCompetitorPipeline({
-      keyword,
-      url,
-      target_audience,
-      content_length,
-      focus_areas,
-      brand_kit,
-      system_prompt,
-      user_prompt
+    
+    // Set a 55-second timeout for Vercel's 60-second limit
+    // Why this matters: We need to complete within Vercel's function timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Operation timed out after 55 seconds')), 55000);
     });
 
-    // Return the result in Blog Creator compatible format
-    return res.json({
-      success: true,
-      data: result
-    });
+    // Execute the pipeline with timeout protection
+    try {
+      const result = await Promise.race([
+        executeCompetitorPipeline({
+          keyword,
+          url,
+          target_audience,
+          content_length,
+          focus_areas,
+          brand_kit,
+          system_prompt,
+          user_prompt
+        }),
+        timeoutPromise
+      ]);
+
+      // Return the result in Blog Creator compatible format
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (timeoutError: any) {
+      if (timeoutError.message === 'Operation timed out after 55 seconds') {
+        console.log('⏱️ Operation timed out, returning partial result or error');
+        return res.status(504).json({ 
+          success: false, 
+          error: 'Content generation timed out. Please use the async endpoint for long operations or try with shorter content settings.' 
+        });
+      }
+      throw timeoutError;
+    }
 
   } catch (error: any) {
     console.error('❌ Competitor Conquesting pipeline error:', error);
@@ -596,36 +616,50 @@ Generate content that makes the competitor article look incomplete and shallow b
 /**
  * GET /api/competitor-conquesting/csv/:dataset
  * Why this matters: Serves large competitor CSVs from repo without bundling into frontend.
+ * For Vercel deployment, we'll return a redirect to the static file served by the frontend
  */
 router.get('/csv/:dataset', async (req: Request, res: Response): Promise<void> => {
   try {
     const { dataset } = req.params;
-    let filePath: string | null = null;
-
+    
     if (dataset === 'cognism') {
-      const candidates = [
-        path.resolve(process.cwd(), '../frontend/src/files/Apollo Cognism Competitor Conquesting - Sheet1.csv'),
-        path.resolve(process.cwd(), '../../frontend/src/files/Apollo Cognism Competitor Conquesting - Sheet1.csv')
-      ];
-      for (const p of candidates) {
-        try {
-          await fs.access(p);
-          filePath = p;
-          break;
-        } catch {
-          // Continue checking next candidate
+      // In production, redirect to the frontend's static file
+      // Why this matters: Vercel backend can't access frontend files directly, 
+      // so we redirect to the frontend's public folder where the CSV is hosted
+      if (process.env.NODE_ENV === 'production') {
+        const frontendUrl = 'https://apollo-reddit-scraper-frontend.vercel.app/competitors/cognism.csv';
+        res.redirect(frontendUrl);
+        return;
+      } else {
+        // In development, try to read the file locally
+        const candidates = [
+          path.resolve(process.cwd(), '../frontend/public/competitors/cognism.csv'),
+          path.resolve(process.cwd(), '../../frontend/public/competitors/cognism.csv')
+        ];
+        
+        let filePath: string | null = null;
+        for (const p of candidates) {
+          try {
+            await fs.access(p);
+            filePath = p;
+            break;
+          } catch {
+            // Continue checking next candidate
+          }
         }
+        
+        if (!filePath) {
+          res.status(404).json({ success: false, error: `CSV dataset not found for ${dataset}` });
+          return;
+        }
+        
+        const csvText = await fs.readFile(filePath, 'utf8');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.status(200).send(csvText);
       }
+    } else {
+      res.status(404).json({ success: false, error: `Unknown dataset: ${dataset}` });
     }
-
-    if (!filePath) {
-      res.status(404).json({ success: false, error: `CSV dataset not found for ${dataset}` });
-      return;
-    }
-
-    const csvText = await fs.readFile(filePath, 'utf8');
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.status(200).send(csvText);
   } catch (error: any) {
     console.error('CSV serve error:', error);
     res.status(500).json({ success: false, error: error?.message || 'CSV serve failed' });
