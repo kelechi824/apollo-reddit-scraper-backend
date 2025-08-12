@@ -365,7 +365,7 @@ class WorkflowOrchestrator {
     brandKit?: any,
     customSystemPrompt?: string,
     customUserPrompt?: string
-  ): Promise<{ content: string; title?: string; description?: string }> {
+  ): Promise<{ content: string; title?: string; description?: string; metaSeoTitle?: string; metaDescription?: string }> {
     
     // Use custom prompts if provided, otherwise use default prompts with context
     const systemPrompt = customSystemPrompt || this.buildClaudeSystemPrompt(contentLength);
@@ -389,7 +389,7 @@ class WorkflowOrchestrator {
 
 ⚠️ CRITICAL COMPLETION REQUIREMENT:
 - MUST end with complete conclusion and call-to-action  
-- Reserve final 15-20% for proper conclusion
+- Reserve final 5-10% for proper conclusion
 - NEVER end mid-sentence or mid-paragraph
 
 CRITICAL CONTENT REQUIREMENTS:
@@ -411,7 +411,7 @@ CRITICAL CONTENT REQUIREMENTS:
    - Apply {{ brand_kit.brand_point_of_view }} in strategic sections
    - Follow {{ brand_kit.tone_of_voice }} throughout the content
    - Implement {{ brand_kit.writing_rules }} for style consistency
-   - End with mandatory conclusion structure including CTA using {{ brand_kit.cta_text }} <a href="{{ brand_kit.cta_destination }}" target="_blank">Learn More</a>
+   - End with mandatory conclusion structure including CTA using one of these anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" linked to https://www.apollo.io/sign-up
 
 4. Content Depth & Value:
    - Provide comprehensive coverage that serves as the definitive resource
@@ -432,15 +432,15 @@ CRITICAL CONTENT REQUIREMENTS:
 CONTENT STRUCTURE REQUIREMENTS:
 1. **Compelling H1 Headline** (question format when appropriate)
 2. **Authority-Establishing Introduction** (preview value and set expectations)
-3. **Comprehensive Sections** with proper H2/H3 hierarchy
+3. **Comprehensive Sections** with proper H2/H3 hierarchy (question format when appropriate, very critical of ai search engines optimization)
 4. **Tables for Structured Data** (comparisons, features, statistics)
 5. **Practical Implementation Guidance** with step-by-step processes
 6. **Real-World Examples** and case studies (using brand kit data)
-7. **Natural Apollo Promotion** - End with compelling call-to-action using brand kit variables
+7. **Natural Apollo Promotion** - End with compelling call-to-action using one of these anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" linked to https://www.apollo.io/sign-up
 
 The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}.
 
-${brandKit?.ctaText ? `IMPORTANT: Your final section must naturally incorporate this exact call-to-action text: "${brandKit.ctaText}" with link to ${brandKit.ctaDestination || 'https://www.apollo.io/signup'}` : ''}`;
+IMPORTANT: Your final section must use one of these exact call-to-action anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" with link to https://www.apollo.io/sign-up`;  
 
     console.log('🔧 Using prompts:', {
       custom_system: !!customSystemPrompt,
@@ -732,7 +732,7 @@ Create comprehensive AEO-optimized content for ${currentYear} that explicitly ou
       context += `- Competitors: ${brandKit.competitors || 'Salesforce, HubSpot, ZoomInfo'}\n`;
       context += `- Brand POV: ${brandKit.brandPointOfView || brandKit.brand_point_of_view || 'Data-driven sales excellence'}\n`;
       context += `- Tone: ${brandKit.toneOfVoice || brandKit.tone_of_voice || 'Professional and approachable'}\n`;
-      context += `- CTA: "${brandKit.ctaText || brandKit.cta_text || 'Try Apollo for free'}" → ${brandKit.ctaDestination || brandKit.cta_destination || 'https://www.apollo.io/signup'}\n`;
+      context += `- CTA: "${brandKit.ctaText || brandKit.cta_text || 'Try Apollo for free'}" → ${brandKit.ctaDestination || brandKit.cta_destination || 'https://www.apollo.io/sign-up'}\n`;
       context += `\n`;
     }
     

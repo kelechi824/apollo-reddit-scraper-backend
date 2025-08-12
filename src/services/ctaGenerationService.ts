@@ -322,12 +322,14 @@ Generate a 4-part CTA structure following Apollo's format:
    - VARIED OPENINGS: Avoid starting every CTA with "Sales team..." - use diverse openings like "Accelerate your prospecting", "Transform your pipeline", "Stop wasting time on", "Identify high-quality prospects", etc.
    Address specific go-to-market challenges using customer language from quotes above.
 
-4. ACTION BUTTON: Must be one of these exact options with arrow:
-   - "Try Apollo Free →"
+4. ACTION BUTTON: Must be one of these exact options:
    - "Start Your Free Trial →"
-   - "Schedule a Demo →"
+   - "Try Apollo Free →"
    - "Start a Trial →"
+   - "Schedule a Demo →"
    - "Request a Demo →"
+   - "Start Prospecting →"
+   - "Get Leads Now →"
 
 CRO BEST PRACTICES TO APPLY:
 - BENEFIT-FORWARD COPY: Lead with outcomes (quota achievement, revenue growth, time savings) not features
@@ -359,7 +361,7 @@ Respond with valid JSON containing these exact fields:
   "category_header": "ALL CAPS CATEGORY",
   "headline": "Title Case Headline Using Pain Point Language (Every Word Capitalized)",
   "description": "2-3 sentences addressing pain points with customer language and positioning Apollo as solution",
-  "action_button": "Must be exactly one of: 'Try Apollo Free →', 'Start Your Free Trial →', 'Schedule a Demo →', 'Start a Trial →', 'Request a Demo →'"
+  "action_button": "Must be exactly one of: 'Start Your Free Trial', 'Try Apollo Free', 'Start a Trial', 'Schedule a Demo', 'Request a Demo', 'Start Prospecting', 'Get Leads Now'"
 }
 
 REMEMBER: You MUST target Apollo's core sales audience (Sales Leaders, SDRs, BDRs, AEs, Marketers) NOT the article's persona. If the article is about Customer Success Directors, your CTA should still appeal to sales professionals who might be reading it to understand their CS counterparts to understand how to reach them using Apollo. Focus on go-to-market challenges like prospecting, pipeline building, quota achievement, and revenue growth - NOT customer retention or success metrics.

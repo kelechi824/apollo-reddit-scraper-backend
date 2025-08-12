@@ -325,7 +325,7 @@ class CTAInsertionEngine {
           ${cta.description}
         </p>
         <div class="apollo-cta-action" style="${this.getCTAActionStyles(options)}">
-          <a href="#" class="apollo-cta-button" style="${this.getCTAButtonStyles(options)}" onclick="return false;">
+          <a href="https://www.apollo.io/sign-up" class="apollo-cta-button" style="${this.getCTAButtonStyles(options)}" target="_blank">
             ${cta.action_button}
           </a>
         </div>
@@ -352,7 +352,7 @@ class CTAInsertionEngine {
   <p class="apollo-cta-description" style="font-size: 1.125rem; color: #475569; margin-bottom: 1.5rem; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto;">
     ${cta.description}
   </p>
-  <a href="#" class="apollo-cta-button" style="display: inline-flex; align-items: center; gap: 0.5rem; background-color: #EBF212; color: #000000; font-weight: 600; padding: 0.875rem 2rem; border-radius: 0.5rem; text-decoration: none; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
+  <a href="https://www.apollo.io/sign-up" class="apollo-cta-button" style="display: inline-flex; align-items: center; gap: 0.5rem; background-color: #EBF212; color: #000000; font-weight: 600; padding: 0.875rem 2rem; border-radius: 0.5rem; text-decoration: none; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);" target="_blank">
     ${cta.action_button}
     <span style="font-size: 1rem;">→</span>
   </a>
