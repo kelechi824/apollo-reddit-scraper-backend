@@ -271,14 +271,14 @@ COMPETITOR CONTENT ANALYSIS:
 Competitor ${index + 1}: ${result.title}
 URL: ${result.url}
 Word Count: ${result.word_count}
-Key Topics: ${result.key_topics.join(', ')}
-Headings: ${result.headings.join(', ')}
+Key Topics: ${(result.key_topics || []).join(', ')}
+Headings: ${(result.headings || []).join(', ')}
 Content Structure: 
-- Intro Present: ${result.content_structure.intro_present}
-- Conclusion Present: ${result.content_structure.conclusion_present}
-- Lists: ${result.content_structure.numbered_lists + result.content_structure.bullet_points}
+- Intro Present: ${result.content_structure?.intro_present || false}
+- Conclusion Present: ${result.content_structure?.conclusion_present || false}
+- Lists: ${(result.content_structure?.numbered_lists || 0) + (result.content_structure?.bullet_points || 0)}
 
-Content Preview: ${result.content.substring(0, 500)}...
+Content Preview: ${(result.content || '').substring(0, 500)}...
 `).join('\n---\n') || 'No competitor content available for analysis'}
 
 ANALYSIS REQUIREMENTS:

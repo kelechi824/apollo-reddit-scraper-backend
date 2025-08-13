@@ -117,6 +117,36 @@ function generateApolloSignupURL(competitor?: string): string {
   return url;
 }
 
+/**
+ * generateBlogCreatorSignupURL
+ * Why this matters: Creates UTM-tracked URLs to measure blog creator campaign effectiveness for specific keywords
+ */
+function generateBlogCreatorSignupURL(keyword?: string): string {
+  const baseURL = 'https://www.apollo.io/sign-up';
+  
+  console.log(`🔗 [DEBUG-WO] generateBlogCreatorSignupURL called with keyword: "${keyword}" (type: ${typeof keyword})`);
+  
+  if (!keyword) {
+    // Fallback without UTM if no keyword specified
+    console.log(`⚠️ [DEBUG-WO] No keyword provided, returning base URL: ${baseURL}`);
+    return baseURL;
+  }
+  
+  // Generate UTM campaign parameter from keyword (sanitize for URL)
+  const sanitizedKeyword = keyword.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+    .replace(/\s+/g, '_') // Replace spaces with underscores
+    .replace(/_+/g, '_') // Replace multiple underscores with single underscore
+    .replace(/^_|_$/g, '') // Remove leading/trailing underscores
+    .trim();
+    
+  const utmCampaign = `blog_creator_${sanitizedKeyword}`;
+  const url = `${baseURL}?utm_campaign=${utmCampaign}`;
+  
+  console.log(`🔗 [DEBUG-WO] Generated Apollo signup URL with UTM: ${url}`);
+  return url;
+}
+
 class WorkflowOrchestrator {
   private readonly WORKFLOW_STAGES = [
     'Extracting competitor content with Firecrawl',
@@ -441,7 +471,10 @@ class WorkflowOrchestrator {
       // Generate our own prompt with UTM URLs
       const currentYear = new Date().getFullYear();
       const selectedCTA = getRandomCTAAnchorText();
-      const apolloSignupURL = generateApolloSignupURL(competitor);
+      // Use competitor URL for competitor conquesting, otherwise use blog creator URL
+      const apolloSignupURL = competitor 
+        ? generateApolloSignupURL(competitor)
+        : generateBlogCreatorSignupURL(keyword);
       userPrompt = `${baseUserPrompt}
 
 ⚠️ CRITICAL COMPLETION REQUIREMENT:
@@ -571,8 +604,11 @@ TARGET CONTENT LENGTH: ${lengthGuidance[contentLength as keyof typeof lengthGuid
 IMPORTANT: The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}. Do not reference 2024 or earlier years as current.
 
 CRITICAL OUTPUT REQUIREMENTS:
-- Generate clean HTML content with proper structure, tables, and brand kit variables
-- Use proper HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <ol>, <li>, <table>, <thead>, <tbody>, <th>, <td>, <strong>
+- Return a JSON object with content and meta fields for AEO optimization
+- DO NOT include any text outside the JSON structure
+- Format: {"content": "HTML content", "metaSeoTitle": "Title", "metaDescription": "Description"}
+- No code block indicators, no explanatory paragraphs, just pure JSON
+- Use proper HTML tags in content: <h1>, <h2>, <h3>, <p>, <ul>, <ol>, <li>, <table>, <thead>, <tbody>, <th>, <td>, <strong>
 - Include inline links with target="_blank": <a href="URL" target="_blank">anchor text</a>
 - Do NOT use emdashes (—) in the content
 - Avoid AI-detectable phrases like "It's not just about..., it's..." or "This doesn't just mean..., it also means..."`;
