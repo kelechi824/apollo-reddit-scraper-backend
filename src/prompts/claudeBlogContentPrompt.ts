@@ -101,6 +101,7 @@ CONTENT STRUCTURE REQUIREMENTS:
 - Summarize key takeaways with actionable next steps
 - Provide a clear roadmap for implementation
 - Reinforce the unique value provided in the content
+- End with compelling call-to-action using one of these anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" linked to https://www.apollo.io/sign-up
 
 WRITING QUALITY STANDARDS:
 

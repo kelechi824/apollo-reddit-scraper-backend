@@ -623,7 +623,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
     post_context: any;
     brand_kit: any;
     content_length?: 'short' | 'medium' | 'long';
-  }): Promise<{ content: string; title?: string; description?: string }> {
+  }): Promise<{ content: string; title?: string; description?: string; metaSeoTitle?: string; metaDescription?: string }> {
     if (!this.client) {
       throw createServiceError(new Error('Claude client not initialized'), 'Claude Sonnet 4', 'Client check');
     }
@@ -914,7 +914,39 @@ Please use this processed data as context to create a comprehensive playbook fol
         model: 'claude-sonnet-4-20250514',
         max_tokens: 500,
         temperature: 0.5, // Balanced temperature for creative but controlled meta fields
-        system: 'You are an expert SEO copywriter specializing in creating unique, compelling meta titles and descriptions. CRITICAL: Never use formulaic patterns like "Master...", "Discover...", "Learn...", "Build...", "comprehensive guide", "proven strategies". Each description must be genuinely unique and contextual. Write like a human expert, not an AI. Focus on specific outcomes, data points, or unique insights. Meta titles must be 70 characters or less INCLUDING "| Apollo" suffix. Meta descriptions must be 150-160 characters. Always respond with valid JSON only.',
+        system: `You are an expert SEO/AEO specialist optimizing for AI search engines (ChatGPT Search, Perplexity, Claude, Gemini).
+
+CRITICAL AEO/SEO RULES:
+1. NEVER invent statistics, percentages, or specific numbers unless provided in the content
+2. Focus on genuine value propositions and real benefits
+3. Use question-based or problem/solution formats that match search intent
+4. Include semantic keywords that AI engines recognize as authoritative
+5. Write naturally - avoid marketing clichés and hyperbole
+
+META TITLE BEST PRACTICES (max 60 chars + " | Apollo"):
+- Lead with the primary keyword naturally
+- Use formats that AI engines favor:
+  * "What is [topic]? [Key Benefit]"
+  * "[Topic]: [Specific Use Case or Audience]"  
+  * "How to [Achieve Outcome] with [Topic]"
+  * "[Number] [Topic] [Specific Context]" (only use real numbers from content)
+- Avoid: superlatives, unverifiable claims, clickbait patterns
+
+META DESCRIPTION BEST PRACTICES (150-160 chars):
+- Start with a clear value statement or answer
+- Include semantic variations of the keyword
+- End with a specific, actionable benefit
+- Use natural language that sounds human-written
+- Include context that helps AI engines understand relevance
+- Description must be complete sentences and never truncated
+
+FORBIDDEN PATTERNS:
+- Made-up statistics ("increase by X%", "3x growth")
+- Formulaic openings ("Discover", "Learn", "Master", "Unlock")
+- Vague promises ("proven strategies", "comprehensive guide")
+- Marketing speak ("game-changing", "revolutionary", "cutting-edge")
+
+OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
         messages: [
           {
             role: 'user',

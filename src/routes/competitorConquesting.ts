@@ -10,6 +10,7 @@ const router = Router();
 interface CompetitorConquestingRequest {
   keyword: string;
   url: string;
+  competitor?: string; // Competitor key for UTM tracking
   target_audience?: string;
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
@@ -127,7 +128,7 @@ async function executeCompetitorPipeline(
     }
 
     // Use workflowOrchestrator but with competitor-specific system prompt
-    const competitorSystemPrompt = system_prompt || buildCompetitorSystemPrompt();
+    const competitorSystemPrompt = system_prompt || buildCompetitorSystemPrompt(request.competitor);
     const competitorUserPrompt = user_prompt || buildCompetitorUserPrompt(keyword, url, competitorAnalysis);
 
     // Execute the workflow with competitor data override
@@ -178,6 +179,7 @@ async function executeCompetitorWorkflow(
     // Execute the standard workflow pipeline
     const result = await workflowOrchestrator.executeContentPipeline({
       keyword: request.keyword,
+      competitor: request.competitor,
       target_audience: request.target_audience,
       content_length: request.content_length,
       focus_areas: request.focus_areas,
@@ -204,6 +206,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
     const { 
       keyword, 
       url, 
+      competitor,
       target_audience, 
       content_length = 'medium', 
       focus_areas = [], 
@@ -239,6 +242,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
         executeCompetitorPipeline({
           keyword,
           url,
+          competitor,
           target_audience,
           content_length,
           focus_areas,
@@ -280,6 +284,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
     const { 
       keyword, 
       url, 
+      competitor,
       target_audience, 
       content_length = 'medium', 
       focus_areas = [], 
@@ -287,6 +292,13 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       system_prompt, 
       user_prompt 
     }: CompetitorConquestingRequest = req.body;
+
+    // Debug logging to trace UTM parameter flow
+    console.log('🔍 [DEBUG] Competitor Conquesting Request:');
+    console.log(`  • keyword: "${keyword}"`);
+    console.log(`  • url: "${url}"`);
+    console.log(`  • competitor: "${competitor}" (type: ${typeof competitor})`);
+    console.log(`  • content_length: "${content_length}"`);
 
     if (!keyword || !url) {
       return res.status(400).json({
@@ -313,6 +325,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
     executeCompetitorPipeline({
       keyword,
       url,
+      competitor,
       target_audience,
       content_length,
       focus_areas,
@@ -415,12 +428,59 @@ router.get('/job-status/:jobId', (req: Request, res: Response): any => {
 });
 
 /**
+ * getRandomCTAAnchorText
+ * Why this matters: Ensures even distribution across all CTA options instead of defaulting to "Start Your Free Trial"
+ */
+function getRandomCTAAnchorText(): string {
+  const ctaOptions = [
+    "Start Your Free Trial",
+    "Try Apollo Free", 
+    "Start a Trial",
+    "Schedule a Demo",
+    "Request a Demo", 
+    "Start Prospecting",
+    "Get Leads Now"
+  ];
+  
+  // Use random selection to ensure even distribution
+  const randomIndex = Math.floor(Math.random() * ctaOptions.length);
+  const selectedCTA = ctaOptions[randomIndex];
+  console.log(`🎯 Selected CTA anchor text: "${selectedCTA}" (${randomIndex + 1}/${ctaOptions.length})`);
+  return selectedCTA;
+}
+
+/**
+ * generateApolloSignupURL
+ * Why this matters: Creates UTM-tracked URLs to measure competitor conquesting campaign effectiveness
+ */
+function generateApolloSignupURL(competitor?: string): string {
+  const baseURL = 'https://www.apollo.io/sign-up';
+  
+  console.log(`🔗 [DEBUG] generateApolloSignupURL called with competitor: "${competitor}" (type: ${typeof competitor})`);
+  
+  if (!competitor) {
+    // Fallback without UTM if no competitor specified
+    console.log(`⚠️ [DEBUG] No competitor provided, returning base URL: ${baseURL}`);
+    return baseURL;
+  }
+  
+  // Generate UTM campaign parameter from competitor
+  const utmCampaign = `competitor_conquesting_${competitor.toLowerCase()}`;
+  const url = `${baseURL}?utm_campaign=${utmCampaign}`;
+  
+  console.log(`🔗 [DEBUG] Generated Apollo signup URL with UTM: ${url}`);
+  return url;
+}
+
+/**
  * buildCompetitorSystemPrompt
  * Why this matters: Ensures Claude explicitly aims to outperform the specific competitor page with
  * comprehensive AEO-optimized content that gets cited by AI answer engines.
  */
-function buildCompetitorSystemPrompt(): string {
+function buildCompetitorSystemPrompt(competitor?: string): string {
   const currentYear = new Date().getFullYear();
+  const selectedCTA = getRandomCTAAnchorText();
+  const apolloSignupURL = generateApolloSignupURL(competitor);
   
   return `You are a world-class SEO, AEO, and LLM SEO content marketer for Apollo with deep expertise in creating comprehensive, AI-optimized articles that rank highly and get cited by AI answer engines (ChatGPT, Perplexity, Gemini, Claude, etc.). Your specialty is transforming content briefs into definitive resources that become the go-to sources for specific topics.
 
@@ -456,34 +516,34 @@ AEO (ANSWER ENGINE OPTIMIZATION) PRINCIPLES:
 - Place the most important answer in the first paragraph under each heading
 
 FORMATTING REQUIREMENTS:
-1. **Proper Markdown Structure:**
-   - Use # for main title, ## for major sections, ### for subsections
-   - Format all lists with proper - or 1. syntax
-   - Use markdown tables for any comparative data, features, or structured information
-   - Use **bold** for emphasis and key concepts
-   - Include inline citations as [anchor text](URL)
+1. **Proper HTML Structure:**
+   - Use <h1> for main title, <h2> for major sections, <h3> for subsections
+   - Format all lists with proper <ul>/<ol> and <li> tags
+   - Use HTML <table> elements for any comparative data, features, or structured information
+   - Use <strong> for emphasis and key concepts
+   - Include inline citations as <a href="URL" target="_blank">anchor text</a>
 
 2. **Tables and Structured Data:**
-   - When presenting comparisons, features, pricing, or any structured data, ALWAYS use markdown tables
+   - When presenting comparisons, features, pricing, or any structured data, ALWAYS use HTML tables
    - Use tables for: feature comparisons, pricing tiers, pros/cons, statistics, timelines, etc.
-   - Format tables with proper | column | separators |
+   - Include proper <thead>, <tbody>, <th>, and <td> elements
 
 3. **Brand Kit Variable Integration:**
    - MUST process and include brand kit variables naturally throughout content
    - Use ideal customer profile for testimonials and customer examples
    - Include competitors when discussing competitive landscape
    - Reference brand point of view in strategic sections
-   - End with strong CTA that naturally incorporates the brand's call-to-action message
+   - End with strong CTA using this exact anchor text: "${selectedCTA}" linking to ${apolloSignupURL}
    - Apply tone of voice consistently throughout
    - Follow writing rules for style and approach
 
 IMPORTANT: The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}. Do not reference 2024 or earlier years as current.
 
 CRITICAL OUTPUT REQUIREMENTS:
-- Return ONLY clean markdown content without any code blocks, explanatory text, or meta-commentary
-- DO NOT include phrases like "Here's the content:" or markdown code block markers
-- Start directly with the # H1 title and end with the final content
-- No code block indicators, no explanatory paragraphs
+- Return a JSON object with content and meta fields for AEO optimization
+- DO NOT include any text outside the JSON structure
+- Format: {"content": "HTML content", "metaSeoTitle": "Title", "metaDescription": "Description"}
+- No code block indicators, no explanatory paragraphs, just pure JSON
 
 CONTENT STRUCTURE REQUIREMENTS:
 1. **Compelling H1 Headline** (question format when appropriate)
@@ -492,7 +552,7 @@ CONTENT STRUCTURE REQUIREMENTS:
 4. **Tables for Structured Data** (comparisons, features, statistics)
 5. **Practical Implementation Guidance** with step-by-step processes
 6. **Real-World Examples** and case studies (using brand kit data)
-7. **Natural Apollo Promotion** - End with compelling call-to-action using brand kit variables
+7. **Natural Apollo Promotion** - End with compelling call-to-action using this exact anchor text: "${selectedCTA}" linked to ${apolloSignupURL}
 
 BRAND INTEGRATION GUIDELINES:
 - Lead with value and insights, not promotional content
@@ -537,31 +597,49 @@ CONTENT STRATEGY:
 - Ensure comprehensive coverage with expert insights
 
 OUTPUT REQUIREMENTS:
-- Use markdown formatting with proper headers (H1, H2, H3)
-- Include inline hyperlink citations [anchor text](URL)
-- Create compelling, scannable content
+- Use HTML formatting with proper headers (<h1>, <h2>, <h3>)
+- Include inline hyperlink citations <a href="URL" target="_blank">anchor text</a>
+- Create compelling, scannable content with proper <p> tags for paragraphs
+- Format lists with <ul>/<ol> and <li> tags, tables with <table>, <thead>, <tbody>, <th>, <td>
 - End with a contextual conclusion section (NOT "Getting Started with ${keyword}")
-- Include strong call-to-action that naturally incorporates the brand's CTA message
+- Include strong call-to-action with one of these anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now"
+- ALWAYS link CTAs to: https://www.apollo.io/sign-up
 
 REQUIRED OUTPUT FORMAT:
 You MUST return your response in this exact JSON format:
 {
-  "content": "[Your full markdown-formatted article content here]",
-  "metaSeoTitle": "[SEO-optimized title (max 70 characters including ' | Apollo')]",
-  "metaDescription": "[Compelling meta description (150-160 characters) that avoids formulaic phrases. Must be a complete sentence. Avoid truncation.]"
+  "content": "[Your full HTML-formatted article content here with proper tags]",
+  "metaSeoTitle": "[AEO-optimized title for AI search engines (max 60 chars + ' | Apollo')]",
+  "metaDescription": "[Natural, value-focused description (150-160 chars) optimized for AI search extraction. Must be a complete sentence and end with a period.]"
 }
 
-The metaSeoTitle should:
-- Be under 70 characters total including " | Apollo" suffix
-- Include the target keyword naturally
-- Be compelling and click-worthy
+META FIELD REQUIREMENTS FOR AI SEARCH OPTIMIZATION:
 
-The metaDescription should:
-- Be exactly 150-160 characters
-- Be a complete, natural sentence (not cut off)
-- Avoid formulaic phrases like "Learn how to" or "Discover the"
-- Include the keyword naturally
-- Create urgency or highlight unique value
+metaSeoTitle:
+- Maximum 60 characters plus " | Apollo" (total <= 70 chars)
+- Format: "[Primary Keyword]: [Specific Context]" or "What is [Keyword]? [Clear Answer]"
+- NEVER invent statistics, percentages, or specific numbers
+- Focus on clarity and search intent matching
+- Optimize for AI search engines (ChatGPT Search, Perplexity, etc.)
+
+metaDescription:
+- Exactly 150-160 characters
+- Start with what the reader will understand or be able to do
+- Use simple, factual language without exaggeration
+- Focus on practical value and specific use cases
+- End with how Apollo enables this capability
+- Write naturally for AI comprehension and extraction
+- All descriptions must be complete sentences without truncation and end with a period.
+
+CRITICAL - ABSOLUTELY FORBIDDEN IN META FIELDS:
+- The word "Master" or "Mastering" (use "understand", "implement", "use" instead)
+- The word "proven" (use "practical", "effective", "established" instead)
+- The word "comprehensive" (use "detailed", "complete", "thorough" instead)
+- Any percentages or numbers not from the actual content
+- ROI claims, benchmarks, or performance metrics unless specifically cited
+- Marketing language like "game-changing", "revolutionary", "ultimate"
+- Vague promises like "strategies", "frameworks", "playbooks" without specifics
+- Cliché openings ("Discover", "Learn how", "Unlock", "Transform")
 
 Generate content that makes the competitor article look incomplete and shallow by comparison.`;
 }
