@@ -42,6 +42,7 @@ interface BlogContentResult {
 
 interface WorkflowRequest {
   keyword: string;
+  competitor?: string; // Competitor key for UTM tracking
   target_audience?: string;
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
@@ -69,6 +70,51 @@ interface WorkflowState {
   lastError?: WorkflowError;
   retryCount: number;
   maxRetries: number;
+}
+
+/**
+ * getRandomCTAAnchorText
+ * Why this matters: Ensures even distribution across all CTA options instead of defaulting to "Start Your Free Trial"
+ */
+function getRandomCTAAnchorText(): string {
+  const ctaOptions = [
+    "Start Your Free Trial",
+    "Try Apollo Free", 
+    "Start a Trial",
+    "Schedule a Demo",
+    "Request a Demo", 
+    "Start Prospecting",
+    "Get Leads Now"
+  ];
+  
+  // Use random selection to ensure even distribution
+  const randomIndex = Math.floor(Math.random() * ctaOptions.length);
+  const selectedCTA = ctaOptions[randomIndex];
+  console.log(`🎯 Selected CTA anchor text: "${selectedCTA}" (${randomIndex + 1}/${ctaOptions.length})`);
+  return selectedCTA;
+}
+
+/**
+ * generateApolloSignupURL
+ * Why this matters: Creates UTM-tracked URLs to measure competitor conquesting campaign effectiveness
+ */
+function generateApolloSignupURL(competitor?: string): string {
+  const baseURL = 'https://www.apollo.io/sign-up';
+  
+  console.log(`🔗 [DEBUG-WO] generateApolloSignupURL called with competitor: "${competitor}" (type: ${typeof competitor})`);
+  
+  if (!competitor) {
+    // Fallback without UTM if no competitor specified
+    console.log(`⚠️ [DEBUG-WO] No competitor provided, returning base URL: ${baseURL}`);
+    return baseURL;
+  }
+  
+  // Generate UTM campaign parameter from competitor
+  const utmCampaign = `competitor_conquesting_${competitor.toLowerCase()}`;
+  const url = `${baseURL}?utm_campaign=${utmCampaign}`;
+  
+  console.log(`🔗 [DEBUG-WO] Generated Apollo signup URL with UTM: ${url}`);
+  return url;
 }
 
 class WorkflowOrchestrator {
@@ -104,7 +150,7 @@ class WorkflowOrchestrator {
     progressCallback?: WorkflowProgressCallback,
     jobId?: string
   ): Promise<BlogContentResult> {
-    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit, system_prompt, user_prompt } = request;
+    const { keyword, competitor, target_audience, content_length = 'medium', focus_areas = [], brand_kit, system_prompt, user_prompt } = request;
 
     if (!keyword || keyword.trim().length === 0) {
       throw createServiceError(new Error('Keyword is required for content generation pipeline'), 'Workflow Orchestrator', 'Input validation');
@@ -241,7 +287,8 @@ class WorkflowOrchestrator {
             content_length,
             brand_kit,
             system_prompt,
-            user_prompt
+            user_prompt,
+            competitor
           );
 
           // Save progress
@@ -364,7 +411,8 @@ class WorkflowOrchestrator {
     contentLength: string,
     brandKit?: any,
     customSystemPrompt?: string,
-    customUserPrompt?: string
+    customUserPrompt?: string,
+    competitor?: string
   ): Promise<{ content: string; title?: string; description?: string; metaSeoTitle?: string; metaDescription?: string }> {
     
     // Use custom prompts if provided, otherwise use default prompts with context
@@ -383,9 +431,18 @@ class WorkflowOrchestrator {
       brandKit
         );
 
-    // Apply frontend-aligned completion requirements
-    const currentYear = new Date().getFullYear();
-    const userPrompt = `${baseUserPrompt}
+    // Apply frontend-aligned completion requirements ONLY if no custom user prompt
+    let userPrompt: string;
+    if (customUserPrompt) {
+      // Custom user prompt already contains UTM URLs and CTA instructions - use as-is
+      userPrompt = baseUserPrompt;
+      console.log('🔗 [DEBUG-WO] Using custom user prompt (UTM URLs should be preserved)');
+    } else {
+      // Generate our own prompt with UTM URLs
+      const currentYear = new Date().getFullYear();
+      const selectedCTA = getRandomCTAAnchorText();
+      const apolloSignupURL = generateApolloSignupURL(competitor);
+      userPrompt = `${baseUserPrompt}
 
 ⚠️ CRITICAL COMPLETION REQUIREMENT:
 - MUST end with complete conclusion and call-to-action  
@@ -411,7 +468,7 @@ CRITICAL CONTENT REQUIREMENTS:
    - Apply {{ brand_kit.brand_point_of_view }} in strategic sections
    - Follow {{ brand_kit.tone_of_voice }} throughout the content
    - Implement {{ brand_kit.writing_rules }} for style consistency
-   - End with mandatory conclusion structure including CTA using one of these anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" linked to https://www.apollo.io/sign-up
+   - End with mandatory conclusion structure including CTA using this exact anchor text: "${selectedCTA}" linked to ${apolloSignupURL}
 
 4. Content Depth & Value:
    - Provide comprehensive coverage that serves as the definitive resource
@@ -436,11 +493,12 @@ CONTENT STRUCTURE REQUIREMENTS:
 4. **Tables for Structured Data** (comparisons, features, statistics)
 5. **Practical Implementation Guidance** with step-by-step processes
 6. **Real-World Examples** and case studies (using brand kit data)
-7. **Natural Apollo Promotion** - End with compelling call-to-action using one of these anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" linked to https://www.apollo.io/sign-up
+7. **Natural Apollo Promotion** - End with compelling call-to-action using this exact anchor text: "${selectedCTA}" linked to ${apolloSignupURL}
 
 The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}.
 
-IMPORTANT: Your final section must use one of these exact call-to-action anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" with link to https://www.apollo.io/sign-up`;  
+IMPORTANT: Your final section must use this exact call-to-action anchor text: "${selectedCTA}" with link to ${apolloSignupURL}`;  
+    }
 
     console.log('🔧 Using prompts:', {
       custom_system: !!customSystemPrompt,
@@ -448,6 +506,18 @@ IMPORTANT: Your final section must use one of these exact call-to-action anchor 
       system_length: systemPrompt.length,
       user_length: userPrompt.length
     });
+
+    // Debug: Log the competitor value and URL usage
+    console.log('🔗 [DEBUG-WO] Competitor value:', competitor);
+    console.log('🔗 [DEBUG-WO] Using custom user prompt:', !!customUserPrompt);
+    
+    // Debug: Show a snippet of the prompt containing the URL
+    const urlSnippet = userPrompt.match(/.{0,100}apollo\.io\/sign-up[^\s]*.{0,100}/i)?.[0];
+    if (urlSnippet) {
+      console.log('🔗 [DEBUG-WO] URL snippet from prompt:', urlSnippet);
+    } else {
+      console.log('🔗 [DEBUG-WO] No Apollo URL found in prompt - this might be the issue!');
+    }
 
     // Generate content with Claude Sonnet 4 (retry logic temporarily disabled)
     console.log('🔧 Using simplified content generation without retry logic for debugging');

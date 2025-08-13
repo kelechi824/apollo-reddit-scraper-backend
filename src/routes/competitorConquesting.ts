@@ -10,6 +10,7 @@ const router = Router();
 interface CompetitorConquestingRequest {
   keyword: string;
   url: string;
+  competitor?: string; // Competitor key for UTM tracking
   target_audience?: string;
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
@@ -127,7 +128,7 @@ async function executeCompetitorPipeline(
     }
 
     // Use workflowOrchestrator but with competitor-specific system prompt
-    const competitorSystemPrompt = system_prompt || buildCompetitorSystemPrompt();
+    const competitorSystemPrompt = system_prompt || buildCompetitorSystemPrompt(request.competitor);
     const competitorUserPrompt = user_prompt || buildCompetitorUserPrompt(keyword, url, competitorAnalysis);
 
     // Execute the workflow with competitor data override
@@ -178,6 +179,7 @@ async function executeCompetitorWorkflow(
     // Execute the standard workflow pipeline
     const result = await workflowOrchestrator.executeContentPipeline({
       keyword: request.keyword,
+      competitor: request.competitor,
       target_audience: request.target_audience,
       content_length: request.content_length,
       focus_areas: request.focus_areas,
@@ -204,6 +206,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
     const { 
       keyword, 
       url, 
+      competitor,
       target_audience, 
       content_length = 'medium', 
       focus_areas = [], 
@@ -239,6 +242,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
         executeCompetitorPipeline({
           keyword,
           url,
+          competitor,
           target_audience,
           content_length,
           focus_areas,
@@ -280,6 +284,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
     const { 
       keyword, 
       url, 
+      competitor,
       target_audience, 
       content_length = 'medium', 
       focus_areas = [], 
@@ -287,6 +292,13 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       system_prompt, 
       user_prompt 
     }: CompetitorConquestingRequest = req.body;
+
+    // Debug logging to trace UTM parameter flow
+    console.log('🔍 [DEBUG] Competitor Conquesting Request:');
+    console.log(`  • keyword: "${keyword}"`);
+    console.log(`  • url: "${url}"`);
+    console.log(`  • competitor: "${competitor}" (type: ${typeof competitor})`);
+    console.log(`  • content_length: "${content_length}"`);
 
     if (!keyword || !url) {
       return res.status(400).json({
@@ -313,6 +325,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
     executeCompetitorPipeline({
       keyword,
       url,
+      competitor,
       target_audience,
       content_length,
       focus_areas,
@@ -415,12 +428,59 @@ router.get('/job-status/:jobId', (req: Request, res: Response): any => {
 });
 
 /**
+ * getRandomCTAAnchorText
+ * Why this matters: Ensures even distribution across all CTA options instead of defaulting to "Start Your Free Trial"
+ */
+function getRandomCTAAnchorText(): string {
+  const ctaOptions = [
+    "Start Your Free Trial",
+    "Try Apollo Free", 
+    "Start a Trial",
+    "Schedule a Demo",
+    "Request a Demo", 
+    "Start Prospecting",
+    "Get Leads Now"
+  ];
+  
+  // Use random selection to ensure even distribution
+  const randomIndex = Math.floor(Math.random() * ctaOptions.length);
+  const selectedCTA = ctaOptions[randomIndex];
+  console.log(`🎯 Selected CTA anchor text: "${selectedCTA}" (${randomIndex + 1}/${ctaOptions.length})`);
+  return selectedCTA;
+}
+
+/**
+ * generateApolloSignupURL
+ * Why this matters: Creates UTM-tracked URLs to measure competitor conquesting campaign effectiveness
+ */
+function generateApolloSignupURL(competitor?: string): string {
+  const baseURL = 'https://www.apollo.io/sign-up';
+  
+  console.log(`🔗 [DEBUG] generateApolloSignupURL called with competitor: "${competitor}" (type: ${typeof competitor})`);
+  
+  if (!competitor) {
+    // Fallback without UTM if no competitor specified
+    console.log(`⚠️ [DEBUG] No competitor provided, returning base URL: ${baseURL}`);
+    return baseURL;
+  }
+  
+  // Generate UTM campaign parameter from competitor
+  const utmCampaign = `competitor_conquesting_${competitor.toLowerCase()}`;
+  const url = `${baseURL}?utm_campaign=${utmCampaign}`;
+  
+  console.log(`🔗 [DEBUG] Generated Apollo signup URL with UTM: ${url}`);
+  return url;
+}
+
+/**
  * buildCompetitorSystemPrompt
  * Why this matters: Ensures Claude explicitly aims to outperform the specific competitor page with
  * comprehensive AEO-optimized content that gets cited by AI answer engines.
  */
-function buildCompetitorSystemPrompt(): string {
+function buildCompetitorSystemPrompt(competitor?: string): string {
   const currentYear = new Date().getFullYear();
+  const selectedCTA = getRandomCTAAnchorText();
+  const apolloSignupURL = generateApolloSignupURL(competitor);
   
   return `You are a world-class SEO, AEO, and LLM SEO content marketer for Apollo with deep expertise in creating comprehensive, AI-optimized articles that rank highly and get cited by AI answer engines (ChatGPT, Perplexity, Gemini, Claude, etc.). Your specialty is transforming content briefs into definitive resources that become the go-to sources for specific topics.
 
@@ -473,7 +533,7 @@ FORMATTING REQUIREMENTS:
    - Use ideal customer profile for testimonials and customer examples
    - Include competitors when discussing competitive landscape
    - Reference brand point of view in strategic sections
-   - End with strong CTA using one of these exact anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" linking to https://www.apollo.io/sign-up
+   - End with strong CTA using this exact anchor text: "${selectedCTA}" linking to ${apolloSignupURL}
    - Apply tone of voice consistently throughout
    - Follow writing rules for style and approach
 
@@ -492,7 +552,7 @@ CONTENT STRUCTURE REQUIREMENTS:
 4. **Tables for Structured Data** (comparisons, features, statistics)
 5. **Practical Implementation Guidance** with step-by-step processes
 6. **Real-World Examples** and case studies (using brand kit data)
-7. **Natural Apollo Promotion** - End with compelling call-to-action using one of these anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now" linked to https://www.apollo.io/sign-up
+7. **Natural Apollo Promotion** - End with compelling call-to-action using this exact anchor text: "${selectedCTA}" linked to ${apolloSignupURL}
 
 BRAND INTEGRATION GUIDELINES:
 - Lead with value and insights, not promotional content
