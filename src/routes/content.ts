@@ -66,6 +66,8 @@ router.post('/generate', async (req: Request, res: Response): Promise<any> => {
       variations: contentResult, // Support both formats
       title: response.title || post_context.title,
       description: response.description || '',
+      metaSeoTitle: response.metaSeoTitle || '',
+      metaDescription: response.metaDescription || '',
       generated_at: new Date().toISOString()
     });
 

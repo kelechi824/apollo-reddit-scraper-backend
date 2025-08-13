@@ -704,7 +704,22 @@ MESSAGES SO FAR: ${conversation.messages.length}
                 content = rawContent;
               }
             } else {
+              // Extract meta fields from text content if they exist
               content = rawContent;
+              
+              // Look for meta fields in the content text
+              const metaTitleMatch = rawContent.match(/\*\*Meta Title:\*\*\s*(.+?)(?:\n|$)/i);
+              const metaDescMatch = rawContent.match(/\*\*Meta Description:\*\*\s*(.+?)(?:\n|$)/i);
+              
+              if (metaTitleMatch) {
+                metaSeoTitle = metaTitleMatch[1].trim();
+                console.log('✅ Extracted metaSeoTitle from content:', metaSeoTitle);
+              }
+              
+              if (metaDescMatch) {
+                metaDescription = metaDescMatch[1].trim();
+                console.log('✅ Extracted metaDescription from content:', metaDescription);
+              }
             }
             
             // Validate content completeness
