@@ -394,13 +394,42 @@ ${callData}`;
 
         const responseContent = completion.choices[0]?.message?.content;
         if (!responseContent) {
+          console.error(`❌ No response content from chunk ${index + 1}`);
           throw new Error(`No response from chunk ${index + 1} analysis`);
         }
 
+        console.log(`🔍 Chunk ${index + 1} raw response (first 200 chars):`, responseContent.substring(0, 200));
+
         try {
-          return JSON.parse(responseContent);
-        } catch {
-          throw new Error(`Invalid JSON response from chunk ${index + 1}`);
+          const parsed = JSON.parse(responseContent);
+          console.log(`✅ Chunk ${index + 1} JSON parsed successfully`);
+          return parsed;
+        } catch (jsonError: any) {
+          console.error(`❌ JSON Parse Error in chunk ${index + 1}:`, jsonError.message);
+          console.error(`❌ Raw response content:`, responseContent);
+          
+          // Try to extract JSON from response if it's wrapped in text
+          const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              const extractedJson = JSON.parse(jsonMatch[0]);
+              console.log(`✅ Extracted JSON from chunk ${index + 1} successfully`);
+              return extractedJson;
+            } catch (extractError) {
+              console.error(`❌ Failed to extract JSON from chunk ${index + 1}:`, extractError);
+            }
+          }
+          
+          // Return empty structure as fallback to prevent total failure
+          console.log(`⚠️ Using fallback empty structure for chunk ${index + 1}`);
+          return { 
+            painPoints: [],
+            metadata: { 
+              chunkIndex: index + 1,
+              error: 'Invalid JSON response',
+              fallback: true 
+            }
+          };
         }
       });
 
@@ -411,8 +440,17 @@ ${callData}`;
       // Merge and deduplicate pain points from all chunks
       const allPainPoints: VoCPainPoint[] = [];
       const seenThemes = new Set<string>();
+      let successfulChunks = 0;
+      let fallbackChunks = 0;
       
       chunkResults.forEach((chunkData, chunkIndex) => {
+        if (chunkData.metadata?.fallback) {
+          fallbackChunks++;
+          console.log(`⚠️ Chunk ${chunkIndex + 1} used fallback response`);
+        } else {
+          successfulChunks++;
+        }
+        
         (chunkData.painPoints || []).forEach((painPoint: any) => {
           const normalizedTheme = painPoint.theme?.toLowerCase().trim();
           
@@ -458,7 +496,12 @@ ${callData}`;
         }
       };
 
-      console.log(`✅ Optimized analysis complete: ${allPainPoints.length} unique pain points in ${Date.now() - startTime}ms`);
+      console.log(`✅ Optimized analysis complete:`);
+      console.log(`   📊 ${allPainPoints.length} unique pain points extracted`);
+      console.log(`   ✅ ${successfulChunks} chunks processed successfully`);
+      console.log(`   ⚠️ ${fallbackChunks} chunks used fallback responses`);
+      console.log(`   ⏱️ Total processing time: ${Date.now() - startTime}ms`);
+      
       return result;
 
     } catch (error: any) {
