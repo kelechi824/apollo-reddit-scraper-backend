@@ -309,26 +309,47 @@ router.post('/analyze-synchronous', async (req, res) => {
     const startTime = Date.now();
     
     const vocAnalyzer = new VoCThematicAnalyzer();
-    const liquidResult = await vocAnalyzer.getLiquidVariables(daysBack, maxCalls);
+    
+    // Use the regular analyzeThemes method instead of optimized for reliability
+    // Why this matters: The optimized chunked approach is causing JSON parsing errors in production
+    const analysisResult = await vocAnalyzer.analyzeThemes(daysBack, Math.min(maxCalls, 250)); // Limit to 250 for reliability
+    
+    // Format as liquid variables
+    const variables: Record<string, string> = {};
+    analysisResult.painPoints.forEach(point => {
+      variables[point.liquidVariable] = `{{ pain_points.${point.liquidVariable} }}`;
+    });
+
+    const liquidResult = {
+      variables,
+      painPoints: analysisResult.painPoints,
+      metadata: {
+        totalPainPoints: analysisResult.painPoints.length,
+        callsAnalyzed: analysisResult.totalCallsAnalyzed,
+        analysisDate: analysisResult.analysisTimestamp
+      }
+    };
     
     const processingTime = Date.now() - startTime;
     console.log(`✅ High-efficiency VoC analysis completed in ${processingTime}ms (${Math.round(processingTime/1000)}s)`);
+    console.log(`📊 Extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls`);
     
     res.json({
       success: true,
       data: liquidResult,
       processingTime,
-      message: `Successfully extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls using optimized parallel processing`,
+      message: `Successfully extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls using reliable single-model processing`,
       timestamp: new Date().toISOString(),
       optimization: {
-        parallelProcessing: true,
-        callVolume: maxCalls,
-        efficiencyGain: `~${Math.round((150000 - processingTime) / 1000)}s faster than sequential processing`
+        parallelProcessing: false, // Using reliable single analysis
+        callVolume: Math.min(maxCalls, 250),
+        reliabilityImprovement: "Switched to single-model analysis for consistent JSON responses"
       }
     });
 
   } catch (error: any) {
     console.error('❌ Error in high-efficiency VoC analysis:', error.message);
+    console.error('❌ Full error stack:', error.stack);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -336,7 +357,8 @@ router.post('/analyze-synchronous', async (req, res) => {
       timestamp: new Date().toISOString(),
       optimization: {
         attempted: true,
-        callVolume: req.body.maxCalls || 300
+        callVolume: req.body.maxCalls || 300,
+        errorDetails: error.stack
       }
     });
   }
