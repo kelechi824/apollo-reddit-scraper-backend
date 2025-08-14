@@ -630,19 +630,36 @@ Always prioritize customer language and sales team pain points. Focus on go-to-m
     // Create variable lookup map from matched pain points
     const variableMap = new Map<string, string>();
     
-    vocPainPoints.forEach(match => {
+    vocPainPoints.forEach((match, index) => {
       const { pain_point, customer_quotes } = match;
       
       // Map liquid variable patterns to actual content
       const variableKey = pain_point.liquidVariable;
       const painPointDescription = pain_point.description;
       const topCustomerQuote = customer_quotes[0]; // Use the top customer quote
+      const painPointTheme = pain_point.theme;
       
-      // Store multiple replacement options
-      variableMap.set(`pain_points.${variableKey}`, painPointDescription);
+      // Store specific VoC variables (original format)
+      variableMap.set(`pain_points.${variableKey}`, painPointTheme);
       variableMap.set(`pain_points.${variableKey}_quote`, topCustomerQuote);
-      variableMap.set(`pain_points.${variableKey}_theme`, pain_point.theme);
+      variableMap.set(`pain_points.${variableKey}_theme`, painPointTheme);
+      variableMap.set(`pain_points.${variableKey}_description`, painPointDescription);
+      
+      // Store generic indexed variables (theme_1, theme_2, etc.) for fallback
+      variableMap.set(`pain_points.theme_${index + 1}`, painPointTheme);
+      variableMap.set(`pain_points.quote_${index + 1}`, topCustomerQuote);
+      variableMap.set(`pain_points.description_${index + 1}`, painPointDescription);
+      
+      // Add common generic patterns
+      if (index === 0) {
+        variableMap.set('pain_points.primary_theme', painPointTheme);
+        variableMap.set('pain_points.primary_quote', topCustomerQuote);
+        variableMap.set('pain_points.top_pain_point', painPointTheme);
+      }
     });
+    
+    // Add debug logging
+    console.log('🔍 Available VoC variables:', Array.from(variableMap.keys()));
     
     // Process each CTA component
     const processedCTA: CTAStructure = {
@@ -670,11 +687,36 @@ Always prioritize customer language and sales team pain points. Focus on go-to-m
       const trimmedName = variableName.trim();
       
       if (variableMap.has(trimmedName)) {
-        console.log(`🔄 Replacing ${match} with VoC content`);
-        return variableMap.get(trimmedName) || match;
+        const replacement = variableMap.get(trimmedName) || match;
+        console.log(`🔄 Replacing ${match} with "${replacement}"`);
+        return replacement;
       }
       
-      // Return original if no replacement found
+      // Enhanced fallback: try common patterns if exact match not found
+      const fallbackPatterns = [
+        trimmedName.replace('theme_', 'description_'), // theme_2 -> description_2
+        trimmedName.replace('pain_points.', ''),       // Remove prefix and try again
+        'pain_points.primary_theme',                   // Default to primary theme
+        'pain_points.top_pain_point'                   // Default to top pain point
+      ];
+      
+      for (const pattern of fallbackPatterns) {
+        if (variableMap.has(pattern)) {
+          const replacement = variableMap.get(pattern) || match;
+          console.log(`🔄 Fallback replacing ${match} with "${replacement}" using pattern ${pattern}`);
+          return replacement;
+        }
+      }
+      
+      // If still no match, try to get the first available pain point theme
+      for (const [key, value] of variableMap.entries()) {
+        if (key.includes('theme_1') || key.includes('primary_theme')) {
+          console.log(`🔄 Final fallback replacing ${match} with "${value}" using ${key}`);
+          return value;
+        }
+      }
+      
+      console.log(`⚠️ No replacement found for ${match}, keeping original`);
       return match;
     });
     
