@@ -75,6 +75,13 @@ class PersonaPainPointMatcher {
   ): Promise<PersonaPainPointMatch> {
     try {
       console.log(`🎯 Matching persona "${contentAnalysis.persona}" to pain points`);
+      console.log(`📄 Content analysis:`, {
+        persona: contentAnalysis.persona,
+        industry: contentAnalysis.industry_context,
+        themes: contentAnalysis.content_themes,
+        topics: contentAnalysis.key_topics,
+        intent: contentAnalysis.content_intent
+      });
 
       // Get VoC pain points if not provided
       if (!vocPainPoints) {
@@ -179,8 +186,17 @@ class PersonaPainPointMatcher {
         contextScore * 0.25       // 25% weight on context
       );
 
-      // Only include pain points with meaningful relevance (> 0.3)
-      if (compositeScore > 0.3) {
+      console.log(`🔍 Pain point "${painPoint.theme}" scores:`, {
+        personaScore: personaScore.toFixed(3),
+        themeScore: themeScore.toFixed(3),
+        contextScore: contextScore.toFixed(3),
+        compositeScore: compositeScore.toFixed(3),
+        threshold: 0.05,
+        willMatch: compositeScore > 0.05
+      });
+
+      // Include pain points with any meaningful relevance (> 0.05) - very permissive for broader matching
+      if (compositeScore > 0.05) {
         const matchingReason = this.generateMatchingReason(
           personaScore,
           themeScore,
@@ -449,6 +465,17 @@ class PersonaPainPointMatcher {
       }
     }
 
+    // Generous fallback: any sales-related persona gets minimum score for all sales pain points
+    if (persona.toLowerCase().includes('sales') || 
+        persona.toLowerCase().includes('sdr') ||
+        persona.toLowerCase().includes('bdr') ||
+        persona.toLowerCase().includes('ae') ||
+        persona.toLowerCase().includes('rep') ||
+        persona.toLowerCase().includes('vp') ||
+        persona.toLowerCase().includes('director')) {
+      score = Math.max(score, 0.3); // Minimum baseline for sales personas
+    }
+
     return Math.min(score, 1.0); // Cap at 1.0
   }
 
@@ -484,10 +511,32 @@ class PersonaPainPointMatcher {
       }
     });
 
+    // Generous keyword matching - look for sales-related keywords in any content
+    const allContent = (contentThemes.join(' ') + ' ' + keyTopics.join(' ')).toLowerCase();
+    const salesKeywords = [
+      'sales', 'prospect', 'lead', 'outreach', 'pipeline', 'quota', 'revenue',
+      'automation', 'ai', 'personalization', 'efficiency', 'productivity',
+      'data', 'contact', 'crm', 'sequence', 'campaign', 'conversion',
+      'research', 'qualification', 'forecasting', 'scaling', 'team',
+      'manual', 'process', 'workflow', 'integration', 'visibility'
+    ];
+
+    // Give base score for sales-related content
+    const matchedKeywords = salesKeywords.filter(keyword => allContent.includes(keyword));
+    if (matchedKeywords.length > 0) {
+      score += 0.3; // Base sales content bonus
+    }
+
     // Apply theme priorities
     const themeKey = painPoint.liquidVariable.toLowerCase();
     if (themePriorities[themeKey]) {
       score += themePriorities[themeKey] * 0.3;
+    }
+
+    // Minimum score for any sales-related content to ensure matches
+    if (allContent.includes('sales') || allContent.includes('prospect') || 
+        allContent.includes('lead') || allContent.includes('outreach')) {
+      score = Math.max(score, 0.2);
     }
 
     return Math.min(score, 1.0); // Cap at 1.0
