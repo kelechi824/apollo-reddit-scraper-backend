@@ -54,6 +54,18 @@ class VoCThematicAnalyzer {
   }
 
   /**
+   * Generate liquid variable name from theme
+   * Why this matters: Converts pain point themes into valid liquid variable names for VoC Kit.
+   */
+  private generateLiquidVariable(theme: string): string {
+    return theme
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .substring(0, 50); // Limit length
+  }
+
+  /**
    * Generate analysis prompt
    * Why this matters: Provides structured instructions for extracting thematic pain points.
    */
@@ -336,10 +348,206 @@ ${callData}`;
   }
 
   /**
-   * Get liquid variables for VoC Kit
-   * Why this matters: Formats pain points as liquid variables for the VoC Kit page.
+   * Optimized parallel analysis for high-volume call processing
+   * Why this matters: Processes 300+ calls using parallel OpenAI calls instead of single large analysis.
+   * Splits large datasets into manageable chunks for faster processing within Vercel timeouts.
    */
-  async getLiquidVariables(daysBack: number = 180, maxCalls: number = 250): Promise<{
+  async analyzeThemesOptimized(daysBack: number = 90, maxCalls: number = 300): Promise<VoCAnalysisResult> {
+    const startTime = Date.now();
+    
+    try {
+      console.log(`🧠 Starting optimized thematic analysis (${daysBack} days, ${maxCalls} calls)`);
+      
+      const callData = await this.vocExtractor.getCallDataForAnalysis(daysBack, maxCalls);
+      
+      if (callData.metadata.callsWithContent === 0) {
+        return {
+          painPoints: [],
+          totalCallsAnalyzed: 0,
+          analysisTimestamp: new Date().toISOString(),
+          processingTimeMs: Date.now() - startTime
+        };
+      }
+
+      console.log(`🤖 Processing ${callData.analysisText.length} characters with parallel gpt-4.1-nano analysis...`);
+      
+      // Split analysis text into chunks for parallel processing
+      const textChunks = this.splitTextIntoChunks(callData.analysisText, 4); // 4 parallel calls
+      
+      console.log(`🔄 Split into ${textChunks.length} chunks for parallel analysis`);
+      
+      // Process all chunks in parallel
+      const chunkPromises = textChunks.map(async (chunk, index) => {
+        console.log(`📝 Processing chunk ${index + 1}/${textChunks.length} (${chunk.length} chars)`);
+        
+        const completion = await this.openai.chat.completions.create({
+          model: 'gpt-4.1-nano-2025-04-14',
+          messages: [
+            {
+              role: 'user',
+              content: this.generateAnalysisPrompt(chunk)
+            }
+          ],
+          temperature: 0.1,
+          max_completion_tokens: 2000 // Smaller per chunk
+        });
+
+        const responseContent = completion.choices[0]?.message?.content;
+        if (!responseContent) {
+          console.error(`❌ No response content from chunk ${index + 1}`);
+          throw new Error(`No response from chunk ${index + 1} analysis`);
+        }
+
+        console.log(`🔍 Chunk ${index + 1} raw response (first 200 chars):`, responseContent.substring(0, 200));
+
+        try {
+          const parsed = JSON.parse(responseContent);
+          console.log(`✅ Chunk ${index + 1} JSON parsed successfully`);
+          return parsed;
+        } catch (jsonError: any) {
+          console.error(`❌ JSON Parse Error in chunk ${index + 1}:`, jsonError.message);
+          console.error(`❌ Raw response content:`, responseContent);
+          
+          // Try to extract JSON from response if it's wrapped in text
+          const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              const extractedJson = JSON.parse(jsonMatch[0]);
+              console.log(`✅ Extracted JSON from chunk ${index + 1} successfully`);
+              return extractedJson;
+            } catch (extractError) {
+              console.error(`❌ Failed to extract JSON from chunk ${index + 1}:`, extractError);
+            }
+          }
+          
+          // Return empty structure as fallback to prevent total failure
+          console.log(`⚠️ Using fallback empty structure for chunk ${index + 1}`);
+          return { 
+            painPoints: [],
+            metadata: { 
+              chunkIndex: index + 1,
+              error: 'Invalid JSON response',
+              fallback: true 
+            }
+          };
+        }
+      });
+
+      // Wait for all parallel analyses to complete
+      const chunkResults = await Promise.all(chunkPromises);
+      console.log(`✅ Completed ${chunkResults.length} parallel analyses`);
+      
+      // Merge and deduplicate pain points from all chunks
+      const allPainPoints: VoCPainPoint[] = [];
+      const seenThemes = new Set<string>();
+      let successfulChunks = 0;
+      let fallbackChunks = 0;
+      
+      chunkResults.forEach((chunkData, chunkIndex) => {
+        if (chunkData.metadata?.fallback) {
+          fallbackChunks++;
+          console.log(`⚠️ Chunk ${chunkIndex + 1} used fallback response`);
+        } else {
+          successfulChunks++;
+        }
+        
+        (chunkData.painPoints || []).forEach((painPoint: any) => {
+          const normalizedTheme = painPoint.theme?.toLowerCase().trim();
+          
+          if (normalizedTheme && !seenThemes.has(normalizedTheme)) {
+            seenThemes.add(normalizedTheme);
+            
+            allPainPoints.push({
+              id: `voc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              theme: painPoint.theme,
+              liquidVariable: this.generateLiquidVariable(painPoint.theme),
+              description: painPoint.description || painPoint.theme,
+              frequency: painPoint.frequency || 1,
+              severity: painPoint.severity || 'medium',
+              customerQuotes: painPoint.customerQuotes || [],
+              emotionalTriggers: painPoint.emotionalTriggers || [],
+              extractionTimestamp: new Date().toISOString(),
+              analysisMetadata: {
+                modelUsed: 'gpt-4.1-nano-2025-04-14',
+                callsAnalyzed: callData.metadata.totalCalls,
+                processingTime: Date.now() - startTime
+              },
+              sourceExcerpts: (painPoint.sourceExcerpts || []).map((excerpt: any) => ({
+                quote: excerpt.quote || '',
+                callTitle: excerpt.callTitle || 'Unknown Call',
+                callDate: excerpt.callDate || '',
+                excerpt: excerpt.excerpt || '',
+                callId: excerpt.callId || ''
+              }))
+            });
+          }
+        });
+      });
+
+      const result: VoCAnalysisResult = {
+        painPoints: allPainPoints,
+        totalCallsAnalyzed: callData.metadata.totalCalls,
+        analysisTimestamp: new Date().toISOString(),
+        processingTimeMs: Date.now() - startTime,
+        validationMetadata: {
+          dataSource: 'Gong API - Live Customer Calls (Optimized Processing)',
+          modelUsed: 'gpt-4.1-nano-2025-04-14 (Parallel)',
+          validationNote: 'Pain points extracted from real customer conversations using parallel analysis'
+        }
+      };
+
+      console.log(`✅ Optimized analysis complete:`);
+      console.log(`   📊 ${allPainPoints.length} unique pain points extracted`);
+      console.log(`   ✅ ${successfulChunks} chunks processed successfully`);
+      console.log(`   ⚠️ ${fallbackChunks} chunks used fallback responses`);
+      console.log(`   ⏱️ Total processing time: ${Date.now() - startTime}ms`);
+      
+      return result;
+
+    } catch (error: any) {
+      console.error('❌ Optimized VoC analysis failed:', error.message);
+      throw new Error(`Optimized VoC analysis failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Split text into chunks for parallel processing
+   * Why this matters: Divides large call datasets into smaller chunks that can be processed simultaneously.
+   */
+  private splitTextIntoChunks(text: string, chunkCount: number): string[] {
+    const avgChunkSize = Math.ceil(text.length / chunkCount);
+    const chunks: string[] = [];
+    
+    // Split by call boundaries to maintain context
+    const callSections = text.split('=== CALL');
+    const callsPerChunk = Math.ceil(callSections.length / chunkCount);
+    
+    for (let i = 0; i < chunkCount; i++) {
+      const startIndex = i * callsPerChunk;
+      const endIndex = Math.min(startIndex + callsPerChunk, callSections.length);
+      
+      if (startIndex < callSections.length) {
+        let chunk = callSections.slice(startIndex, endIndex).join('=== CALL');
+        
+        // Add call marker back if not the first chunk
+        if (i > 0 && chunk) {
+          chunk = '=== CALL' + chunk;
+        }
+        
+        if (chunk.trim()) {
+          chunks.push(chunk);
+        }
+      }
+    }
+    
+    return chunks.filter(chunk => chunk.trim().length > 0);
+  }
+
+  /**
+   * Get liquid variables for VoC Kit (Optimized)
+   * Why this matters: Formats pain points as liquid variables for the VoC Kit page using optimized analysis.
+   */
+  async getLiquidVariables(daysBack: number = 90, maxCalls: number = 300): Promise<{
     variables: Record<string, string>;
     painPoints: VoCPainPoint[];
     metadata: {
@@ -349,7 +557,7 @@ ${callData}`;
     };
   }> {
     try {
-      const result = await this.analyzeThemes(daysBack, maxCalls);
+      const result = await this.analyzeThemesOptimized(daysBack, maxCalls);
       
       const variables: Record<string, string> = {};
       result.painPoints.forEach(point => {
@@ -366,7 +574,7 @@ ${callData}`;
         }
       };
     } catch (error: any) {
-      console.error('❌ Failed to generate VoC liquid variables:', error.message);
+      console.error('❌ Failed to generate optimized VoC liquid variables:', error.message);
       throw error;
     }
   }
