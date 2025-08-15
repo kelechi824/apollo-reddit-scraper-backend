@@ -68,25 +68,24 @@ router.post('/generate-from-url', async (req: Request, res: Response): Promise<a
       console.log(`✅ Enhanced persona analysis complete: ${enhancedPersona?.primary_persona.confidence}% confidence`);
     }
 
-    // Step 4: Match persona to pain points
-    console.log('🎯 Step 4: Matching persona to VoC pain points...');
-    const painPointMatcher = new PersonaPainPointMatcher();
+    // Step 4: Use VoC Kit data for position-specific pain point matching
+    console.log('🎯 Step 4: Using enhanced position-specific pain point matching...');
     
     // Use VoC Kit data if provided, otherwise fall back to fresh analysis
     let vocPainPoints = undefined;
     if (voc_kit_data && voc_kit_data.extractedPainPoints) {
-      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points`);
+      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points for enhanced variety`);
       vocPainPoints = voc_kit_data.extractedPainPoints;
     }
-    
-    const painPointMatch = await painPointMatcher.matchPersonaToPainPoints(basicAnalysis, vocPainPoints);
 
-    console.log(`✅ Matched ${painPointMatch.matched_pain_points.length} pain points (${painPointMatch.matching_confidence}% confidence)`);
-
-    // Step 5: Generate hyper-relevant CTAs
-    console.log('✨ Step 5: Generating hyper-relevant CTAs...');
+    // Step 5: Generate hyper-relevant CTAs with position-specific matching
+    console.log('✨ Step 5: Generating diverse position-specific CTAs...');
     const ctaService = new CTAGenerationService();
-    const ctaResult = await ctaService.generateCTAs(painPointMatch, enhancedPersona, url);
+    
+    // Use the new position-specific matching method for enhanced variety
+    const ctaResult = vocPainPoints && vocPainPoints.length > 0 
+      ? await ctaService.generateCTAsWithPositionMatching(basicAnalysis, vocPainPoints, enhancedPersona, url)
+      : await ctaService.generateCTAs(await new PersonaPainPointMatcher().matchPersonaToPainPoints(basicAnalysis, vocPainPoints), enhancedPersona, url);
 
     const processingTime = Date.now() - startTime;
     console.log(`✅ CTA generation complete in ${processingTime}ms`);
@@ -163,25 +162,24 @@ router.post('/generate-from-text', async (req: Request, res: Response): Promise<
       console.log(`✅ Enhanced persona analysis complete: ${enhancedPersona?.primary_persona.confidence}% confidence`);
     }
 
-    // Step 4: Match persona to pain points
-    console.log('🎯 Step 4: Matching persona to VoC pain points...');
-    const painPointMatcher = new PersonaPainPointMatcher();
+    // Step 4: Use VoC Kit data for position-specific pain point matching
+    console.log('🎯 Step 4: Using enhanced position-specific pain point matching...');
     
     // Use VoC Kit data if provided, otherwise fall back to fresh analysis
     let vocPainPoints = undefined;
     if (voc_kit_data && voc_kit_data.extractedPainPoints) {
-      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points`);
+      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points for enhanced variety`);
       vocPainPoints = voc_kit_data.extractedPainPoints;
     }
-    
-    const painPointMatch = await painPointMatcher.matchPersonaToPainPoints(basicAnalysis, vocPainPoints);
 
-    console.log(`✅ Matched ${painPointMatch.matched_pain_points.length} pain points (${painPointMatch.matching_confidence}% confidence)`);
-
-    // Step 5: Generate hyper-relevant CTAs
-    console.log('✨ Step 5: Generating hyper-relevant CTAs...');
+    // Step 5: Generate hyper-relevant CTAs with position-specific matching
+    console.log('✨ Step 5: Generating diverse position-specific CTAs...');
     const ctaService = new CTAGenerationService();
-    const ctaResult = await ctaService.generateCTAs(painPointMatch, enhancedPersona, 'text-input');
+    
+    // Use the new position-specific matching method for enhanced variety
+    const ctaResult = vocPainPoints && vocPainPoints.length > 0 
+      ? await ctaService.generateCTAsWithPositionMatching(basicAnalysis, vocPainPoints, enhancedPersona, 'text-input')
+      : await ctaService.generateCTAs(await new PersonaPainPointMatcher().matchPersonaToPainPoints(basicAnalysis, vocPainPoints), enhancedPersona, 'text-input');
 
     const processingTime = Date.now() - startTime;
     console.log(`✅ CTA generation complete in ${processingTime}ms`);
@@ -258,25 +256,24 @@ router.post('/generate-from-markdown', async (req: Request, res: Response): Prom
       console.log(`✅ Enhanced persona analysis complete: ${enhancedPersona?.primary_persona.confidence}% confidence`);
     }
 
-    // Step 4: Match persona to pain points
-    console.log('🎯 Step 4: Matching persona to VoC pain points...');
-    const painPointMatcher = new PersonaPainPointMatcher();
+    // Step 4: Use VoC Kit data for position-specific pain point matching
+    console.log('🎯 Step 4: Using enhanced position-specific pain point matching...');
     
     // Use VoC Kit data if provided, otherwise fall back to fresh analysis
     let vocPainPoints = undefined;
     if (voc_kit_data && voc_kit_data.extractedPainPoints) {
-      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points`);
+      console.log(`📊 Using provided VoC Kit data with ${voc_kit_data.extractedPainPoints.length} pain points for enhanced variety`);
       vocPainPoints = voc_kit_data.extractedPainPoints;
     }
-    
-    const painPointMatch = await painPointMatcher.matchPersonaToPainPoints(basicAnalysis, vocPainPoints);
 
-    console.log(`✅ Matched ${painPointMatch.matched_pain_points.length} pain points (${painPointMatch.matching_confidence}% confidence)`);
-
-    // Step 5: Generate hyper-relevant CTAs
-    console.log('✨ Step 5: Generating hyper-relevant CTAs...');
+    // Step 5: Generate hyper-relevant CTAs with position-specific matching
+    console.log('✨ Step 5: Generating diverse position-specific CTAs...');
     const ctaService = new CTAGenerationService();
-    const ctaResult = await ctaService.generateCTAs(painPointMatch, enhancedPersona, 'markdown-input');
+    
+    // Use the new position-specific matching method for enhanced variety
+    const ctaResult = vocPainPoints && vocPainPoints.length > 0 
+      ? await ctaService.generateCTAsWithPositionMatching(basicAnalysis, vocPainPoints, enhancedPersona, 'markdown-input')
+      : await ctaService.generateCTAs(await new PersonaPainPointMatcher().matchPersonaToPainPoints(basicAnalysis, vocPainPoints), enhancedPersona, 'markdown-input');
 
     const processingTime = Date.now() - startTime;
     console.log(`✅ CTA generation complete in ${processingTime}ms`);

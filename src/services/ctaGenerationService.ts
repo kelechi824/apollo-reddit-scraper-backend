@@ -45,6 +45,23 @@ export interface CTAGenerationResult {
     customer_quotes_used: string[];
     liquid_variables_referenced: string[];
   };
+  position_specific_context?: {
+    beginning: {
+      pain_points: string[];
+      customer_quotes: string[];
+      liquid_variables: string[];
+    };
+    middle: {
+      pain_points: string[];
+      customer_quotes: string[];
+      liquid_variables: string[];
+    };
+    end: {
+      pain_points: string[];
+      customer_quotes: string[];
+      liquid_variables: string[];
+    };
+  };
   generation_metadata: {
     total_variants: number;
     generation_timestamp: string;
@@ -105,30 +122,56 @@ class CTAGenerationService {
       console.log(`🎯 Generating hyper-relevant CTAs for persona: ${personaPainPointMatch.persona}`);
       console.log(`📊 Using ${personaPainPointMatch.matched_pain_points.length} matched pain points`);
 
-      // Generate position-specific CTAs
+      // For backwards compatibility, use the original method if position-specific matching is not available
+      // But try to create diverse pain point selections for each position
+      const beginningPainPoints = this.selectPainPointsForPosition(personaPainPointMatch.matched_pain_points, 'beginning');
+      const middlePainPoints = this.selectPainPointsForPosition(personaPainPointMatch.matched_pain_points, 'middle'); 
+      const endPainPoints = this.selectPainPointsForPosition(personaPainPointMatch.matched_pain_points, 'end');
+
+      // Create position-specific matches
+      const beginningMatch = { ...personaPainPointMatch, matched_pain_points: beginningPainPoints };
+      const middleMatch = { ...personaPainPointMatch, matched_pain_points: middlePainPoints };
+      const endMatch = { ...personaPainPointMatch, matched_pain_points: endPainPoints };
+
+      // Generate position-specific CTAs with diverse pain points
       const beginningCTA = await this.generatePositionCTA(
         'beginning',
-        personaPainPointMatch,
+        beginningMatch,
         enhancedPersona,
         'awareness'
       );
 
       const middleCTA = await this.generatePositionCTA(
         'middle',
-        personaPainPointMatch,
+        middleMatch,
         enhancedPersona,
         'consideration'
       );
 
       const endCTA = await this.generatePositionCTA(
         'end',
-        personaPainPointMatch,
+        endMatch,
         enhancedPersona,
         'conversion'
       );
 
-      // Extract pain point context for metadata
-      const painPointContext = this.extractPainPointContext(personaPainPointMatch);
+      // Extract pain point context for metadata from all used pain points
+      const allUsedPainPoints = [
+        ...beginningPainPoints,
+        ...middlePainPoints.filter(mp => !beginningPainPoints.some(bp => bp.pain_point.id === mp.pain_point.id)),
+        ...endPainPoints.filter(ep => !beginningPainPoints.some(bp => bp.pain_point.id === ep.pain_point.id) && 
+                                     !middlePainPoints.some(mp => mp.pain_point.id === ep.pain_point.id))
+      ];
+      
+      const diversePainPointMatch = { ...personaPainPointMatch, matched_pain_points: allUsedPainPoints };
+      const painPointContext = this.extractPainPointContext(diversePainPointMatch);
+
+      // Extract position-specific contexts for detailed insights
+      const positionSpecificContext = {
+        beginning: this.extractPainPointContext(beginningMatch),
+        middle: this.extractPainPointContext(middleMatch),
+        end: this.extractPainPointContext(endMatch)
+      };
 
       // Calculate overall confidence score
       const confidenceScore = this.calculateConfidenceScore(personaPainPointMatch, enhancedPersona);
@@ -136,13 +179,30 @@ class CTAGenerationService {
       const result: CTAGenerationResult = {
         article_url: articleUrl,
         persona: personaPainPointMatch.persona,
-        matched_pain_points: personaPainPointMatch.matched_pain_points.length,
+        matched_pain_points: allUsedPainPoints.length,
         cta_variants: {
           beginning: beginningCTA,
           middle: middleCTA,
           end: endCTA
         },
         pain_point_context: painPointContext,
+        position_specific_context: {
+          beginning: {
+            pain_points: positionSpecificContext.beginning.primary_pain_points,
+            customer_quotes: positionSpecificContext.beginning.customer_quotes_used,
+            liquid_variables: positionSpecificContext.beginning.liquid_variables_referenced
+          },
+          middle: {
+            pain_points: positionSpecificContext.middle.primary_pain_points,
+            customer_quotes: positionSpecificContext.middle.customer_quotes_used,
+            liquid_variables: positionSpecificContext.middle.liquid_variables_referenced
+          },
+          end: {
+            pain_points: positionSpecificContext.end.primary_pain_points,
+            customer_quotes: positionSpecificContext.end.customer_quotes_used,
+            liquid_variables: positionSpecificContext.end.liquid_variables_referenced
+          }
+        },
         generation_metadata: {
           total_variants: 3,
           generation_timestamp: new Date().toISOString(),
@@ -152,6 +212,8 @@ class CTAGenerationService {
             'Pain point-driven messaging',
             'Persona-specific language',
             'Progressive funnel strategy',
+            'Position-specific pain point targeting',
+            'Diverse pain point utilization',
             'Social proof integration',
             'Clear value proposition',
             'Action-oriented CTAs'
@@ -159,12 +221,149 @@ class CTAGenerationService {
         }
       };
 
-      console.log(`✅ Generated 3 position-specific CTAs with ${confidenceScore}% confidence`);
+      console.log(`✅ Generated 3 diverse position-specific CTAs using ${allUsedPainPoints.length} unique pain points with ${confidenceScore}% confidence`);
       return result;
 
     } catch (error: any) {
       console.error('❌ CTA generation failed:', error);
       throw new Error(`CTA generation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate CTAs with enhanced position-specific pain point matching
+   * Why this matters: Uses the new position-specific matching to ensure maximum variety and relevance across all three CTAs.
+   */
+  async generateCTAsWithPositionMatching(
+    contentAnalysis: any,
+    vocPainPoints: any[],
+    enhancedPersona?: EnhancedPersonaResult,
+    articleUrl?: string
+  ): Promise<CTAGenerationResult> {
+    
+    const PersonaPainPointMatcher = require('./personaPainPointMatcher').default;
+    const matcher = new PersonaPainPointMatcher();
+    
+    try {
+      console.log(`🎯 Generating CTAs with position-specific pain point matching for persona: ${contentAnalysis.persona}`);
+
+      // Track used pain point IDs to ensure variety
+      const usedPainPointIds: string[] = [];
+
+      // Generate position-specific matches
+      const beginningMatch = await matcher.matchPersonaToPainPointsForPosition(
+        contentAnalysis, 'beginning', vocPainPoints, usedPainPointIds
+      );
+      
+      beginningMatch.matched_pain_points.forEach((pp: any) => usedPainPointIds.push(pp.pain_point.id));
+
+      const middleMatch = await matcher.matchPersonaToPainPointsForPosition(
+        contentAnalysis, 'middle', vocPainPoints, usedPainPointIds
+      );
+      
+      middleMatch.matched_pain_points.forEach((pp: any) => usedPainPointIds.push(pp.pain_point.id));
+
+      const endMatch = await matcher.matchPersonaToPainPointsForPosition(
+        contentAnalysis, 'end', vocPainPoints, usedPainPointIds
+      );
+
+      // Generate position-specific CTAs
+      const beginningCTA = await this.generatePositionCTA(
+        'beginning',
+        beginningMatch,
+        enhancedPersona,
+        'awareness'
+      );
+
+      const middleCTA = await this.generatePositionCTA(
+        'middle',
+        middleMatch,
+        enhancedPersona,
+        'consideration'
+      );
+
+      const endCTA = await this.generatePositionCTA(
+        'end',
+        endMatch,
+        enhancedPersona,
+        'conversion'
+      );
+
+      // Combine all pain points for comprehensive context
+      const allPainPoints = [
+        ...beginningMatch.matched_pain_points,
+        ...middleMatch.matched_pain_points,
+        ...endMatch.matched_pain_points
+      ];
+
+      const combinedMatch = {
+        persona: contentAnalysis.persona,
+        matched_pain_points: allPainPoints,
+        content_context: beginningMatch.content_context,
+        matching_confidence: Math.round((beginningMatch.matching_confidence + middleMatch.matching_confidence + endMatch.matching_confidence) / 3),
+        matching_timestamp: new Date().toISOString()
+      };
+
+      const painPointContext = this.extractPainPointContext(combinedMatch);
+      const confidenceScore = this.calculateConfidenceScore(combinedMatch, enhancedPersona);
+
+      // Extract position-specific contexts for detailed insights
+      const positionSpecificContext = {
+        beginning: this.extractPainPointContext(beginningMatch),
+        middle: this.extractPainPointContext(middleMatch),
+        end: this.extractPainPointContext(endMatch)
+      };
+
+      const result: CTAGenerationResult = {
+        article_url: articleUrl,
+        persona: contentAnalysis.persona,
+        matched_pain_points: allPainPoints.length,
+        cta_variants: {
+          beginning: beginningCTA,
+          middle: middleCTA,
+          end: endCTA
+        },
+        pain_point_context: painPointContext,
+        position_specific_context: {
+          beginning: {
+            pain_points: positionSpecificContext.beginning.primary_pain_points,
+            customer_quotes: positionSpecificContext.beginning.customer_quotes_used,
+            liquid_variables: positionSpecificContext.beginning.liquid_variables_referenced
+          },
+          middle: {
+            pain_points: positionSpecificContext.middle.primary_pain_points,
+            customer_quotes: positionSpecificContext.middle.customer_quotes_used,
+            liquid_variables: positionSpecificContext.middle.liquid_variables_referenced
+          },
+          end: {
+            pain_points: positionSpecificContext.end.primary_pain_points,
+            customer_quotes: positionSpecificContext.end.customer_quotes_used,
+            liquid_variables: positionSpecificContext.end.liquid_variables_referenced
+          }
+        },
+        generation_metadata: {
+          total_variants: 3,
+          generation_timestamp: new Date().toISOString(),
+          model_used: 'gpt-4.1-nano-2025-04-14',
+          confidence_score: confidenceScore,
+          cro_principles_applied: [
+            'Position-specific pain point matching',
+            'Enhanced pain point diversity',
+            'Persona-specific language',
+            'Progressive funnel strategy',
+            'Social proof integration',
+            'Clear value proposition',
+            'Action-oriented CTAs'
+          ]
+        }
+      };
+
+      console.log(`✅ Generated 3 position-matched CTAs using ${allPainPoints.length} unique pain points with ${confidenceScore}% confidence`);
+      return result;
+
+    } catch (error: any) {
+      console.error('❌ Position-specific CTA generation failed:', error);
+      throw new Error(`Position-specific CTA generation failed: ${error.message}`);
     }
   }
 
@@ -671,6 +870,95 @@ Always prioritize customer language and sales team pain points. Focus on go-to-m
     
     console.log(`✅ VoC variable processing complete - ${variableMap.size} variables available`);
     return processedCTA;
+  }
+
+  /**
+   * Select pain points optimized for specific CTA position
+   * Why this matters: Ensures each CTA position gets pain points that align with reader psychology at that stage.
+   */
+  private selectPainPointsForPosition(
+    allPainPoints: Array<{
+      pain_point: any;
+      relevance_score: number;
+      matching_reason: string;
+      liquid_variable: string;
+      customer_quotes: string[];
+    }>,
+    position: 'beginning' | 'middle' | 'end'
+  ): Array<{
+    pain_point: any;
+    relevance_score: number;
+    matching_reason: string;
+    liquid_variable: string;
+    customer_quotes: string[];
+  }> {
+    
+    // Categories that work well for each position
+    const positionCategories = {
+      beginning: ['manual', 'process', 'efficiency', 'data', 'accuracy', 'time'],  // Problem recognition
+      middle: ['lead', 'prospect', 'pipeline', 'integration', 'tool', 'platform'], // Solution evaluation  
+      end: ['quota', 'performance', 'roi', 'budget', 'scaling', 'growth']          // Decision/results
+    };
+
+    const relevantCategories = positionCategories[position];
+    
+    // Score pain points based on position relevance
+    const scoredPainPoints = allPainPoints.map(pp => {
+      const theme = pp.pain_point.theme.toLowerCase();
+      const liquidVar = pp.pain_point.liquidVariable.toLowerCase();
+      
+      // Check if pain point relates to position-specific categories
+      let positionScore = 0;
+      for (const category of relevantCategories) {
+        if (theme.includes(category) || liquidVar.includes(category)) {
+          positionScore += 0.2;
+        }
+      }
+
+      // Boost for high severity on decision stage
+      if (position === 'end' && pp.pain_point.severity === 'high') {
+        positionScore += 0.3;
+      }
+
+      // Boost for high frequency on awareness stage  
+      if (position === 'beginning' && pp.pain_point.frequency > 5) {
+        positionScore += 0.2;
+      }
+
+      return {
+        ...pp,
+        position_relevance: positionScore,
+        combined_score: pp.relevance_score + positionScore
+      };
+    });
+
+    // Sort by combined score and select top ones for this position
+    const sortedPainPoints = scoredPainPoints.sort((a, b) => b.combined_score - a.combined_score);
+    
+    // Select different pain points for each position to ensure variety
+    const positionOffset = position === 'beginning' ? 0 : position === 'middle' ? 1 : 2;
+    const selectedPainPoints: typeof allPainPoints = [];
+    
+    // Take every 3rd pain point starting from position offset to distribute across positions
+    for (let i = positionOffset; i < sortedPainPoints.length && selectedPainPoints.length < 3; i += 3) {
+      selectedPainPoints.push(sortedPainPoints[i]);
+    }
+    
+    // If we don't have enough, fill with the highest scoring remaining ones
+    if (selectedPainPoints.length < 2) {
+      const used = new Set(selectedPainPoints.map(pp => pp.pain_point.id));
+      for (const pp of sortedPainPoints) {
+        if (!used.has(pp.pain_point.id) && selectedPainPoints.length < 3) {
+          selectedPainPoints.push(pp);
+          used.add(pp.pain_point.id);
+        }
+      }
+    }
+
+    console.log(`🎯 Selected ${selectedPainPoints.length} pain points for ${position} position:`, 
+      selectedPainPoints.map(pp => pp.pain_point.theme));
+    
+    return selectedPainPoints;
   }
   
   /**
