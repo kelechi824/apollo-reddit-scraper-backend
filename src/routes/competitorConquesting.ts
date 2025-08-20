@@ -15,6 +15,11 @@ interface CompetitorConquestingRequest {
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
   brand_kit?: any;
+  sitemap_data?: Array<{
+    title: string;
+    description: string;
+    url: string;
+  }>;
   system_prompt?: string;
   user_prompt?: string;
 }
@@ -28,6 +33,11 @@ interface BulkCompetitorRequest {
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
   brand_kit?: any;
+  sitemap_data?: Array<{
+    title: string;
+    description: string;
+    url: string;
+  }>;
   system_prompt?: string;
   user_prompt?: string;
 }
@@ -46,7 +56,7 @@ async function executeCompetitorPipeline(
   request: CompetitorConquestingRequest,
   progressCallback?: ProgressCallback
 ): Promise<any> {
-  const { keyword, url, target_audience, content_length, focus_areas, brand_kit, system_prompt, user_prompt } = request;
+  const { keyword, url, target_audience, content_length, focus_areas, brand_kit, sitemap_data, system_prompt, user_prompt } = request;
 
   try {
     console.log(`🎯 Starting competitor conquesting with workflowOrchestrator for: ${keyword} vs ${url}`);
@@ -184,6 +194,7 @@ async function executeCompetitorWorkflow(
       content_length: request.content_length,
       focus_areas: request.focus_areas,
       brand_kit: request.brand_kit,
+      sitemap_data: request.sitemap_data,
       system_prompt: request.system_prompt,
       user_prompt: request.user_prompt
     }, progressCallback);
@@ -203,14 +214,15 @@ async function executeCompetitorWorkflow(
 router.post('/generate-content', async (req: Request, res: Response): Promise<any> => {
   const startTime = Date.now();
   try {
-    const { 
-      keyword, 
-      url, 
+    const {
+      keyword,
+      url,
       competitor,
       target_audience, 
       content_length = 'medium', 
       focus_areas = [], 
       brand_kit, 
+      sitemap_data,
       system_prompt, 
       user_prompt 
     }: CompetitorConquestingRequest = req.body;
@@ -247,6 +259,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
           content_length,
           focus_areas,
           brand_kit,
+          sitemap_data,
           system_prompt,
           user_prompt
         }),
@@ -289,6 +302,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       content_length = 'medium', 
       focus_areas = [], 
       brand_kit, 
+      sitemap_data,
       system_prompt, 
       user_prompt 
     }: CompetitorConquestingRequest = req.body;
@@ -330,6 +344,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       content_length,
       focus_areas,
       brand_kit,
+      sitemap_data,
       system_prompt,
       user_prompt
     }, {

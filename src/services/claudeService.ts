@@ -622,6 +622,11 @@ MESSAGES SO FAR: ${conversation.messages.length}
     user_prompt: string;
     post_context: any;
     brand_kit: any;
+    sitemap_data?: Array<{
+      title: string;
+      description: string;
+      url: string;
+    }>;
     content_length?: 'short' | 'medium' | 'long';
   }): Promise<{ content: string; title?: string; description?: string; metaSeoTitle?: string; metaDescription?: string }> {
     if (!this.client) {
@@ -636,7 +641,20 @@ MESSAGES SO FAR: ${conversation.messages.length}
     console.log('📝 BACKEND - System Prompt (raw):', request.system_prompt);
     console.log('📝 BACKEND - User Prompt (raw):', request.user_prompt);
     console.log('📝 BACKEND - Brand Kit:', request.brand_kit);
+    console.log('🗺️ BACKEND - Sitemap Data:', request.sitemap_data ? `${request.sitemap_data.length} URLs available` : 'No sitemap data');
     console.log('📝 BACKEND - Content Length:', request.content_length);
+    
+    // Debug: Check if sitemap data is in the user prompt
+    if (request.sitemap_data && request.sitemap_data.length > 0) {
+      const hasInternalLinksSection = request.user_prompt.includes('AVAILABLE INTERNAL LINKS');
+      console.log(`🔍 [DEBUG] Internal links section in prompt:`, hasInternalLinksSection);
+      if (hasInternalLinksSection) {
+        const internalLinksMatch = request.user_prompt.match(/\*\*AVAILABLE INTERNAL LINKS[^:]*:\*\*([\s\S]*?)(?:\*\*|$)/);
+        if (internalLinksMatch) {
+          console.log(`🔗 [DEBUG] Internal links found in prompt:`, internalLinksMatch[1].substring(0, 300) + '...');
+        }
+      }
+    }
 
     // Calculate dynamic token limit based on content length
     const maxTokens = this.calculateTokenLimit(request.content_length);

@@ -47,6 +47,11 @@ interface WorkflowRequest {
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
   brand_kit?: any;
+  sitemap_data?: Array<{
+    title: string;
+    description: string;
+    url: string;
+  }>;
   system_prompt?: string;
   user_prompt?: string;
 }

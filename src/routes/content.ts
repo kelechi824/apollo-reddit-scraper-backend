@@ -14,6 +14,11 @@ interface ContentCreationRequest {
     audience_summary: string;
   };
   brand_kit?: any; // Optional since variables are processed on frontend
+  sitemap_data?: Array<{
+    title: string;
+    description: string;
+    url: string;
+  }>;
   system_prompt: string;
   user_prompt: string;
 }
@@ -26,7 +31,7 @@ interface ContentCreationRequest {
  */
 router.post('/generate', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { post_context, system_prompt, user_prompt, brand_kit }: ContentCreationRequest = req.body;
+    const { post_context, system_prompt, user_prompt, brand_kit, sitemap_data }: ContentCreationRequest = req.body;
 
     if (!post_context || !system_prompt || !user_prompt) {
       return res.status(400).json({
@@ -44,7 +49,8 @@ router.post('/generate', async (req: Request, res: Response): Promise<any> => {
       system_prompt,
       user_prompt,
       post_context,
-      brand_kit
+      brand_kit,
+      sitemap_data
     });
 
     // Handle LinkedIn post variations

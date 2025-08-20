@@ -928,6 +928,163 @@ This analysis provides the foundation for creating superior content that outrank
       ctaInsertionPoints
     };
   }
+
+  /**
+   * Extract only title and description for sitemap building (lightweight)
+   * Why this matters: Much faster than full content extraction, perfect for building link databases
+   */
+  async extractMetadataOnly(url: string): Promise<{
+    success: boolean;
+    title?: string;
+    description?: string;
+    error?: string;
+    isRateLimit?: boolean;
+  }> {
+    try {
+      console.log(`🏷️ Extracting metadata from: ${url}`);
+
+      // Use minimal Firecrawl extraction focused on metadata only
+      const result = await this.firecrawl.scrapeUrl(url, {
+        formats: ['markdown'],
+        onlyMainContent: true,
+        timeout: 10000 // Short timeout for speed
+      });
+
+      if (result.success) {
+        // Extract title from markdown/HTML content  
+        const content = result.markdown || '';
+        const metadata = result.metadata || {};
+        
+        const title = metadata.title || 
+                     metadata.ogTitle || 
+                     this.extractTitleFromContent(content) ||
+                     this.extractTitleFromUrl(url);
+                     
+        const description = metadata.description || 
+                           metadata.ogDescription ||
+                           'No description available';
+        
+        return {
+          success: true,
+          title,
+          description
+        };
+      }
+
+      // Fallback if extraction fails
+      return {
+        success: true,
+        title: this.extractTitleFromUrl(url),
+        description: this.generateDescriptionFromUrl(url)
+      };
+
+    } catch (error: any) {
+      console.warn(`⚠️ Metadata extraction failed for ${url}:`, error.message);
+      
+      // Check if it's a rate limit error (429)
+      const isRateLimit = error.message && (
+        error.message.includes('429') || 
+        error.message.includes('Too Many Requests') ||
+        error.message.includes('rate limit')
+      );
+      
+      return {
+        success: false,
+        title: this.extractTitleFromUrl(url),
+        description: isRateLimit ? 'Rate limited - will retry with fewer workers' : this.generateDescriptionFromUrl(url),
+        error: error.message,
+        isRateLimit: isRateLimit
+      };
+    }
+  }
+
+  /**
+   * Extract title from markdown content
+   * Why this matters: Gets title from content when metadata is missing
+   */
+  private extractTitleFromContent(content: string): string | null {
+    if (!content) return null;
+    
+    // Look for markdown h1 title
+    const h1Match = content.match(/^#\s+(.+)$/m);
+    if (h1Match) return h1Match[1].trim();
+    
+    // Look for first line that looks like a title
+    const lines = content.split('\n').filter(line => line.trim());
+    if (lines.length > 0) {
+      const firstLine = lines[0].trim();
+      // If first line is not too long and doesn't start with common content markers
+      if (firstLine.length < 100 && !firstLine.startsWith('http') && !firstLine.includes('|')) {
+        return firstLine.replace(/[#*]/g, '').trim();
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract title from URL as fallback
+   * Why this matters: Provides readable titles when metadata extraction fails
+   */
+  private extractTitleFromUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      
+      // Remove leading/trailing slashes and split by slashes
+      const segments = pathname.replace(/^\/+|\/+$/g, '').split('/');
+      
+      // Take the last meaningful segment
+      const lastSegment = segments[segments.length - 1] || segments[segments.length - 2] || 'Home';
+      
+      // Convert hyphens/underscores to spaces and title case
+      return lastSegment
+        .replace(/[-_]/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase());
+        
+    } catch (error) {
+      return 'Untitled Page';
+    }
+  }
+
+  /**
+   * Generate intelligent description from URL path
+   * Why this matters: Provides meaningful descriptions when scraping fails
+   */
+  private generateDescriptionFromUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const segments = pathname.replace(/^\/+|\/+$/g, '').split('/');
+      
+      // Generate description based on URL structure
+      if (segments.includes('academy')) {
+        if (segments.includes('webinars')) {
+          return 'Apollo Academy webinar with sales training and best practices for revenue growth.';
+        } else if (segments.includes('templates')) {
+          return 'Apollo Academy template for sales outreach, email sequences, and prospecting workflows.';
+        } else if (segments.includes('workflows')) {
+          return 'Apollo Academy workflows and automation guides for sales process optimization.';
+        }
+        return 'Apollo Academy educational content for sales teams and revenue operations.';
+      } else if (segments.includes('product')) {
+        return 'Apollo product feature for sales intelligence, prospecting, and revenue growth.';
+      } else if (segments.includes('partners')) {
+        return 'Apollo partner program information and collaboration opportunities.';
+      } else if (segments.includes('blog') || segments.includes('resources')) {
+        return 'Apollo resource providing sales insights, best practices, and industry trends.';
+      } else if (segments.includes('pricing')) {
+        return 'Apollo pricing information and subscription plans for sales teams.';
+      }
+      
+      // Generic fallback with URL context
+      const title = this.extractTitleFromUrl(url);
+      return `Learn more about ${title.toLowerCase()} and how it can help your sales team succeed.`;
+      
+    } catch (error) {
+      return 'Apollo sales intelligence and engagement platform resource.';
+    }
+  }
 }
 
 export default FirecrawlService;
