@@ -32,6 +32,7 @@ export interface ApiInfoResponse {
     enhancedPersonaDetection: string;
     ctaGeneration: string;
     competitorConquesting: string;
+    sitemap: string;
   };
   };
 }

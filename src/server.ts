@@ -22,6 +22,7 @@ import personaPainPointMatchingRoutes from './routes/personaPainPointMatching';
 import enhancedPersonaDetectionRoutes from './routes/enhancedPersonaDetection';
 import ctaGenerationRoutes from './routes/ctaGeneration';
 import competitorConquestingRoutes from './routes/competitorConquesting';
+import sitemapRoutes from './routes/sitemap';
 
 // Load environment variables
 dotenv.config();
@@ -33,12 +34,13 @@ const PORT: number = parseInt(process.env.PORT || '3003', 10);
 app.use(cors({
   origin: [
     'http://localhost:3002', // Local frontend
+    'http://localhost:3000', // Alternative frontend port
     'https://apollo-reddit-scraper-frontend.vercel.app', // Production frontend
   ],
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // API Routes
 app.use('/api/reddit', redditRoutes);
@@ -61,6 +63,7 @@ app.use('/api/persona-pain-point-matching', personaPainPointMatchingRoutes);
 app.use('/api/enhanced-persona-detection', enhancedPersonaDetectionRoutes);
 app.use('/api/cta-generation', ctaGenerationRoutes);
 app.use('/api/competitor-conquesting', competitorConquestingRoutes);
+app.use('/api/sitemap', sitemapRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -99,7 +102,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         personaPainPointMatching: '/api/persona-pain-point-matching/*',
         enhancedPersonaDetection: '/api/enhanced-persona-detection/*',
         ctaGeneration: '/api/cta-generation/*',
-        competitorConquesting: '/api/competitor-conquesting/*'
+        competitorConquesting: '/api/competitor-conquesting/*',
+        sitemap: '/api/sitemap/*'
       }
     }
   });

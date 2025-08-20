@@ -15,6 +15,11 @@ interface CompetitorConquestingRequest {
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
   brand_kit?: any;
+  sitemap_data?: Array<{
+    title: string;
+    description: string;
+    url: string;
+  }>;
   system_prompt?: string;
   user_prompt?: string;
 }
@@ -28,6 +33,11 @@ interface BulkCompetitorRequest {
   content_length?: 'short' | 'medium' | 'long';
   focus_areas?: string[];
   brand_kit?: any;
+  sitemap_data?: Array<{
+    title: string;
+    description: string;
+    url: string;
+  }>;
   system_prompt?: string;
   user_prompt?: string;
 }
@@ -46,7 +56,7 @@ async function executeCompetitorPipeline(
   request: CompetitorConquestingRequest,
   progressCallback?: ProgressCallback
 ): Promise<any> {
-  const { keyword, url, target_audience, content_length, focus_areas, brand_kit, system_prompt, user_prompt } = request;
+  const { keyword, url, target_audience, content_length, focus_areas, brand_kit, sitemap_data, system_prompt, user_prompt } = request;
 
   try {
     console.log(`🎯 Starting competitor conquesting with workflowOrchestrator for: ${keyword} vs ${url}`);
@@ -129,7 +139,7 @@ async function executeCompetitorPipeline(
 
     // Use workflowOrchestrator but with competitor-specific system prompt
     const competitorSystemPrompt = system_prompt || buildCompetitorSystemPrompt(request.competitor);
-    const competitorUserPrompt = user_prompt || buildCompetitorUserPrompt(keyword, url, competitorAnalysis);
+    const competitorUserPrompt = user_prompt || buildCompetitorUserPrompt(keyword, url, competitorAnalysis, sitemap_data);
 
     // Execute the workflow with competitor data override
     const result = await executeCompetitorWorkflow({
@@ -184,6 +194,7 @@ async function executeCompetitorWorkflow(
       content_length: request.content_length,
       focus_areas: request.focus_areas,
       brand_kit: request.brand_kit,
+      sitemap_data: request.sitemap_data,
       system_prompt: request.system_prompt,
       user_prompt: request.user_prompt
     }, progressCallback);
@@ -203,14 +214,15 @@ async function executeCompetitorWorkflow(
 router.post('/generate-content', async (req: Request, res: Response): Promise<any> => {
   const startTime = Date.now();
   try {
-    const { 
-      keyword, 
-      url, 
+    const {
+      keyword,
+      url,
       competitor,
       target_audience, 
       content_length = 'medium', 
       focus_areas = [], 
       brand_kit, 
+      sitemap_data,
       system_prompt, 
       user_prompt 
     }: CompetitorConquestingRequest = req.body;
@@ -247,6 +259,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
           content_length,
           focus_areas,
           brand_kit,
+          sitemap_data,
           system_prompt,
           user_prompt
         }),
@@ -289,6 +302,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       content_length = 'medium', 
       focus_areas = [], 
       brand_kit, 
+      sitemap_data,
       system_prompt, 
       user_prompt 
     }: CompetitorConquestingRequest = req.body;
@@ -330,6 +344,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       content_length,
       focus_areas,
       brand_kit,
+      sitemap_data,
       system_prompt,
       user_prompt
     }, {
@@ -522,20 +537,28 @@ FORMATTING REQUIREMENTS:
    - Use HTML <table> elements for any comparative data, features, or structured information
    - Use <strong> for emphasis and key concepts
    - Include inline citations as <a href="URL" target="_blank">anchor text</a>
+   - MANDATORY: Include 3-5 internal links from provided sitemap data for SEO and navigation
 
 2. **Tables and Structured Data:**
    - When presenting comparisons, features, pricing, or any structured data, ALWAYS use HTML tables
    - Use tables for: feature comparisons, pricing tiers, pros/cons, statistics, timelines, etc.
    - Include proper <thead>, <tbody>, <th>, and <td> elements
 
-3. **Brand Kit Variable Integration:**
-   - MUST process and include brand kit variables naturally throughout content
-   - Use ideal customer profile for testimonials and customer examples
-   - Include competitors when discussing competitive landscape
-   - Reference brand point of view in strategic sections
+3. **Brand Kit Variable Integration (COMPREHENSIVE):**
+   - MUST process and include ALL brand kit variables naturally throughout content
+   - Use {{ brand_kit.url }} for brand website references and authority building
+   - Incorporate {{ brand_kit.about_brand }} for company context and credibility  
+   - Use {{ brand_kit.ideal_customer_profile }} for testimonials, examples, and target audience references
+   - Include {{ brand_kit.competitors }} when discussing competitive landscape and market positioning
+   - Reference {{ brand_kit.brand_point_of_view }} in strategic sections and thought leadership
+   - Embody {{ brand_kit.author_persona }} throughout the writing voice and perspective
+   - Apply {{ brand_kit.tone_of_voice }} consistently throughout all content
+   - Use {{ brand_kit.header_case_type }} for all heading formatting (title case, sentence case, etc.)
+   - Follow {{ brand_kit.writing_rules }} for style consistency and guidelines
+   - Reference {{ brand_kit.writing_sample_url }}, {{ brand_kit.writing_sample_title }}, {{ brand_kit.writing_sample_body }}, and {{ brand_kit.writing_sample_outline }} for style and structure guidance
+   - Include {{ brand_kit.cta_text }} and {{ brand_kit.cta_destination }} appropriately
+   - Process any {{ brand_kit.custom_variables }} for additional brand-specific context
    - End with strong CTA using this exact anchor text: "${selectedCTA}" linking to ${apolloSignupURL}
-   - Apply tone of voice consistently throughout
-   - Follow writing rules for style and approach
 
 IMPORTANT: The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}. Do not reference 2024 or earlier years as current.
 
@@ -568,13 +591,30 @@ Remember: Create the definitive resource that makes other content feel incomplet
  * buildCompetitorUserPrompt
  * Why this matters: Provides a competitor-focused prompt that leverages the competitor URL analysis.
  */
-function buildCompetitorUserPrompt(keyword: string, competitorUrl: string, competitorAnalysis: ArticleContent): string {
+function buildCompetitorUserPrompt(keyword: string, competitorUrl: string, competitorAnalysis: ArticleContent, sitemapData?: Array<{title: string; description: string; url: string}>): string {
   const competitorContent = competitorAnalysis.top_results?.[0] || {};
   const competitorTitle = competitorContent.title || 'Competitor Article';
   const competitorHeadings = competitorContent.headings || [];
   const competitorWordCount = competitorContent.word_count || 0;
 
-  return `OBJECTIVE: Create comprehensive content for "${keyword}" that significantly outperforms this specific competitor page:
+  // Format sitemap data for internal linking if available
+  const internalLinksSection = sitemapData && sitemapData.length > 0 
+    ? `**AVAILABLE INTERNAL LINKS (MANDATORY - MUST USE 3-5 OF THESE):**
+${sitemapData.slice(0, 20).map((url: any) => `• ${url.title}: ${url.description} [${url.url}]`).join('\n')}
+${sitemapData.length > 20 ? `... and ${sitemapData.length - 20} more URLs available for linking` : ''}
+
+🚨 CRITICAL INTERNAL LINKING REQUIREMENTS:
+- You MUST include exactly 3-5 internal links from the above list in your content
+- Each internal link URL must be used ONLY ONCE per article (no duplicate links)
+- MANDATORY: Include at least ONE internal link in the introduction or within the first 2-3 paragraphs after defining the main topic/keyword
+- Distribute the remaining 2-4 internal links naturally throughout the rest of the content
+- Choose the most relevant URLs for your topic and context
+- Articles without internal links will be rejected
+
+`
+    : '**Note:** No sitemap data available for internal linking.\n\n';
+
+  return `${internalLinksSection}OBJECTIVE: Create comprehensive content for "${keyword}" that significantly outperforms this specific competitor page:
 
 TARGET COMPETITOR: ${competitorUrl}
 - Title: ${competitorTitle}
@@ -599,6 +639,10 @@ CONTENT STRATEGY:
 OUTPUT REQUIREMENTS:
 - Use HTML formatting with proper headers (<h1>, <h2>, <h3>)
 - Include inline hyperlink citations <a href="URL" target="_blank">anchor text</a>
+- MANDATORY: Include exactly 3-5 internal links using URLs from the AVAILABLE INTERNAL LINKS section above
+- Each internal link URL must be used ONLY ONCE (no duplicate links in the same article)
+- MANDATORY: Place at least ONE internal link early in the content (introduction or within first 2-3 paragraphs after defining the main topic)
+- Distribute remaining internal links naturally throughout the rest of the article
 - Create compelling, scannable content with proper <p> tags for paragraphs
 - Format lists with <ul>/<ol> and <li> tags, tables with <table>, <thead>, <tbody>, <th>, <td>
 - End with a contextual conclusion section (NOT "Getting Started with ${keyword}")

@@ -622,6 +622,11 @@ MESSAGES SO FAR: ${conversation.messages.length}
     user_prompt: string;
     post_context: any;
     brand_kit: any;
+    sitemap_data?: Array<{
+      title: string;
+      description: string;
+      url: string;
+    }>;
     content_length?: 'short' | 'medium' | 'long';
   }): Promise<{ content: string; title?: string; description?: string; metaSeoTitle?: string; metaDescription?: string }> {
     if (!this.client) {
@@ -636,7 +641,20 @@ MESSAGES SO FAR: ${conversation.messages.length}
     console.log('📝 BACKEND - System Prompt (raw):', request.system_prompt);
     console.log('📝 BACKEND - User Prompt (raw):', request.user_prompt);
     console.log('📝 BACKEND - Brand Kit:', request.brand_kit);
+    console.log('🗺️ BACKEND - Sitemap Data:', request.sitemap_data ? `${request.sitemap_data.length} URLs available` : 'No sitemap data');
     console.log('📝 BACKEND - Content Length:', request.content_length);
+    
+    // Debug: Check if sitemap data is in the user prompt
+    if (request.sitemap_data && request.sitemap_data.length > 0) {
+      const hasInternalLinksSection = request.user_prompt.includes('AVAILABLE INTERNAL LINKS');
+      console.log(`🔍 [DEBUG] Internal links section in prompt:`, hasInternalLinksSection);
+      if (hasInternalLinksSection) {
+        const internalLinksMatch = request.user_prompt.match(/\*\*AVAILABLE INTERNAL LINKS[^:]*:\*\*([\s\S]*?)(?:\*\*|$)/);
+        if (internalLinksMatch) {
+          console.log(`🔗 [DEBUG] Internal links found in prompt:`, internalLinksMatch[1].substring(0, 300) + '...');
+        }
+      }
+    }
 
     // Calculate dynamic token limit based on content length
     const maxTokens = this.calculateTokenLimit(request.content_length);
@@ -1503,58 +1521,105 @@ Focus all recommendations on conversion optimization opportunities from this spe
   }
 
   /**
-   * Process liquid variables in generated content
-   * Why this matters: Replaces brand kit variables like {{ brand_kit.cta_text }} with actual values.
+   * Process liquid variables in generated content using unified approach
+   * Why this matters: Dynamically replaces ALL brand kit variables with actual values using a consistent mapping system.
    */
   private processLiquidVariables(text: string, brandKit: any): string {
     if (!brandKit) return text;
     
     let processed = text;
     
-    // Replace standard brand kit variables
-    if (brandKit.url) {
-      processed = processed.replace(/\{\{\s*brand_kit\.url\s*\}\}/g, brandKit.url);
-    }
-    if (brandKit.aboutBrand) {
-      processed = processed.replace(/\{\{\s*brand_kit\.about_brand\s*\}\}/g, brandKit.aboutBrand);
-    }
-    if (brandKit.idealCustomerProfile) {
-      processed = processed.replace(/\{\{\s*brand_kit\.ideal_customer_profile\s*\}\}/g, brandKit.idealCustomerProfile);
-    }
-    if (brandKit.competitors) {
-      processed = processed.replace(/\{\{\s*brand_kit\.competitors\s*\}\}/g, brandKit.competitors);
-    }
-    if (brandKit.brandPointOfView) {
-      processed = processed.replace(/\{\{\s*brand_kit\.brand_point_of_view\s*\}\}/g, brandKit.brandPointOfView);
-    }
-    if (brandKit.authorPersona) {
-      processed = processed.replace(/\{\{\s*brand_kit\.author_persona\s*\}\}/g, brandKit.authorPersona);
-    }
-    if (brandKit.toneOfVoice) {
-      processed = processed.replace(/\{\{\s*brand_kit\.tone_of_voice\s*\}\}/g, brandKit.toneOfVoice);
-    }
-    if (brandKit.headerCaseType) {
-      processed = processed.replace(/\{\{\s*brand_kit\.header_case_type\s*\}\}/g, brandKit.headerCaseType);
-    }
-    if (brandKit.writingRules) {
-      processed = processed.replace(/\{\{\s*brand_kit\.writing_rules\s*\}\}/g, brandKit.writingRules);
-    }
-    if (brandKit.ctaText) {
-      processed = processed.replace(/\{\{\s*brand_kit\.cta_text\s*\}\}/g, brandKit.ctaText);
-    }
-    if (brandKit.ctaDestination) {
-      processed = processed.replace(/\{\{\s*brand_kit\.cta_destination\s*\}\}/g, brandKit.ctaDestination);
-    }
+    // UNIFIED APPROACH: Dynamic mapping with multiple liquid variable name variations
+    const brandKitMapping = {
+      // Property name -> array of possible liquid variable names Claude might use
+      'url': ['url', 'website'],
+      'aboutBrand': ['about_brand', 'about', 'brand_description'], 
+      'idealCustomerProfile': ['ideal_customer_profile', 'target', 'icp', 'target_audience'],
+      'competitors': ['competitors', 'competition'],
+      'brandPointOfView': ['brand_point_of_view', 'pov', 'brand_pov'],
+      'authorPersona': ['author_persona', 'author', 'author_profile'],
+      'toneOfVoice': ['tone_of_voice', 'tone', 'voice'], 
+      'headerCaseType': ['header_case_type', 'header_case', 'case_type'],
+      'writingRules': ['writing_rules', 'rules', 'style_rules'],
+      'ctaText': ['cta_text', 'cta', 'call_to_action'],
+      'ctaDestination': ['cta_destination', 'destination', 'cta_url', 'cta_link']
+    };
     
-    // Replace custom variables
-    if (brandKit.customVariables) {
-      Object.keys(brandKit.customVariables).forEach(key => {
-        const value = brandKit.customVariables[key];
-        if (value) {
-          const regex = new RegExp(`\\{\\{\\s*brand_kit\\.${key}\\s*\\}\\}`, 'g');
+    // Process all standard brand kit variables using unified approach with multiple name variations
+    Object.entries(brandKitMapping).forEach(([propertyName, liquidNames]) => {
+      const value = brandKit[propertyName];
+      if (value && typeof value === 'string') {
+        let replacementsMade = 0;
+        
+        // Try all possible liquid variable name variations
+        liquidNames.forEach(liquidName => {
+          const regex = new RegExp(`\\{\\{\\s*brand_kit\\.${liquidName}\\s*\\}\\}`, 'g');
+          const beforeLength = processed.length;
           processed = processed.replace(regex, value);
+          const afterLength = processed.length;
+          
+          if (beforeLength !== afterLength) {
+            replacementsMade++;
+            console.log(`✅ Processed brand_kit.${liquidName}: ${value.substring(0, 50)}...`);
+          }
+        });
+        
+        if (replacementsMade === 0) {
+          console.log(`⚠️ No replacements made for ${propertyName} (tried: ${liquidNames.join(', ')})`);
+        }
+      }
+    });
+    
+    // Process writing sample variables using unified approach with variations
+    if (brandKit.writingSample && typeof brandKit.writingSample === 'object') {
+      const writingSampleMapping = {
+        'url': ['writing_sample_url', 'sample_url', 'example_url'],
+        'title': ['writing_sample_title', 'sample_title', 'example_title'], 
+        'body': ['writing_sample_body', 'sample_body', 'example_body'],
+        'outline': ['writing_sample_outline', 'sample_outline', 'example_outline']
+      };
+      
+      Object.entries(writingSampleMapping).forEach(([propertyName, liquidNames]) => {
+        const value = brandKit.writingSample[propertyName];
+        if (value && typeof value === 'string') {
+          let replacementsMade = 0;
+          
+          liquidNames.forEach(liquidName => {
+            const regex = new RegExp(`\\{\\{\\s*brand_kit\\.${liquidName}\\s*\\}\\}`, 'g');
+            const beforeLength = processed.length;
+            processed = processed.replace(regex, value);
+            const afterLength = processed.length;
+            
+            if (beforeLength !== afterLength) {
+              replacementsMade++;
+              console.log(`✅ Processed brand_kit.${liquidName}: ${value.substring(0, 50)}...`);
+            }
+          });
+          
+          if (replacementsMade === 0) {
+            console.log(`⚠️ No replacements made for writingSample.${propertyName} (tried: ${liquidNames.join(', ')})`);
+          }
         }
       });
+    }
+    
+    // Process custom variables using unified approach (already working correctly)
+    if (brandKit.customVariables && typeof brandKit.customVariables === 'object') {
+      Object.entries(brandKit.customVariables).forEach(([key, value]) => {
+        if (value && typeof value === 'string') {
+          const regex = new RegExp(`\\{\\{\\s*brand_kit\\.${key}\\s*\\}\\}`, 'g');
+          processed = processed.replace(regex, value);
+          console.log(`✅ Processed brand_kit.${key}: ${value.substring(0, 50)}...`);
+        }
+      });
+    }
+    
+    // Debug: Log any remaining unprocessed brand_kit variables
+    const remainingVariables = processed.match(/\{\{\s*brand_kit\.[^}]+\s*\}\}/g);
+    if (remainingVariables) {
+      console.log('⚠️ Remaining unprocessed brand_kit variables:', remainingVariables);
+    } else {
+      console.log('✅ All brand_kit variables processed successfully');
     }
     
     return processed;
