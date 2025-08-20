@@ -185,7 +185,7 @@ class WorkflowOrchestrator {
     progressCallback?: WorkflowProgressCallback,
     jobId?: string
   ): Promise<BlogContentResult> {
-    const { keyword, competitor, target_audience, content_length = 'medium', focus_areas = [], brand_kit, system_prompt, user_prompt } = request;
+    const { keyword, competitor, target_audience, content_length = 'medium', focus_areas = [], brand_kit, system_prompt, user_prompt, sitemap_data } = request;
 
     if (!keyword || keyword.trim().length === 0) {
       throw createServiceError(new Error('Keyword is required for content generation pipeline'), 'Workflow Orchestrator', 'Input validation');
@@ -323,7 +323,8 @@ class WorkflowOrchestrator {
             brand_kit,
             system_prompt,
             user_prompt,
-            competitor
+            competitor,
+            sitemap_data
           );
 
           // Save progress
@@ -447,7 +448,12 @@ class WorkflowOrchestrator {
     brandKit?: any,
     customSystemPrompt?: string,
     customUserPrompt?: string,
-    competitor?: string
+    competitor?: string,
+    sitemapData?: Array<{
+      title: string;
+      description: string;
+      url: string;
+    }>
   ): Promise<{ content: string; title?: string; description?: string; metaSeoTitle?: string; metaDescription?: string }> {
     
     // Use custom prompts if provided, otherwise use default prompts with context
@@ -480,7 +486,24 @@ class WorkflowOrchestrator {
       const apolloSignupURL = competitor 
         ? generateApolloSignupURL(competitor)
         : generateBlogCreatorSignupURL(keyword);
+      // Format sitemap data for internal linking if available
+      const internalLinksSection = sitemapData && sitemapData.length > 0 
+        ? `**AVAILABLE INTERNAL LINKS (MANDATORY - MUST USE 3-5 OF THESE):**
+${sitemapData.slice(0, 20).map((url: any) => `• ${url.title}: ${url.description} [${url.url}]`).join('\n')}
+${sitemapData.length > 20 ? `... and ${sitemapData.length - 20} more URLs available for linking` : ''}
+
+🚨 CRITICAL INTERNAL LINKING REQUIREMENTS:
+- You MUST include exactly 3-5 internal links from the above list in your content
+- Each internal link URL must be used ONLY ONCE per article (no duplicate links)
+- MANDATORY: Include at least ONE internal link in the introduction or within the first 2-3 paragraphs after defining the main topic/keyword
+- Distribute the remaining 2-4 internal links naturally throughout the rest of the content
+- Choose the most relevant URLs for your topic and context
+- Articles without internal links will be rejected`
+        : '**Note:** No sitemap data available for internal linking.';
+
       userPrompt = `${baseUserPrompt}
+
+${internalLinksSection}
 
 ⚠️ CRITICAL COMPLETION REQUIREMENT:
 - MUST end with complete conclusion and call-to-action  
@@ -495,17 +518,29 @@ CRITICAL CONTENT REQUIREMENTS:
    - Format ALL lists with proper <ul>/<ol> and <li> tags
    - Create HTML tables for ANY structured data (features, comparisons, statistics, timelines)
    - Use <p> tags for all paragraphs, <strong> for emphasis
+   - Include inline links to relevant external resources: <a href="URL" target="_blank">anchor text</a>
+   - MUST include exactly 3-5 internal links using URLs from the AVAILABLE INTERNAL LINKS section above
+   - Each internal link URL must be used ONLY ONCE (no duplicate links in the same article)
+   - MANDATORY: Place at least ONE internal link early in the content (introduction or within first 2-3 paragraphs after defining the main topic)
+   - Distribute remaining internal links naturally throughout the rest of the article
 
 2. Required Tables/Structured Data:
    - Include at least 2-3 HTML tables presenting relevant information
    - Format tables with proper <thead>, <tbody>, <th>, and <td> elements
 
-3. Brand Kit Variable Integration (MANDATORY):
-   - Use {{ brand_kit.ideal_customer_profile }} for testimonials or examples
-   - Reference {{ brand_kit.competitors }} when discussing market landscape
-   - Apply {{ brand_kit.brand_point_of_view }} in strategic sections
-   - Follow {{ brand_kit.tone_of_voice }} throughout the content
-   - Implement {{ brand_kit.writing_rules }} for style consistency
+3. Brand Kit Variable Integration (MANDATORY - USE ALL VARIABLES):
+   - Use {{ brand_kit.url }} for brand website references and authority building
+   - Incorporate {{ brand_kit.about_brand }} for company context and credibility
+   - Use {{ brand_kit.ideal_customer_profile }} for testimonials, examples, and target audience references
+   - Reference {{ brand_kit.competitors }} when discussing market landscape and comparisons
+   - Apply {{ brand_kit.brand_point_of_view }} in strategic sections and thought leadership
+   - Embody {{ brand_kit.author_persona }} throughout the writing voice and perspective
+   - Follow {{ brand_kit.tone_of_voice }} consistently throughout all content
+   - Apply {{ brand_kit.header_case_type }} to all headings (title case, sentence case, etc.)
+   - Implement {{ brand_kit.writing_rules }} for style consistency and guidelines
+   - Use {{ brand_kit.writing_sample_url }}, {{ brand_kit.writing_sample_title }}, {{ brand_kit.writing_sample_body }}, and {{ brand_kit.writing_sample_outline }} as style and structure references
+   - Include {{ brand_kit.cta_text }} and {{ brand_kit.cta_destination }} for call-to-action elements
+   - Process any {{ brand_kit.custom_variables }} for additional brand-specific context
    - End with mandatory conclusion structure including CTA using this exact anchor text: "${selectedCTA}" linked to ${apolloSignupURL}
 
 4. Content Depth & Value:
@@ -532,6 +567,13 @@ CONTENT STRUCTURE REQUIREMENTS:
 5. **Practical Implementation Guidance** with step-by-step processes
 6. **Real-World Examples** and case studies (using brand kit data)
 7. **Natural Apollo Promotion** - End with compelling call-to-action using this exact anchor text: "${selectedCTA}" linked to ${apolloSignupURL}
+
+WRITING SAMPLE STYLE REFERENCE:
+If {{ brand_kit.writing_sample_title }}, {{ brand_kit.writing_sample_body }}, or {{ brand_kit.writing_sample_outline }} are provided, use them as style and structure templates:
+- Mirror the tone, voice, and writing approach from {{ brand_kit.writing_sample_body }}
+- Follow the structural approach demonstrated in {{ brand_kit.writing_sample_outline }}
+- Emulate the headline style and approach from {{ brand_kit.writing_sample_title }}
+- Reference {{ brand_kit.writing_sample_url }} as an example of the brand's content quality standards
 
 The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}.
 
@@ -565,7 +607,8 @@ IMPORTANT: Your final section must use this exact call-to-action anchor text: "$
       user_prompt: userPrompt,
       post_context: { keyword, contentLength },
       brand_kit: brandKit,
-      content_length: contentLength as 'short' | 'medium' | 'long'
+      content_length: contentLength as 'short' | 'medium' | 'long',
+      sitemap_data: sitemapData
     });
 
     return result;
