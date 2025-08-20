@@ -22,6 +22,7 @@ import personaPainPointMatchingRoutes from '../src/routes/personaPainPointMatchi
 import enhancedPersonaDetectionRoutes from '../src/routes/enhancedPersonaDetection';
 import ctaGenerationRoutes from '../src/routes/ctaGeneration';
 import competitorConquestingRoutes from '../src/routes/competitorConquesting';
+import sitemapRoutes from '../src/routes/sitemap';
 
 // Load environment variables
 dotenv.config();
@@ -64,6 +65,7 @@ app.use('/api/persona-pain-point-matching', personaPainPointMatchingRoutes);
 app.use('/api/enhanced-persona-detection', enhancedPersonaDetectionRoutes);
 app.use('/api/cta-generation', ctaGenerationRoutes);
 app.use('/api/competitor-conquesting', competitorConquestingRoutes);
+app.use('/api/sitemap', sitemapRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -102,7 +104,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         personaPainPointMatching: '/api/persona-pain-point-matching/*',
         enhancedPersonaDetection: '/api/enhanced-persona-detection/*',
         ctaGeneration: '/api/cta-generation/*',
-        competitorConquesting: '/api/competitor-conquesting/*'
+        competitorConquesting: '/api/competitor-conquesting/*',
+        sitemap: '/api/sitemap/*'
       }
     }
   });
