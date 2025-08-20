@@ -44,10 +44,38 @@ router.post('/generate', async (req: Request, res: Response): Promise<any> => {
 
     console.log(`📝 Generating content for: "${post_context.title.substring(0, 50)}..."`);
 
+    // Add internal linking requirements to user prompt if sitemap data is available
+    let enhancedUserPrompt = user_prompt;
+    if (sitemap_data && sitemap_data.length > 0) {
+      console.log(`🗺️ Adding internal linking requirements for ${sitemap_data.length} URLs`);
+      
+      const internalLinksSection = `**AVAILABLE INTERNAL LINKS (MANDATORY - MUST USE 3-5 OF THESE):**
+${sitemap_data.slice(0, 20).map((url: any) => `• ${url.title}: ${url.description} [${url.url}]`).join('\n')}
+${sitemap_data.length > 20 ? `... and ${sitemap_data.length - 20} more URLs available for linking` : ''}
+
+🚨 CRITICAL INTERNAL LINKING REQUIREMENTS:
+- You MUST include exactly 3-5 internal links from the above list in your content
+- Each internal link URL must be used ONLY ONCE per article (no duplicate links)
+- MANDATORY: Include at least ONE internal link in the introduction or within the first 2-3 paragraphs after defining the main topic/keyword
+- Distribute the remaining 2-4 internal links naturally throughout the rest of the content
+- Choose the most relevant URLs for your topic and context
+- Articles without internal links will be rejected
+
+`;
+      
+      // Insert internal linking section before the content requirements
+      enhancedUserPrompt = enhancedUserPrompt.replace(
+        '**Content Requirements',
+        `${internalLinksSection}**Content Requirements`
+      );
+    } else {
+      console.log('⚠️ No sitemap data available for internal linking');
+    }
+
     // Generate content using Claude
     const response = await claudeService.generateContent({
       system_prompt,
-      user_prompt,
+      user_prompt: enhancedUserPrompt,
       post_context,
       brand_kit,
       sitemap_data
