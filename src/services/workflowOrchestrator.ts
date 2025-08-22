@@ -396,7 +396,7 @@ class WorkflowOrchestrator {
           model_pipeline: [
             'Firecrawl Search API',
             'o3-deep-research-2025-06-26',
-            'gpt-4.1-nano-2025-04-14',
+            'gpt-5-nano',
             'claude-sonnet-4-20250514'
           ],
           content_quality_score: this.calculateQualityScore(gapAnalysisResult, { content: contentResult.processed_content }),
@@ -845,7 +845,7 @@ Create comprehensive AEO-optimized content for ${currentYear} that explicitly ou
     // Gap Analysis Section
     if (analysis.identified_gaps?.length > 0) {
       context += `${'─'.repeat(50)}\n`;
-      context += `🎯 CONTENT GAPS (from gpt-4.1-nano gap analysis)\n`;
+      context += `🎯 CONTENT GAPS (from gpt-5-nano gap analysis)\n`;
       context += `${'─'.repeat(50)}\n`;
       analysis.identified_gaps.forEach((gap: string, i: number) => {
         context += `${i + 1}. ${gap}\n`;

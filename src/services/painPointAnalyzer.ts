@@ -64,7 +64,7 @@ interface CROAnalysisResult {
  */
 class PainPointAnalyzer {
   private client: OpenAI | null = null;
-  private model = 'gpt-4.1-nano-2025-04-14'; // Use exact model specified in memory
+  private model = 'gpt-5-nano'; // Use latest GPT-5 nano model
 
   constructor() {
     setTimeout(() => {
@@ -89,7 +89,7 @@ class PainPointAnalyzer {
         apiKey: apiKey,
       });
 
-      console.log('✅ Pain Point Analyzer (OpenAI GPT-4.1-nano) initialized successfully');
+      console.log('✅ Pain Point Analyzer (OpenAI GPT-5-nano) initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize Pain Point Analyzer:', error);
     }
@@ -271,9 +271,9 @@ ${combinedProspectText}
 Extract pain points, emotional triggers, customer phrases, and competitor mentions. Return valid JSON only.`
           }
         ],
-        temperature: 0.3, // Lower temperature for more consistent analysis
+        // Using default temperature (1) as GPT-5-nano doesn't support custom temperature values
         max_completion_tokens: 2000,
-        response_format: { type: "json_object" }
+        // response_format removed - GPT-5-nano may not support this parameter
       });
 
       const responseContent = completion.choices[0]?.message?.content;
@@ -392,9 +392,9 @@ ${combinedProspectText}
 Focus on conversion barriers, objections, ad copy opportunities, and conversion motivators. Return valid JSON only.`
           }
         ],
-        temperature: 0.3,
+        // Using default temperature (1) as GPT-5-nano doesn't support custom temperature values
         max_completion_tokens: 3000, // More tokens for comprehensive CRO analysis
-        response_format: { type: "json_object" }
+        // response_format removed - GPT-5-nano may not support this parameter
       });
 
       const responseContent = completion.choices[0]?.message?.content;

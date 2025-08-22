@@ -61,7 +61,7 @@ class EnhancedPersonaDetector {
     }
 
     this.client = new OpenAI({ apiKey });
-    console.log('✅ Enhanced Persona Detector initialized with OpenAI gpt-4.1-nano');
+    console.log('✅ Enhanced Persona Detector initialized with OpenAI gpt-5-nano');
   }
 
   /**
@@ -78,12 +78,9 @@ class EnhancedPersonaDetector {
 
       const enhancedPrompt = this.buildEnhancedAnalysisPrompt(articleContent, basicAnalysis);
       
-      const completion = await this.client.chat.completions.create({
-        model: "gpt-4.1-nano-2025-04-14",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert B2B persona analyst specializing in deep audience insights and buying behavior analysis. You analyze content to extract sophisticated persona intelligence that goes far beyond basic role identification.
+      const completion = await this.client.responses.create({
+        model: "gpt-5-nano",
+        input: `You are an expert B2B persona analyst specializing in deep audience insights and buying behavior analysis. You analyze content to extract sophisticated persona intelligence that goes far beyond basic role identification.
 
 EXPERTISE AREAS:
 - Persona psychology and decision-making patterns
@@ -95,26 +92,12 @@ EXPERTISE AREAS:
 
 Your analysis helps sales and marketing teams create hyper-targeted messaging that resonates with specific persona mindsets and buying contexts.
 
-Always respond with valid JSON only.`
-          },
-          {
-            role: "user",
-            content: enhancedPrompt
-          }
-        ],
-        temperature: 0.1, // Very low temperature for consistent analysis
-        max_completion_tokens: 1200,
-        response_format: { type: "json_object" }
+Always respond with valid JSON only.
+
+${enhancedPrompt}`
       });
 
-      // Log token usage for monitoring
-      if (completion.usage) {
-        const totalTokens = completion.usage.total_tokens;
-        const cost = (totalTokens / 1000) * 0.002; // Approximate cost
-        console.log(`💰 Enhanced Persona Analysis - Tokens: ${totalTokens}, Cost: ~$${cost.toFixed(4)}`);
-      }
-
-      const responseContent = completion.choices[0]?.message?.content;
+      const responseContent = completion.output_text;
       if (!responseContent) {
         throw new Error('Empty response from OpenAI');
       }
@@ -518,7 +501,7 @@ Look for subtle language patterns, industry-specific terminology, company stage 
   getServiceStatus(): { available: boolean; model: string; hasApiKey: boolean } {
     return {
       available: !!this.client,
-      model: 'gpt-4.1-nano-2025-04-14',
+      model: 'gpt-5-nano',
       hasApiKey: !!process.env.OPENAI_API_KEY
     };
   }

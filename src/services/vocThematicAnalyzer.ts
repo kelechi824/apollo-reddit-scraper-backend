@@ -50,7 +50,7 @@ class VoCThematicAnalyzer {
       apiKey: process.env.OPENAI_API_KEY,
     });
     this.vocExtractor = new VoCDataExtractor();
-    console.log('✅ VoC Thematic Analyzer initialized');
+    console.log('✅ VoC Thematic Analyzer (OpenAI GPT-5-nano) initialized successfully');
   }
 
   /**
@@ -219,7 +219,7 @@ Return valid JSON with validation metadata and source excerpts:
     "analysisTimestamp": "${extractionTimestamp}",
     "callsAnalyzed": ${callCount},
     "dataSource": "Gong API - Live Customer Calls",
-    "modelUsed": "gpt-4.1-nano-2025-04-14",
+    "modelUsed": "gpt-5-nano",
     "validationNote": "Quotes extracted from real customer conversations with source excerpts"
   },
   "painPoints": [
@@ -276,30 +276,44 @@ ${callData}`;
         };
       }
 
-      console.log(`🤖 Processing ${callData.analysisText.length} characters with gpt-4.1-nano...`);
+      console.log(`🤖 Processing ${callData.analysisText.length} characters with gpt-5-nano...`);
       
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4.1-nano-2025-04-14',
-        messages: [
-          {
-            role: 'user',
-            content: this.generateAnalysisPrompt(callData.analysisText)
-          }
-        ],
-        temperature: 0.1,
-        max_completion_tokens: 3000
+      const completion = await this.openai.responses.create({
+        model: 'gpt-5-nano',
+        input: `You are an expert B2B sales analyst specializing in extracting customer pain points from sales call data. You analyze Gong call transcripts to identify business challenges and pain points that prospects face. You always respond with valid JSON containing structured pain point data.
+
+${this.generateAnalysisPrompt(callData.analysisText)}`
       });
 
-      const responseContent = completion.choices[0]?.message?.content;
+      const responseContent = completion.output_text;
+      console.log('🔍 GPT-5-nano response:', responseContent ? responseContent.substring(0, 200) + '...' : 'null');
+      
       if (!responseContent) {
+        console.error('❌ No response content from GPT-5-nano');
         throw new Error('No response from analysis');
       }
 
       let analysisData;
       try {
         analysisData = JSON.parse(responseContent);
-      } catch {
-        throw new Error('Invalid JSON response');
+      } catch (jsonError: any) {
+        console.error('❌ JSON Parse Error:', jsonError.message);
+        console.error('❌ Raw response content (first 1000 chars):', responseContent?.substring(0, 1000));
+        console.error('❌ Response type:', typeof responseContent);
+        
+        // Try to extract JSON from response if it's wrapped in text
+        const jsonMatch = responseContent?.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            analysisData = JSON.parse(jsonMatch[0]);
+            console.log('✅ Successfully extracted JSON from wrapped response');
+          } catch (extractError) {
+            console.error('❌ Failed to extract JSON from response:', extractError);
+            throw new Error(`Invalid JSON response: ${jsonError.message}. Raw response: ${responseContent?.substring(0, 200)}...`);
+          }
+        } else {
+          throw new Error(`Invalid JSON response: ${jsonError.message}. Raw response: ${responseContent?.substring(0, 200)}...`);
+        }
       }
 
       const painPoints: VoCPainPoint[] = (analysisData.painPoints || []).map((point: any, index: number) => ({
@@ -313,7 +327,7 @@ ${callData}`;
         emotionalTriggers: Array.isArray(point.emotionalTriggers) ? point.emotionalTriggers : [],
         extractionTimestamp: analysisData.metadata?.analysisTimestamp || new Date().toISOString(),
         analysisMetadata: {
-          modelUsed: analysisData.metadata?.modelUsed || 'gpt-4.1-nano-2025-04-14',
+          modelUsed: analysisData.metadata?.modelUsed || 'gpt-5-nano',
           callsAnalyzed: analysisData.metadata?.callsAnalyzed || callData.metadata.totalCalls,
           processingTime: Date.now() - startTime
         },
@@ -333,7 +347,7 @@ ${callData}`;
         processingTimeMs: Date.now() - startTime,
         validationMetadata: {
           dataSource: analysisData.metadata?.dataSource || 'Gong API - Live Customer Calls',
-          modelUsed: analysisData.metadata?.modelUsed || 'gpt-4.1-nano-2025-04-14',
+          modelUsed: analysisData.metadata?.modelUsed || 'gpt-5-nano',
           validationNote: analysisData.metadata?.validationNote || 'Quotes extracted from real customer conversations'
         }
       };
@@ -369,7 +383,7 @@ ${callData}`;
         };
       }
 
-      console.log(`🤖 Processing ${callData.analysisText.length} characters with parallel gpt-4.1-nano analysis...`);
+      console.log(`🤖 Processing ${callData.analysisText.length} characters with parallel gpt-5-nano analysis...`);
       
       // Split analysis text into chunks for parallel processing
       const textChunks = this.splitTextIntoChunks(callData.analysisText, 4); // 4 parallel calls
@@ -380,19 +394,14 @@ ${callData}`;
       const chunkPromises = textChunks.map(async (chunk, index) => {
         console.log(`📝 Processing chunk ${index + 1}/${textChunks.length} (${chunk.length} chars)`);
         
-        const completion = await this.openai.chat.completions.create({
-          model: 'gpt-4.1-nano-2025-04-14',
-          messages: [
-            {
-              role: 'user',
-              content: this.generateAnalysisPrompt(chunk)
-            }
-          ],
-          temperature: 0.1,
-          max_completion_tokens: 2000 // Smaller per chunk
+        const completion = await this.openai.responses.create({
+          model: 'gpt-5-nano',
+          input: `You are an expert B2B sales analyst specializing in extracting customer pain points from sales call data. You analyze Gong call transcripts to identify business challenges and pain points that prospects face. You always respond with valid JSON containing structured pain point data.
+
+${this.generateAnalysisPrompt(chunk)}`
         });
 
-        const responseContent = completion.choices[0]?.message?.content;
+        const responseContent = completion.output_text;
         if (!responseContent) {
           console.error(`❌ No response content from chunk ${index + 1}`);
           throw new Error(`No response from chunk ${index + 1} analysis`);
@@ -468,7 +477,7 @@ ${callData}`;
               emotionalTriggers: painPoint.emotionalTriggers || [],
               extractionTimestamp: new Date().toISOString(),
               analysisMetadata: {
-                modelUsed: 'gpt-4.1-nano-2025-04-14',
+                modelUsed: 'gpt-5-nano',
                 callsAnalyzed: callData.metadata.totalCalls,
                 processingTime: Date.now() - startTime
               },
@@ -491,7 +500,7 @@ ${callData}`;
         processingTimeMs: Date.now() - startTime,
         validationMetadata: {
           dataSource: 'Gong API - Live Customer Calls (Optimized Processing)',
-          modelUsed: 'gpt-4.1-nano-2025-04-14 (Parallel)',
+          modelUsed: 'gpt-5-nano (Parallel)',
           validationNote: 'Pain points extracted from real customer conversations using parallel analysis'
         }
       };

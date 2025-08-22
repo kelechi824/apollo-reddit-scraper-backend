@@ -55,7 +55,7 @@ interface OpenAICopyAnalysisResponse {
 class CopyAnalysisService {
   private browser: Browser | null = null;
   private client: OpenAI | null = null;
-  private model = 'gpt-4.1-nano-2025-04-14'; // Use exact model specified in memory
+  private model = 'gpt-5-nano'; // Use latest GPT-5 nano model
 
   constructor() {
     setTimeout(() => {
@@ -286,7 +286,7 @@ class CopyAnalysisService {
           }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.3
+        // Using default temperature (1) as GPT-5-nano doesn't support custom temperature values
       });
 
       const analysis: OpenAICopyAnalysisResponse = JSON.parse(completion.choices[0].message.content || '{}');

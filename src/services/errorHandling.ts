@@ -444,7 +444,7 @@ class WorkflowCostTracker {
         inputPricePerMillion = 2.00;   // $2.00 per 1M input tokens
         outputPricePerMillion = 8.00;  // $8.00 per 1M output tokens
         break;
-      case 'gpt-4.1-nano':
+      case 'gpt-5-nano':
       default:
         inputPricePerMillion = 0.10;   // $0.10 per 1M input tokens  
         outputPricePerMillion = 0.40;  // $0.40 per 1M output tokens

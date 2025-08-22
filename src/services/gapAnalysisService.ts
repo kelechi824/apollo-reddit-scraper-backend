@@ -402,7 +402,7 @@ Remember: The goal is not just to find what's missing, but to identify what's mi
         async () => {
           const testCompletion = await Promise.race([
             this.client!.chat.completions.create({
-              model: "gpt-4.1-nano-2025-04-14",
+              model: "gpt-5-nano",
               messages: [
                 {
                   role: "user",
@@ -453,7 +453,7 @@ Remember: The goal is not just to find what's missing, but to identify what's mi
     return {
       initialized: !!this.client,
       hasApiKey: !!process.env.OPENAI_API_KEY,
-      model: "gpt-4.1-nano-2025-04-14",
+      model: "gpt-5-nano",
       circuitBreakerState: this.circuitBreaker.getState(),
       rateLimitActive: Date.now() - (this.rateLimiter as any).lastRequestTime < DEFAULT_RATE_LIMITS.openai_gap_analysis
     };
