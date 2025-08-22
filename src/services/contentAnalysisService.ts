@@ -74,7 +74,7 @@ PERSONA CATEGORIES TO RECOGNIZE:
 - Business Development
 - Founder/Entrepreneur
 
-Always respond with valid JSON only.
+CRITICAL: You must respond with ONLY valid JSON. No explanations, no markdown, no extra text. Just the JSON object.
 
 ${analysisPrompt}`
       });
@@ -84,7 +84,10 @@ ${analysisPrompt}`
         throw new Error('Empty response from OpenAI');
       }
 
-      const analysis = JSON.parse(responseContent) as ArticleContentAnalysisResult;
+      console.log('🔍 Raw AI response (first 500 chars):', responseContent.substring(0, 500));
+
+      // Clean and parse JSON response with error handling
+      const analysis = this.parseAIResponse(responseContent) as ArticleContentAnalysisResult;
       
       // Add timestamp
       analysis.analysis_timestamp = new Date().toISOString();
@@ -157,6 +160,60 @@ CONFIDENCE SCORING:
 - 10-29: Very unclear targeting, general business content
 
 Look for explicit mentions of job titles, departments, company stages, specific business challenges, and buying scenarios.`;
+  }
+
+  /**
+   * Parse AI response with robust error handling
+   * Why this matters: AI responses can sometimes contain malformed JSON or extra text,
+   * so we need to extract and clean the JSON before parsing.
+   */
+  private parseAIResponse(responseContent: string): ArticleContentAnalysisResult {
+    try {
+      // First, try direct JSON parsing
+      return JSON.parse(responseContent);
+    } catch (error) {
+      console.log('🔧 Direct JSON parsing failed, attempting to clean response...');
+      
+      try {
+        // Try to extract JSON from response that might have extra text
+        const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const jsonString = jsonMatch[0];
+          return JSON.parse(jsonString);
+        }
+        
+        // If no JSON found, try to fix common JSON issues
+        let cleanedResponse = responseContent
+          .replace(/```json\s*/, '') // Remove markdown code blocks
+          .replace(/```\s*$/, '')
+          .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+          .replace(/([{,]\s*)(\w+):/g, '$1"$2":') // Add quotes to unquoted keys
+          .trim();
+        
+        return JSON.parse(cleanedResponse);
+        
+      } catch (secondError) {
+        console.error('❌ Failed to parse AI response as JSON:', responseContent.substring(0, 500));
+        
+        // Return a fallback analysis result
+        return {
+          persona: 'General Business Professional',
+          persona_details: {
+            job_title: 'Business Professional',
+            seniority_level: 'Manager-Level',
+            department: 'Sales',
+            company_size: 'Mid-Market'
+          },
+          content_themes: ['general business'],
+          key_topics: ['business strategy'],
+          industry_context: 'General Business',
+          content_intent: 'consideration',
+          pain_point_indicators: ['business challenges'],
+          confidence_score: 30,
+          analysis_timestamp: new Date().toISOString()
+        };
+      }
+    }
   }
 
   /**
