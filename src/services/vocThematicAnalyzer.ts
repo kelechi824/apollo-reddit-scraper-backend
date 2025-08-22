@@ -256,6 +256,76 @@ ${callData}`;
   }
 
   /**
+   * Lightweight analysis for high-volume call processing (300+ calls)
+   * Why this matters: Uses streamlined data extraction to process full call volume within timeout limits.
+   */
+  async analyzeThemesLightweight(daysBack: number = 180, maxCalls: number = 300): Promise<VoCAnalysisResult> {
+    const startTime = Date.now();
+    
+    try {
+      console.log(`🧠 Lightweight thematic analysis (${daysBack} days, ${maxCalls} calls)`);
+      
+      // Use streamlined extraction that skips detailed conversation processing
+      const callData = await this.vocExtractor.getCallDataLightweight(daysBack, maxCalls);
+      
+      if (callData.metadata.callsWithContent === 0) {
+        return {
+          painPoints: [],
+          totalCallsAnalyzed: 0,
+          analysisTimestamp: new Date().toISOString(),
+          processingTimeMs: Date.now() - startTime
+        };
+      }
+
+      console.log(`🤖 Processing ${callData.analysisText.length} characters with gpt-5-nano (lightweight)...`);
+      
+      const completion = await this.openai.responses.create({
+        model: 'gpt-5-nano',
+        input: `You are an expert B2B sales analyst specializing in extracting customer pain points from sales call data. You analyze Gong call transcripts to identify business challenges and pain points that prospects face. You always respond with valid JSON containing structured pain point data.
+
+${this.generateAnalysisPrompt(callData.analysisText)}`
+      });
+
+      const responseContent = completion.output_text;
+      console.log('🔍 GPT-5-nano response (lightweight):', responseContent ? responseContent.substring(0, 200) + '...' : 'null');
+      
+      if (!responseContent) {
+        console.error('❌ No response content from GPT-5-nano');
+        throw new Error('No response from analysis');
+      }
+
+      let analysisData;
+      try {
+        analysisData = JSON.parse(responseContent);
+      } catch (parseError) {
+        console.error('❌ Failed to parse GPT-5-nano response:', parseError);
+        console.error('❌ Raw response:', responseContent);
+        throw new Error('Invalid JSON response from analysis');
+      }
+
+      if (!analysisData.painPoints || !Array.isArray(analysisData.painPoints)) {
+        console.error('❌ Invalid analysis data structure:', analysisData);
+        throw new Error('Invalid pain points data structure');
+      }
+
+      const processingTime = Date.now() - startTime;
+      console.log(`✅ Lightweight thematic analysis completed in ${processingTime}ms`);
+      console.log(`📊 Extracted ${analysisData.painPoints.length} pain points from ${callData.metadata.callsWithContent} calls`);
+
+      return {
+        painPoints: analysisData.painPoints,
+        totalCallsAnalyzed: callData.metadata.callsWithContent,
+        analysisTimestamp: new Date().toISOString(),
+        processingTimeMs: processingTime
+      };
+
+    } catch (error: any) {
+      console.error('❌ Error in lightweight thematic analysis:', error.message);
+      throw new Error(`Lightweight thematic analysis failed: ${error.message}`);
+    }
+  }
+
+  /**
    * Analyze calls for thematic pain points
    * Why this matters: Extracts recurring customer pain themes for CTA targeting.
    */
