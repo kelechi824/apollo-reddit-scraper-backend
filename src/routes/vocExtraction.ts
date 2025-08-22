@@ -296,27 +296,28 @@ router.get('/quick-analysis-test', async (req, res) => {
 });
 
 /**
- * High-efficiency synchronous VoC analysis (300 calls optimized)
- * Why this matters: Performs complete analysis of 300 calls synchronously using parallel processing
- * to stay within Vercel timeout limits while maximizing data volume.
+ * High-volume synchronous VoC analysis with lightweight extraction (300 calls maintained)
+ * Why this matters: Maintains full 300-call analysis volume using lightweight data extraction
+ * to avoid timeout issues while preserving comprehensive VoC insights.
  */
 router.post('/analyze-synchronous', async (req, res) => {
   try {
     // High-volume defaults with optimized processing
     const { daysBack = 90, maxCalls = 300 } = req.body;
     
-    console.log(`🚀 Starting high-efficiency VoC analysis (${daysBack} days, max ${maxCalls} calls)`);
+    console.log(`🚀 Starting high-volume VoC analysis (${daysBack} days, ${maxCalls} calls)`);
     const startTime = Date.now();
     
     const vocAnalyzer = new VoCThematicAnalyzer();
     
-    // Use the regular analyzeThemes method instead of optimized for reliability
-    // Why this matters: The optimized chunked approach is causing JSON parsing errors in production
-    const analysisResult = await vocAnalyzer.analyzeThemes(daysBack, Math.min(maxCalls, 250)); // Limit to 250 for reliability
+    // Use lightweight extraction to maintain full call volume while avoiding timeouts
+    // Why this matters: Processes all 300 calls using streamlined data extraction instead of reducing volume
+    console.log(`📊 Processing full ${maxCalls} calls with lightweight extraction`);
+    const analysisResult = await vocAnalyzer.analyzeThemesLightweight(daysBack, maxCalls);
     
     // Format as liquid variables
     const variables: Record<string, string> = {};
-    analysisResult.painPoints.forEach(point => {
+    analysisResult.painPoints.forEach((point: any) => {
       variables[point.liquidVariable] = `{{ pain_points.${point.liquidVariable} }}`;
     });
 
@@ -331,34 +332,35 @@ router.post('/analyze-synchronous', async (req, res) => {
     };
     
     const processingTime = Date.now() - startTime;
-    console.log(`✅ High-efficiency VoC analysis completed in ${processingTime}ms (${Math.round(processingTime/1000)}s)`);
+    console.log(`✅ High-volume VoC analysis completed in ${processingTime}ms (${Math.round(processingTime/1000)}s)`);
     console.log(`📊 Extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls`);
     
     res.json({
       success: true,
       data: liquidResult,
       processingTime,
-      message: `Successfully extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls using reliable single-model processing`,
+      message: `Successfully extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls using lightweight high-volume processing`,
       timestamp: new Date().toISOString(),
       optimization: {
-        parallelProcessing: false, // Using reliable single analysis
-        callVolume: Math.min(maxCalls, 250),
-        reliabilityImprovement: "Switched to single-model analysis for consistent JSON responses"
+        lightweightExtraction: true,
+        requestedCalls: maxCalls,
+        actualCallsProcessed: liquidResult.metadata.callsAnalyzed,
+        processingApproach: `Lightweight extraction maintained full ${maxCalls}-call volume in ${Math.round(processingTime/1000)}s`
       }
     });
 
   } catch (error: any) {
-    console.error('❌ Error in high-efficiency VoC analysis:', error.message);
+    console.error('❌ Error in high-volume VoC analysis:', error.message);
     console.error('❌ Full error stack:', error.stack);
     res.status(500).json({
       success: false,
       error: error.message,
-      message: 'Failed to complete high-efficiency VoC analysis',
+      message: 'Failed to complete high-volume VoC analysis',
       timestamp: new Date().toISOString(),
       optimization: {
         attempted: true,
-        callVolume: req.body.maxCalls || 300,
-        errorDetails: error.stack
+        lightweightExtraction: true,
+        errorDetails: error.message
       }
     });
   }

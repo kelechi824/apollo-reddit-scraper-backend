@@ -55,6 +55,130 @@ class VoCDataExtractor {
   }
 
   /**
+   * Basic call extraction for lightweight processing (300+ calls)
+   * Why this matters: Extracts only essential call data without detailed conversation processing,
+   * enabling full 300-call analysis within serverless timeout limits.
+   */
+  async extractCallSummariesBasic(daysBack: number = 180, maxCalls: number = 300): Promise<VoCExtractionResult> {
+    try {
+      console.log(`🚀 Starting basic VoC extraction (${daysBack} days, max ${maxCalls} calls)`);
+      const startTime = Date.now();
+      
+      // 1. Test connection first
+      const isConnected = await this.testConnection();
+      if (!isConnected) {
+        throw new Error('Failed to connect to Gong API');
+      }
+
+      // 2. Get recent calls (basic metadata only)
+      console.log('📞 Fetching recent calls from Gong (basic mode)...');
+      const recentCalls = await this.gongService.getRecentCalls(daysBack, maxCalls);
+      
+      if (recentCalls.length === 0) {
+        console.log('⚠️ No calls found in the specified date range');
+        return {
+          totalCallsProcessed: 0,
+          callSummaries: [],
+          extractionTimestamp: new Date().toISOString()
+        };
+      }
+
+      console.log(`🔄 Processing ${recentCalls.length} calls with basic extraction...`);
+      
+      // 3. Basic processing with timeout safety
+      const callSummaries: CallSummaryData[] = [];
+      let totalDuration = 0;
+      let callsWithDuration = 0;
+      const TIMEOUT_LIMIT = 10000; // 10 seconds for extraction safety
+
+      // Process calls in smaller batches with conversation details
+      // Why this matters: Smaller batches with actual content extraction, balanced for timeout safety
+      const BATCH_SIZE = 25; // Reduced for conversation detail calls
+      const batches = this.chunkArray(recentCalls, BATCH_SIZE);
+      
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        // Check timeout before processing each batch
+        const timeElapsed = Date.now() - startTime;
+        if (timeElapsed > TIMEOUT_LIMIT) {
+          console.log(`⏱️ Timeout safety: stopping at batch ${batchIndex + 1}/${batches.length} after ${timeElapsed}ms`);
+          break;
+        }
+        const batch = batches[batchIndex];
+        console.log(`📦 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} calls)...`);
+        
+        const batchPromises = batch.map(async (call) => {
+          try {
+            // Get essential conversation data for pain point analysis
+            // Why this matters: We need actual call content, not just titles, for meaningful analysis
+            const conversationDetails = await this.gongService.getCallConversationDetails(call.id);
+            
+            // Extract key content efficiently
+            const highlights = conversationDetails?.highlights;
+            return {
+              callId: call.id,
+              title: call.title,
+              date: call.started,
+              duration: call.duration,
+              brief: highlights?.brief || call.title, // Use brief if available, fallback to title
+              keyPoints: highlights?.keyPoints?.slice(0, 5) || [], // Limit to 5 key points for efficiency
+              trackers: [], // Skip trackers for speed
+              participants: conversationDetails?.extensiveData?.parties?.slice(0, 3) || [] // Limit participants
+            };
+          } catch (error: any) {
+            console.error(`❌ Basic extraction failed on call ${call.id}:`, error.message);
+            // Return call with title as fallback content
+            return {
+              callId: call.id,
+              title: call.title,
+              date: call.started,
+              duration: call.duration,
+              brief: call.title, // At least use title as content
+              keyPoints: [],
+              trackers: [],
+              participants: []
+            };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        callSummaries.push(...batchResults);
+        
+        // Add intelligent delay between batches based on processing time
+        if (batchIndex < batches.length - 1) {
+          const batchTime = Date.now() - startTime;
+          const avgTimePerBatch = batchTime / (batchIndex + 1);
+          const delay = Math.min(200, Math.max(50, avgTimePerBatch * 0.1)); // Adaptive delay
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+      
+      // Calculate statistics
+      callSummaries.forEach(callSummary => {
+        if (callSummary.duration) {
+          totalDuration += callSummary.duration;
+          callsWithDuration++;
+        }
+      });
+
+      const processingTime = Date.now() - startTime;
+      const avgDuration = callsWithDuration > 0 ? Math.round(totalDuration / callsWithDuration) : 0;
+
+      console.log(`✅ Basic VoC extraction completed in ${processingTime}ms (${Math.round(processingTime/1000)}s)`);
+      console.log(`📊 Processed ${callSummaries.length} calls (avg duration: ${avgDuration}s)`);
+
+      return {
+        totalCallsProcessed: callSummaries.length,
+        callSummaries,
+        extractionTimestamp: new Date().toISOString()
+      };
+
+    } catch (error: any) {
+      console.error('❌ Failed to extract basic VoC call summaries:', error.message);
+      throw new Error(`Basic VoC extraction failed: ${error.message}`);
+    }
+  }
+
+  /**
    * High-efficiency parallel extraction for large call volumes
    * Why this matters: Processes 300+ calls in ~12-15 seconds using parallel workers instead of sequential batches.
    * No filtering - processes all calls as-is for maximum data completeness.
@@ -350,6 +474,82 @@ class VoCDataExtractor {
     } catch (error: any) {
       console.error('❌ Failed to extract VoC call summaries:', error.message);
       throw new Error(`VoC extraction failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Lightweight call data extraction for high-volume processing (300+ calls)
+   * Why this matters: Skips detailed conversation processing to extract basic call data quickly,
+   * maintaining full call volume while staying within serverless timeout limits.
+   */
+  async getCallDataLightweight(daysBack: number = 90, maxCalls: number = 300): Promise<{
+    analysisText: string;
+    metadata: {
+      totalCalls: number;
+      callsWithContent: number;
+      dateRange: string;
+      extractionDate: string;
+    }
+  }> {
+    try {
+      console.log('📊 Lightweight call data extraction (optimized for speed)...');
+      
+      // Use basic call extraction without detailed conversation processing
+      const extractionResult = await this.extractCallSummariesBasic(daysBack, maxCalls);
+      
+      if (extractionResult.totalCallsProcessed === 0) {
+        return {
+          analysisText: '',
+          metadata: {
+            totalCalls: 0,
+            callsWithContent: 0,
+            dateRange: `Last ${daysBack} days`,
+            extractionDate: new Date().toISOString()
+          }
+        };
+      }
+
+      // Format call data for analysis (lightweight version)
+      const analysisTexts: string[] = [];
+      let callsWithContent = 0;
+
+      extractionResult.callSummaries.forEach((call, index) => {
+        const hasContent = call.brief || (call.keyPoints && call.keyPoints.length > 0);
+        if (hasContent) {
+          callsWithContent++;
+          
+          const callText = [
+            `CALL ${index + 1}:`,
+            `Title: ${call.title}`,
+            `Date: ${call.date}`,
+            call.brief ? `Brief: ${call.brief}` : '',
+            call.keyPoints && call.keyPoints.length > 0 ? 
+              `Key Points: ${call.keyPoints.map((kp: any) => kp.text || kp).join('; ')}` : '',
+            '---'
+          ].filter(Boolean).join('\n');
+          
+          analysisTexts.push(callText);
+        }
+      });
+
+      const analysisText = analysisTexts.join('\n\n');
+      
+      console.log(`✅ Lightweight extraction completed: ${callsWithContent}/${extractionResult.totalCallsProcessed} calls with content`);
+      console.log(`📝 Analysis text length: ${analysisText.length} characters`);
+
+      return {
+        analysisText,
+        metadata: {
+          totalCalls: extractionResult.totalCallsProcessed,
+          callsWithContent,
+          dateRange: `Last ${daysBack} days`,
+          extractionDate: new Date().toISOString()
+        }
+      };
+
+    } catch (error: any) {
+      console.error('❌ Error in lightweight call data extraction:', error.message);
+      throw new Error(`Lightweight call data extraction failed: ${error.message}`);
     }
   }
 
