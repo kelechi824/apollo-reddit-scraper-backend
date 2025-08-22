@@ -37,7 +37,7 @@ class ContentAnalysisService {
     }
 
     this.client = new OpenAI({ apiKey });
-    console.log('✅ Content Analysis Service initialized with OpenAI gpt-4.1-nano');
+    console.log('✅ Content Analysis Service initialized with OpenAI gpt-5-nano');
   }
 
   /**
@@ -51,12 +51,9 @@ class ContentAnalysisService {
 
       const analysisPrompt = this.buildContentAnalysisPrompt(articleContent);
       
-      const completion = await this.client.chat.completions.create({
-        model: "gpt-4.1-nano-2025-04-14",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert content analyst specializing in B2B audience identification and persona detection. You analyze articles to determine target personas, themes, and business context with high accuracy.
+      const completion = await this.client.responses.create({
+        model: "gpt-5-nano",
+        input: `You are an expert content analyst specializing in B2B audience identification and persona detection. You analyze articles to determine target personas, themes, and business context with high accuracy.
 
 PERSONA CATEGORIES TO RECOGNIZE:
 - CEO (Chief Executive Officer)
@@ -77,26 +74,12 @@ PERSONA CATEGORIES TO RECOGNIZE:
 - Business Development
 - Founder/Entrepreneur
 
-Always respond with valid JSON only.`
-          },
-          {
-            role: "user",
-            content: analysisPrompt
-          }
-        ],
-        temperature: 0.2, // Low temperature for consistent persona detection
-        max_completion_tokens: 800,
-        response_format: { type: "json_object" }
+Always respond with valid JSON only.
+
+${analysisPrompt}`
       });
 
-      // Log token usage for monitoring
-      if (completion.usage) {
-        const totalTokens = completion.usage.total_tokens;
-        const cost = (totalTokens / 1000) * 0.002; // Approximate cost
-        console.log(`💰 Content Analysis - Tokens: ${totalTokens}, Cost: ~$${cost.toFixed(4)}`);
-      }
-
-      const responseContent = completion.choices[0]?.message?.content;
+      const responseContent = completion.output_text;
       if (!responseContent) {
         throw new Error('Empty response from OpenAI');
       }
@@ -325,7 +308,7 @@ Look for explicit mentions of job titles, departments, company stages, specific 
   getServiceStatus(): { available: boolean; model: string; hasApiKey: boolean } {
     return {
       available: !!this.client,
-      model: 'gpt-4.1-nano-2025-04-14',
+      model: 'gpt-5-nano',
       hasApiKey: !!process.env.OPENAI_API_KEY
     };
   }

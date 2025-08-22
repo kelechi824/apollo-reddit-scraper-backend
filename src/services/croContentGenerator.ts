@@ -107,7 +107,7 @@ export interface CROContentGenerationResult {
  */
 class CROContentGenerator {
   private client: OpenAI | null = null;
-  private model = 'gpt-4.1-nano-2025-04-14'; // Use exact model specified in memory
+  private model = 'gpt-5-nano'; // Use latest GPT-5 nano model
 
   constructor() {
     setTimeout(() => {
@@ -132,7 +132,7 @@ class CROContentGenerator {
         apiKey: apiKey,
       });
 
-      console.log('✅ CRO Content Generator OpenAI client initialized successfully');
+      console.log('✅ CRO Content Generator (GPT-5-nano) initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize CRO Content Generator OpenAI client:', error);
     }
@@ -248,9 +248,9 @@ REQUIREMENTS:
 Return valid JSON only.`
         }
       ],
-      temperature: 0.4, // Slightly higher for creative content generation
+      // Using default temperature (1) as GPT-5-nano doesn't support custom temperature values
       max_completion_tokens: 4000,
-      response_format: { type: "json_object" }
+      // response_format removed - GPT-5-nano may not support this parameter
     });
 
     const responseContent = completion.choices[0]?.message?.content;
@@ -308,9 +308,9 @@ REQUIREMENTS:
 Return valid JSON only.`
         }
       ],
-      temperature: 0.3,
+      // Using default temperature (1) as GPT-5-nano doesn't support custom temperature values
       max_completion_tokens: 3500,
-      response_format: { type: "json_object" }
+      // response_format removed - GPT-5-nano may not support this parameter
     });
 
     const responseContent = completion.choices[0]?.message?.content;
@@ -354,9 +354,9 @@ REQUIREMENTS:
 Return valid JSON only.`
         }
       ],
-      temperature: 0.3,
+      // Using default temperature (1) as GPT-5-nano doesn't support custom temperature values
       max_completion_tokens: 3000,
-      response_format: { type: "json_object" }
+      // response_format removed - GPT-5-nano may not support this parameter
     });
 
     const responseContent = completion.choices[0]?.message?.content;

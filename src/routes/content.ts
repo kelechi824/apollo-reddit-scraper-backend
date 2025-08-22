@@ -240,7 +240,7 @@ router.post('/generate-meta', async (req: Request, res: Response): Promise<any> 
       }
     };
 
-    // Try gpt-5-nano first, then gpt-4.1-nano
+    // Try gpt-5-nano first, then fallback to gpt-5-nano
     try {
       const completion = await openai.chat.completions.create({
         model: 'gpt-5-nano',
@@ -255,10 +255,10 @@ router.post('/generate-meta', async (req: Request, res: Response): Promise<any> 
       const { title, description } = normalize(content);
       metaSeoTitle = title; metaDescription = description;
     } catch (err5) {
-      console.warn('⚠️ gpt-5-nano meta failed, retrying with gpt-4.1-nano...', err5);
+      console.warn('⚠️ gpt-5-nano meta failed, retrying with gpt-5-nano fallback...', err5);
       try {
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4.1-nano-2025-04-14',
+          model: 'gpt-5-nano',
           messages: [
             { role: 'system', content: 'You generate concise, high-quality SEO meta titles and descriptions as strict JSON.' },
             { role: 'user', content: `${prompt}\n\nKeyword: ${keyword}\nContent Preview: ${content_preview || ''}\n\nRespond ONLY as JSON with keys: metaSeoTitle, metaDescription.` }

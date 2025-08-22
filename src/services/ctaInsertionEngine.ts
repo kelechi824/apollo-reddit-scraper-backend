@@ -341,6 +341,9 @@ class CTAInsertionEngine {
   private renderSimpleCTAAsHTML(ctaVariant: any): string {
     const { cta } = ctaVariant;
     
+    // Clean any remaining robotic language patterns before rendering
+    const cleanedDescription = this.cleanCTADescription(cta.description);
+    
     return `
 <div class="apollo-cta" style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 2px solid #e2e8f0; border-radius: 1rem; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
   <div class="apollo-cta-category" style="font-size: 0.875rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">
@@ -350,13 +353,31 @@ class CTAInsertionEngine {
     ${cta.headline}
   </h3>
   <p class="apollo-cta-description" style="font-size: 1.125rem; color: #475569; margin-bottom: 1.5rem; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto;">
-    ${cta.description}
+    ${cleanedDescription}
   </p>
   <a href="https://www.apollo.io/sign-up" class="apollo-cta-button" style="display: inline-flex; align-items: center; gap: 0.5rem; background-color: #EBF212; color: #000000; font-weight: 600; padding: 0.875rem 2rem; border-radius: 0.5rem; text-decoration: none; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);" target="_blank">
     ${cta.action_button}
     <span style="font-size: 1rem;">→</span>
   </a>
 </div>`;
+  }
+
+  /**
+   * Clean CTA description for final rendering
+   * Why this matters: Final cleanup pass to ensure no robotic language makes it to the user.
+   */
+  private cleanCTADescription(description: string): string {
+    if (!description) return description;
+    
+    return description
+      .replace(/\band\s+and\b/gi, 'and') // Remove "and and"
+      .replace(/\bacross\s+campaigns\s+across\s+campaigns/gi, 'across campaigns')
+      .replace(/\bdata\s+duplication\s+and\s+duplicates\s+management/gi, 'duplicate management')
+      .replace(/\bWebsite\s+visitor\s+tracking\s+script\s+and\s+a\s+custom\s+scoring\s+model/gi, 'visitor tracking and lead scoring')
+      .replace(/\bcrm\s+integration\s+and\s+data\s+sync\s+strategy/gi, 'seamless CRM sync')
+      .replace(/\bprove\s+ROI\s+on\s+sales\s+tools\s+and\s+improved\s+lead-gen\s+accuracy/gi, 'prove ROI and improve lead quality')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   /**
@@ -393,6 +414,9 @@ ${cta.description}
   private renderSimpleCTAAsMarkdown(ctaVariant: any): string {
     const { cta } = ctaVariant;
     
+    // Clean description for markdown too
+    const cleanedDescription = this.cleanCTADescription(cta.description);
+    
     return `
 ---
 
@@ -400,7 +424,7 @@ ${cta.description}
 
 # ${cta.headline}
 
-${cta.description}
+${cleanedDescription}
 
 [${cta.action_button}](#)
 
@@ -1022,6 +1046,9 @@ ${cta.description}
   private renderCTAAsPlainText(ctaVariant: any): string {
     const { cta } = ctaVariant;
     
+    // Clean description for plain text too
+    const cleanedDescription = this.cleanCTADescription(cta.description);
+    
     return `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1029,7 +1056,7 @@ ${cta.category_header.toUpperCase()}
 
 ${cta.headline}
 
-${cta.description}
+${cleanedDescription}
 
 👉 ${cta.action_button}
 

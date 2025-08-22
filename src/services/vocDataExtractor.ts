@@ -218,7 +218,7 @@ class VoCDataExtractor {
 
   /**
    * Extract call summaries for VoC analysis (Original method)
-   * Why this matters: Provides structured call data that gpt-4.1-nano can analyze for pain points.
+   * Why this matters: Provides structured call data that gpt-5-nano can analyze for pain points.
    */
   async extractCallSummaries(daysBack: number = 180, maxCalls: number = 250): Promise<VoCExtractionResult> {
     try {
@@ -355,7 +355,7 @@ class VoCDataExtractor {
 
   /**
    * Get formatted call data for pain point analysis (Optimized for high volume)
-   * Why this matters: Provides clean, structured text that gpt-4.1-nano can analyze for customer pain points.
+   * Why this matters: Provides clean, structured text that gpt-5-nano can analyze for customer pain points.
    * Uses optimized parallel extraction for better performance with large datasets.
    */
   async getCallDataForAnalysis(daysBack: number = 90, maxCalls: number = 300): Promise<{

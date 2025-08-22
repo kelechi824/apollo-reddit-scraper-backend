@@ -80,7 +80,7 @@ router.post('/extract-summaries', async (req, res) => {
 
 /**
  * Get formatted call data ready for pain point analysis
- * Why this matters: Prepares clean, structured text for gpt-4.1-nano pain point analysis.
+ * Why this matters: Prepares clean, structured text for gpt-5-nano pain point analysis.
  */
 router.post('/prepare-analysis-data', async (req, res) => {
   try {
@@ -202,7 +202,7 @@ router.get('/quick-test', async (req, res) => {
 });
 
 /**
- * Analyze thematic pain points using gpt-4.1-nano
+ * Analyze thematic pain points using gpt-5-nano
  * Why this matters: Extracts recurring customer pain themes for VoC Kit liquid variables.
  */
 router.post('/analyze-themes', async (req, res) => {

@@ -38,11 +38,11 @@ class ClaudeService {
     // Initialize error handling components
     this.circuitBreaker = new CircuitBreaker(
       DEFAULT_CIRCUIT_BREAKER_CONFIGS.claude,
-      'Claude Sonnet 4'
+      'Claude 3.5 Sonnet'
     );
     this.rateLimiter = new RateLimiter(
       DEFAULT_RATE_LIMITS.claude,
-      'Claude Sonnet 4'
+      'Claude 3.5 Sonnet'
     );
 
     // Delay initialization to allow environment variables to load
@@ -233,7 +233,7 @@ Generate a practical, action-oriented opening that identifies the engagement opp
 
     try {
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 300,
         temperature: 0.7,
         system: systemPrompt,
@@ -297,7 +297,7 @@ What angle feels most natural for your approach?`,
       });
 
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 400,
         temperature: 0.7,
         system: systemPrompt + "\n\n" + conversationHistory,
@@ -601,7 +601,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
    * by accounting for prompt overhead and reserving buffer space for conclusions.
    */
   private calculateTokenLimit(contentLength?: 'short' | 'medium' | 'long'): number {
-    // Maximum possible limits for 4-model pipeline - Claude Sonnet 4 can handle very high token counts
+    // Maximum possible limits for 4-model pipeline - Claude 3.5 Sonnet can handle very high token counts
     const tokenLimits = {
       short: 12000,   // ~9000 words - massive increase to handle 4-model pipeline overhead  
       medium: 15000,  // ~11250 words - massive increase to handle 4-model pipeline overhead
@@ -611,6 +611,64 @@ MESSAGES SO FAR: ${conversation.messages.length}
     const limit = tokenLimits[contentLength || 'medium'];
     console.log(`📊 Using ${limit} tokens for ${contentLength || 'medium'} content (MAXIMUM for pipeline)`);
     return limit;
+  }
+
+  /**
+   * Generate simple text content using Claude
+   * Why this matters: Provides a simple interface for generating text content like CTAs
+   * without requiring complex context structures.
+   */
+  async generateSimpleContent(prompt: string): Promise<string> {
+    if (!this.client) {
+      throw createServiceError(new Error('Claude client not initialized'), 'Claude 3.5 Sonnet', 'Client check');
+    }
+
+    if (!prompt) {
+      throw createServiceError(new Error('Prompt is required'), 'Claude 3.5 Sonnet', 'Input validation');
+    }
+
+    console.log('🤖 Generating simple content with Claude 3.5 Sonnet...');
+    
+    try {
+      const response = await retryWithBackoff(
+        async () => {
+          return await this.client!.messages.create({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1000,
+            temperature: 0.7,
+            messages: [
+              {
+                role: 'user',
+                content: prompt
+              }
+            ]
+          });
+        },
+        DEFAULT_RETRY_CONFIGS.claude,
+        'Claude 3.5 Sonnet',
+        'CTA generation'
+      );
+
+      if (!response.content || response.content.length === 0) {
+        throw createServiceError(new Error('Empty response from Claude'), 'Claude 3.5 Sonnet', 'Response processing');
+      }
+
+      const textContent = response.content
+        .filter(block => block.type === 'text')
+        .map(block => (block as any).text)
+        .join('');
+
+      if (!textContent) {
+        throw createServiceError(new Error('No text content in response'), 'Claude 3.5 Sonnet', 'Response processing');
+      }
+
+      console.log('✅ Claude 3.5 Sonnet content generated successfully');
+      return textContent;
+
+    } catch (error: any) {
+      console.error('❌ Claude simple content generation failed:', error);
+      throw createServiceError(error, 'Claude 3.5 Sonnet', 'Content generation');
+    }
   }
 
   /**
@@ -630,11 +688,11 @@ MESSAGES SO FAR: ${conversation.messages.length}
     content_length?: 'short' | 'medium' | 'long';
   }): Promise<{ content: string; title?: string; description?: string; metaSeoTitle?: string; metaDescription?: string }> {
     if (!this.client) {
-      throw createServiceError(new Error('Claude client not initialized'), 'Claude Sonnet 4', 'Client check');
+      throw createServiceError(new Error('Claude client not initialized'), 'Claude 3.5 Sonnet', 'Client check');
     }
 
     if (!request.system_prompt || !request.user_prompt) {
-      throw createServiceError(new Error('System prompt and user prompt are required'), 'Claude Sonnet 4', 'Input validation');
+      throw createServiceError(new Error('System prompt and user prompt are required'), 'Claude 3.5 Sonnet', 'Input validation');
     }
 
     console.log('🤖 Generating content with Claude...');
@@ -786,7 +844,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
   private createTimeoutPromise(timeoutMs: number): Promise<never> {
     return new Promise((_, reject) => {
       setTimeout(() => {
-        reject(createServiceError(new Error(`Claude request timeout after ${timeoutMs}ms`), 'Claude Sonnet 4', 'Timeout'));
+        reject(createServiceError(new Error(`Claude request timeout after ${timeoutMs}ms`), 'Claude 3.5 Sonnet', 'Timeout'));
       }, timeoutMs);
     });
   }
@@ -834,7 +892,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
         async () => {
           const completion = await Promise.race([
             this.client!.messages.create({
-              model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+              model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
               max_tokens: 50,
               messages: [{ role: "user", content: "Hello, this is a connection test." }]
             }),
@@ -898,7 +956,7 @@ ${markdown_data}
 Please use this processed data as context to create a comprehensive playbook following the specified format.`;
 
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514', // Using Claude Sonnet 4
+        model: 'claude-sonnet-4-20250514', // Using Claude 3.5 Sonnet
         max_tokens: 4000,
         temperature: 0.9, // Increased for more creative and varied playbook outputs
         system: system_prompt,
@@ -1213,7 +1271,7 @@ Generate a practical, CRO-focused opening that identifies specific conversion op
 
     try {
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 400,
         temperature: 0.7,
         system: systemPrompt,
@@ -1280,7 +1338,7 @@ What's your biggest conversion challenge right now, or would you like me to dive
       });
 
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude Sonnet 4
+        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 500,
         temperature: 0.7,
         system: systemPrompt + "\n\n" + conversationHistory,
