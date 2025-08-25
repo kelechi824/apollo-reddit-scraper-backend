@@ -166,7 +166,7 @@ class GongService {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      timeout: 30000, // 30 second timeout
+      timeout: 10000, // 10 second timeout for most operations
     });
 
     console.log('✅ Gong API service initialized with credentials');

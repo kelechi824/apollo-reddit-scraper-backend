@@ -381,25 +381,24 @@ router.post('/analyze-chunk', async (req, res) => {
 });
 
 /**
- * High-volume synchronous VoC analysis with lightweight extraction (300 calls maintained)
- * Why this matters: Maintains full 300-call analysis volume using lightweight data extraction
- * to avoid timeout issues while preserving comprehensive VoC insights.
+ * High-volume synchronous VoC analysis with parallel workers (300 calls)
+ * Why this matters: Uses 20 parallel workers to process full 300-call volume
+ * within Vercel's timeout limits using ultra-lightweight extraction.
  */
 router.post('/analyze-synchronous', async (req, res) => {
   try {
-    // High-volume defaults with optimized processing
+    // High-volume defaults with parallel processing
     const { daysBack = 90, maxCalls = 300 } = req.body;
     
-    console.log(`🚀 Starting high-volume VoC analysis (${daysBack} days, ${maxCalls} calls)`);
+    console.log(`🚀 Starting parallel VoC analysis (${daysBack} days, ${maxCalls} calls with 20 workers)`);
     const startTime = Date.now();
     
     const vocAnalyzer = new VoCThematicAnalyzer();
     
-    // Use lightweight extraction with automatic call limit adjustment
-    // Why this matters: Processes up to 100 calls reliably within Vercel's timeout limits
-    const adjustedMaxCalls = Math.min(maxCalls, 100); // Cap at 100 for reliability
-    console.log(`📊 Processing ${adjustedMaxCalls} calls with lightweight extraction (adjusted from ${maxCalls})`);
-    const analysisResult = await vocAnalyzer.analyzeThemesLightweight(daysBack, adjustedMaxCalls);
+    // Use full 300 calls with parallel workers
+    // Why this matters: 20 workers process 15 calls each simultaneously for speed
+    console.log(`📊 Processing ${maxCalls} calls with 20 parallel workers`);
+    const analysisResult = await vocAnalyzer.analyzeThemesLightweight(daysBack, maxCalls);
     
     // Format as liquid variables
     const variables: Record<string, string> = {};
