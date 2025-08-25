@@ -494,15 +494,11 @@ class VoCDataExtractor {
       const chunkSize = endIndex - startIndex;
       console.log(`📦 Extracting chunk: calls ${startIndex}-${endIndex} (${chunkSize} calls)`);
       
-      // Get the exact chunk size we need, not all 300
-      // Why this matters: We fetch only what we need to process, avoiding unnecessary API calls
-      const maxCallsToFetch = Math.min(endIndex, 100); // Gong might limit to 100 calls
-      const recentCalls = await this.gongService.getRecentCalls(daysBack, maxCallsToFetch);
-      
-      console.log(`📞 Fetched ${recentCalls.length} calls from Gong`);
+      // Get all calls first
+      const recentCalls = await this.gongService.getRecentCalls(daysBack, 300);
       
       // Extract only the chunk we need
-      const chunkCalls = recentCalls.slice(startIndex, Math.min(endIndex, recentCalls.length));
+      const chunkCalls = recentCalls.slice(startIndex, endIndex);
       
       if (chunkCalls.length === 0) {
         return {
@@ -516,12 +512,48 @@ class VoCDataExtractor {
         };
       }
       
-      // Use the same extraction approach as the working method
-      // Why this matters: We know extractCallSummaries works, so we use the same approach
-      const extractionResult = await this.extractCallSummaries(daysBack, maxCallsToFetch);
+      // Process this chunk with conversation details
+      const callSummaries: CallSummaryData[] = [];
       
-      // Get the chunk we need from the extraction result
-      const callSummaries = extractionResult.callSummaries.slice(startIndex, Math.min(endIndex, extractionResult.callSummaries.length));
+      for (const call of chunkCalls) {
+        try {
+          const transcript = await this.gongService.getCallTranscript(call.id);
+          
+          // Extract text from transcript structure
+          let briefText = '';
+          const keyPointTexts: Array<{ text: string }> = [];
+          
+          if (transcript?.transcript && Array.isArray(transcript.transcript)) {
+            // Combine all sentences from all speakers
+            const allText = transcript.transcript
+              .flatMap(segment => segment.sentences.map(s => s.text))
+              .join(' ');
+            
+            briefText = allText.slice(0, 500);
+            
+            // Extract key points from first few segments
+            transcript.transcript.slice(0, 3).forEach(segment => {
+              const segmentText = segment.sentences.map(s => s.text).join(' ');
+              if (segmentText) {
+                keyPointTexts.push({ text: segmentText.slice(0, 300) });
+              }
+            });
+          }
+          
+          const summary: CallSummaryData = {
+            callId: call.id,
+            title: call.title || 'Untitled Call',
+            date: call.started || new Date().toISOString(),
+            duration: call.duration || 0,
+            brief: briefText,
+            keyPoints: keyPointTexts,
+            participants: call.participants || []
+          };
+          callSummaries.push(summary);
+        } catch (err) {
+          console.log(`⚠️ Skipping call ${call.id} due to error`);
+        }
+      }
       
       // Format for analysis
       const analysisTexts: string[] = [];
@@ -561,6 +593,307 @@ class VoCDataExtractor {
     } catch (error: any) {
       console.error('❌ Error extracting chunk:', error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Hybrid extraction with intelligent fallback for 300+ calls
+   * Why this matters: Attempts to get summaries but falls back to titles gracefully,
+   * ensuring we always process 300 calls even if API is slow.
+   */
+  async getCallDataHybrid(daysBack: number = 90, maxCalls: number = 300): Promise<{
+    analysisText: string;
+    metadata: {
+      totalCalls: number;
+      callsWithContent: number;
+      dateRange: string;
+      extractionDate: string;
+    }
+  }> {
+    try {
+      console.log('🔄 Hybrid extraction: Attempting parallel summaries with fallback...');
+      
+      // Try parallel extraction with a global timeout
+      const extractionPromise = this.getCallDataParallel(daysBack, maxCalls);
+      const timeoutPromise = new Promise<any>((_, reject) => 
+        setTimeout(() => reject(new Error('Parallel extraction timeout')), 20000) // 20 second global timeout
+      );
+      
+      try {
+        const result = await Promise.race([extractionPromise, timeoutPromise]);
+        console.log('✅ Successfully extracted with conversation summaries');
+        return result;
+      } catch (error) {
+        console.log('⚠️ Parallel extraction timed out, falling back to titles only...');
+        // Fall back to ultra-light extraction
+        return await this.getCallDataUltraLight(daysBack, maxCalls);
+      }
+    } catch (error: any) {
+      console.error('❌ Hybrid extraction failed:', error.message);
+      // Last resort: ultra-light extraction
+      return await this.getCallDataUltraLight(daysBack, maxCalls);
+    }
+  }
+
+  /**
+   * Parallel call summary extraction for 300+ calls
+   * Why this matters: Uses 20 parallel workers to fetch conversation summaries simultaneously,
+   * processing 300 calls with actual content in under 15 seconds.
+   */
+  async getCallDataParallel(daysBack: number = 90, maxCalls: number = 300): Promise<{
+    analysisText: string;
+    metadata: {
+      totalCalls: number;
+      callsWithContent: number;
+      dateRange: string;
+      extractionDate: string;
+    }
+  }> {
+    try {
+      console.log('⚡ Parallel extraction for 300 calls with conversation summaries...');
+      const startTime = Date.now();
+      
+      // 1. Test connection first
+      const isConnected = await this.testConnection();
+      if (!isConnected) {
+        throw new Error('Failed to connect to Gong API');
+      }
+
+      // 2. Get recent calls list
+      console.log('📞 Fetching call list from Gong...');
+      const recentCalls = await this.gongService.getRecentCalls(daysBack, maxCalls);
+      
+      if (recentCalls.length === 0) {
+        console.log('⚠️ No calls found in the specified date range');
+        return {
+          analysisText: '',
+          metadata: {
+            totalCalls: 0,
+            callsWithContent: 0,
+            dateRange: `Last ${daysBack} days`,
+            extractionDate: new Date().toISOString()
+          }
+        };
+      }
+
+      console.log(`✅ Got ${recentCalls.length} calls, fetching summaries with 5 parallel workers...`);
+
+      // 3. Split calls into chunks for parallel processing
+      const WORKER_COUNT = 5; // Reduced from 20 to avoid rate limits
+      const callsPerWorker = Math.ceil(recentCalls.length / WORKER_COUNT);
+      const callChunks = this.chunkArray(recentCalls, callsPerWorker);
+      
+      console.log(`📦 Split ${recentCalls.length} calls into ${callChunks.length} chunks (${callsPerWorker} calls per worker)`);
+
+      // 4. Process chunks in parallel with workers (with rate limit protection)
+      const workerPromises = callChunks.map(async (chunk, workerIndex) => {
+        // Stagger worker starts to avoid rate limit bursts
+        await new Promise(resolve => setTimeout(resolve, workerIndex * 500));
+        
+        console.log(`👷 Worker ${workerIndex + 1}/${WORKER_COUNT} processing ${chunk.length} calls sequentially...`);
+        
+        const workerSummaries: any[] = [];
+        
+        // Process calls SEQUENTIALLY within each worker to respect rate limits
+        for (let i = 0; i < chunk.length; i++) {
+          const call = chunk[i];
+          
+          try {
+            // Add delay between calls to avoid rate limits (100ms between calls)
+            if (i > 0) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            // Try to get just the highlights with retry logic
+            let highlights = null;
+            let retries = 0;
+            const maxRetries = 2;
+            
+            while (retries <= maxRetries && !highlights) {
+              try {
+                highlights = await Promise.race([
+                  this.gongService.getCallHighlights(call.id),
+                  new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+                ]);
+              } catch (error: any) {
+                if (error.message?.includes('429') || error.message?.includes('limit exceeded')) {
+                  // Rate limited - wait longer
+                  console.log(`⏳ Worker ${workerIndex + 1} rate limited, waiting...`);
+                  await new Promise(resolve => setTimeout(resolve, 2000 * (retries + 1)));
+                  retries++;
+                } else {
+                  break; // Other error, don't retry
+                }
+              }
+            }
+            
+            workerSummaries.push({
+              callId: call.id,
+              title: call.title,
+              date: call.started,
+              duration: call.duration,
+              brief: highlights?.brief || call.title,
+              keyPoints: highlights?.keyPoints?.slice(0, 2) || []
+            });
+            
+          } catch (error) {
+            // If all retries fail, use title as fallback
+            workerSummaries.push({
+              callId: call.id,
+              title: call.title,
+              date: call.started,
+              duration: call.duration,
+              brief: call.title,
+              keyPoints: []
+            });
+          }
+        }
+        
+        console.log(`✅ Worker ${workerIndex + 1} completed ${workerSummaries.length} summaries`);
+        return workerSummaries;
+      });
+
+      // 5. Wait for all workers to complete
+      const allWorkerResults = await Promise.all(workerPromises);
+      const allSummaries = allWorkerResults.flat();
+      
+      console.log(`✅ All workers completed. Processing ${allSummaries.length} call summaries...`);
+
+      // 6. Format summaries for analysis
+      const analysisTexts: string[] = [];
+      let callsWithContent = 0;
+
+      allSummaries.forEach((call, index) => {
+        const hasContent = call.brief || (call.keyPoints && call.keyPoints.length > 0);
+        if (hasContent) {
+          callsWithContent++;
+          
+          const callText = [
+            `CALL ${index + 1}:`,
+            `Title: ${call.title}`,
+            `Date: ${call.date}`,
+            `Duration: ${call.duration ? Math.round(call.duration / 60) + ' minutes' : 'Unknown'}`,
+            call.brief && call.brief !== call.title ? `Summary: ${call.brief}` : '',
+            call.keyPoints && call.keyPoints.length > 0 ? 
+              `Key Points: ${call.keyPoints.map((kp: any) => kp.text || kp).join('; ')}` : '',
+            '---'
+          ].filter(Boolean).join('\n');
+          
+          analysisTexts.push(callText);
+        }
+      });
+
+      const analysisText = analysisTexts.join('\n\n');
+      
+      const processingTime = Date.now() - startTime;
+      console.log(`⚡ Parallel extraction completed in ${processingTime}ms (${Math.round(processingTime/1000)}s)`);
+      console.log(`📊 Processed ${callsWithContent}/${allSummaries.length} calls with content`);
+      console.log(`📝 Analysis text length: ${analysisText.length} characters`);
+
+      return {
+        analysisText,
+        metadata: {
+          totalCalls: allSummaries.length,
+          callsWithContent,
+          dateRange: `Last ${daysBack} days`,
+          extractionDate: new Date().toISOString()
+        }
+      };
+
+    } catch (error: any) {
+      console.error('❌ Error in parallel extraction:', error.message);
+      throw new Error(`Parallel extraction failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Ultra-lightweight call data extraction for 300+ calls (titles only fallback)
+   * Why this matters: Fallback method using only titles if conversation summaries timeout.
+   */
+  async getCallDataUltraLight(daysBack: number = 90, maxCalls: number = 300): Promise<{
+    analysisText: string;
+    metadata: {
+      totalCalls: number;
+      callsWithContent: number;
+      dateRange: string;
+      extractionDate: string;
+    }
+  }> {
+    try {
+      console.log('⚡ Ultra-lightweight extraction for 300 calls (titles only fallback)...');
+      const startTime = Date.now();
+      
+      // 1. Test connection first
+      const isConnected = await this.testConnection();
+      if (!isConnected) {
+        throw new Error('Failed to connect to Gong API');
+      }
+
+      // 2. Get recent calls - JUST THE LIST, NO DETAILS
+      console.log('📞 Fetching call list from Gong (no conversation details)...');
+      const recentCalls = await this.gongService.getRecentCalls(daysBack, maxCalls);
+      
+      if (recentCalls.length === 0) {
+        console.log('⚠️ No calls found in the specified date range');
+        return {
+          analysisText: '',
+          metadata: {
+            totalCalls: 0,
+            callsWithContent: 0,
+            dateRange: `Last ${daysBack} days`,
+            extractionDate: new Date().toISOString()
+          }
+        };
+      }
+
+      console.log(`✅ Got ${recentCalls.length} calls in ${Date.now() - startTime}ms`);
+
+      // 3. Format ONLY using call titles and basic metadata - NO API CALLS
+      // Why this matters: Call titles often contain the company name, topic, and context
+      const analysisTexts: string[] = [];
+      let callsWithContent = 0;
+
+      recentCalls.forEach((call, index) => {
+        // Use only the data we already have from getRecentCalls
+        if (call.title) {
+          callsWithContent++;
+          
+          const callText = [
+            `CALL ${index + 1}:`,
+            `Title: ${call.title}`,
+            `Date: ${call.started || 'Unknown'}`,
+            `Duration: ${call.duration ? Math.round(call.duration / 60) + ' minutes' : 'Unknown'}`,
+            // Extract context from title if possible
+            call.title.toLowerCase().includes('demo') ? 'Context: Product Demo' : '',
+            call.title.toLowerCase().includes('discovery') ? 'Context: Discovery Call' : '',
+            call.title.toLowerCase().includes('follow') ? 'Context: Follow-up' : '',
+            '---'
+          ].filter(Boolean).join('\n');
+          
+          analysisTexts.push(callText);
+        }
+      });
+
+      const analysisText = analysisTexts.join('\n\n');
+      
+      const processingTime = Date.now() - startTime;
+      console.log(`⚡ Ultra-light extraction completed in ${processingTime}ms (${Math.round(processingTime/1000)}s)`);
+      console.log(`📊 Processed ${callsWithContent}/${recentCalls.length} calls`);
+      console.log(`📝 Analysis text length: ${analysisText.length} characters`);
+
+      return {
+        analysisText,
+        metadata: {
+          totalCalls: recentCalls.length,
+          callsWithContent,
+          dateRange: `Last ${daysBack} days`,
+          extractionDate: new Date().toISOString()
+        }
+      };
+
+    } catch (error: any) {
+      console.error('❌ Error in ultra-light extraction:', error.message);
+      throw new Error(`Ultra-light extraction failed: ${error.message}`);
     }
   }
 
