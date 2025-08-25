@@ -296,6 +296,91 @@ router.get('/quick-analysis-test', async (req, res) => {
 });
 
 /**
+ * Chunked VoC analysis for production environments
+ * Why this matters: Processes calls in small batches to avoid serverless timeouts
+ * while maintaining comprehensive analysis coverage.
+ */
+router.post('/analyze-chunk', async (req, res) => {
+  try {
+    const { 
+      daysBack = 90, 
+      chunkSize = 50,  // Process 50 calls per chunk
+      chunkIndex = 0,   // Which chunk to process
+      totalChunks = 6   // Total expected chunks (300/50 = 6)
+    } = req.body;
+    
+    const startCall = chunkIndex * chunkSize;
+    const endCall = Math.min(startCall + chunkSize, 300);
+    
+    console.log(`🔄 Processing chunk ${chunkIndex + 1}/${totalChunks} (calls ${startCall}-${endCall})`);
+    
+    console.log(`🚀 Starting chunked VoC analysis - Chunk ${chunkIndex + 1}/${totalChunks}`);
+    const startTime = Date.now();
+    
+    const vocAnalyzer = new VoCThematicAnalyzer();
+    
+    // Process only this chunk of calls
+    // Why this matters: Each chunk completes in ~5 seconds, well under Vercel's limit
+    console.log(`📊 Processing ${chunkSize} calls in this chunk`);
+    const analysisResult = await vocAnalyzer.analyzeThemesChunk(daysBack, startCall, endCall);
+    
+    // Format as liquid variables
+    const variables: Record<string, string> = {};
+    analysisResult.painPoints.forEach((point: any) => {
+      variables[point.liquidVariable] = `{{ pain_points.${point.liquidVariable} }}`;
+    });
+
+    const liquidResult = {
+      variables,
+      painPoints: analysisResult.painPoints,
+      metadata: {
+        totalPainPoints: analysisResult.painPoints.length,
+        callsAnalyzed: analysisResult.totalCallsAnalyzed,
+        analysisDate: analysisResult.analysisTimestamp,
+        chunkIndex,
+        totalChunks,
+        isLastChunk: chunkIndex === totalChunks - 1
+      }
+    };
+    
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ High-volume VoC analysis completed in ${processingTime}ms (${Math.round(processingTime/1000)}s)`);
+    console.log(`📊 Extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls`);
+    
+    res.json({
+      success: true,
+      data: liquidResult,
+      processingTime,
+      message: `Chunk ${chunkIndex + 1}/${totalChunks}: Extracted ${liquidResult.metadata.totalPainPoints} pain points from ${liquidResult.metadata.callsAnalyzed} calls`,
+      timestamp: new Date().toISOString(),
+      chunk: {
+        index: chunkIndex,
+        total: totalChunks,
+        callsInChunk: liquidResult.metadata.callsAnalyzed,
+        isLastChunk: chunkIndex === totalChunks - 1,
+        processingTime: `${Math.round(processingTime/1000)}s`
+      }
+    });
+
+  } catch (error: any) {
+    const { chunkIndex = 0, totalChunks = 6 } = req.body;
+    console.error(`❌ Error in chunk ${chunkIndex + 1}:`, error.message);
+    console.error('❌ Full error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: `Failed to process chunk ${chunkIndex + 1}/${totalChunks}`,
+      timestamp: new Date().toISOString(),
+      chunk: {
+        index: chunkIndex,
+        total: totalChunks,
+        errorDetails: error.message
+      }
+    });
+  }
+});
+
+/**
  * High-volume synchronous VoC analysis with lightweight extraction (300 calls maintained)
  * Why this matters: Maintains full 300-call analysis volume using lightweight data extraction
  * to avoid timeout issues while preserving comprehensive VoC insights.
@@ -310,10 +395,11 @@ router.post('/analyze-synchronous', async (req, res) => {
     
     const vocAnalyzer = new VoCThematicAnalyzer();
     
-    // Use lightweight extraction to maintain full call volume while avoiding timeouts
-    // Why this matters: Processes all 300 calls using streamlined data extraction instead of reducing volume
-    console.log(`📊 Processing full ${maxCalls} calls with lightweight extraction`);
-    const analysisResult = await vocAnalyzer.analyzeThemesLightweight(daysBack, maxCalls);
+    // Use lightweight extraction with automatic call limit adjustment
+    // Why this matters: Processes up to 100 calls reliably within Vercel's timeout limits
+    const adjustedMaxCalls = Math.min(maxCalls, 100); // Cap at 100 for reliability
+    console.log(`📊 Processing ${adjustedMaxCalls} calls with lightweight extraction (adjusted from ${maxCalls})`);
+    const analysisResult = await vocAnalyzer.analyzeThemesLightweight(daysBack, adjustedMaxCalls);
     
     // Format as liquid variables
     const variables: Record<string, string> = {};

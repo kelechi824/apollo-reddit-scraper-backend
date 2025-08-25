@@ -256,6 +256,82 @@ ${callData}`;
   }
 
   /**
+   * Analyze a specific chunk of calls for chunked processing
+   * Why this matters: Processes a subset of calls to stay within serverless timeout limits.
+   */
+  async analyzeThemesChunk(daysBack: number = 180, startIndex: number = 0, endIndex: number = 50): Promise<VoCAnalysisResult> {
+    const startTime = Date.now();
+    
+    try {
+      const chunkSize = endIndex - startIndex;
+      console.log(`🧠 Analyzing chunk: calls ${startIndex}-${endIndex} (${chunkSize} calls)`);
+      
+      // Extract only this chunk of calls
+      const callData = await this.vocExtractor.getCallDataChunk(daysBack, startIndex, endIndex);
+      
+      if (callData.metadata.callsWithContent === 0) {
+        return {
+          painPoints: [],
+          totalCallsAnalyzed: 0,
+          analysisTimestamp: new Date().toISOString(),
+          processingTimeMs: Date.now() - startTime
+        };
+      }
+
+      // Analyze this chunk using gpt-5-nano
+      console.log(`🤖 Processing chunk with ${callData.analysisText.length} characters...`);
+      
+      const completion = await this.openai.responses.create({
+        model: 'gpt-5-nano',
+        input: `You are an expert B2B sales analyst specializing in extracting customer pain points from sales call data. You analyze Gong call transcripts to identify business challenges and pain points that prospects face. You always respond with valid JSON containing structured pain point data.
+
+${this.generateAnalysisPrompt(callData.analysisText)}`
+      });
+
+      const responseText = completion.output_text;
+      
+      if (!responseText) {
+        console.error('❌ No response content from GPT-5-nano');
+        throw new Error('No response from analysis');
+      }
+      
+      // Parse the JSON response
+      let analysisResult: any;
+      try {
+        analysisResult = JSON.parse(responseText);
+      } catch (jsonError) {
+        // Try to extract JSON from response if it's wrapped in text
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            analysisResult = JSON.parse(jsonMatch[0]);
+          } catch (extractError) {
+            console.error('❌ Failed to extract JSON from response');
+            throw new Error('Failed to parse AI analysis results');
+          }
+        } else {
+          console.error('❌ No JSON found in response');
+          throw new Error('Failed to parse AI analysis results');
+        }
+      }
+
+      const painPoints = analysisResult.painPoints || [];
+      console.log(`✅ Chunk analysis complete: ${painPoints.length} pain points from ${callData.metadata.callsWithContent} calls`);
+      
+      return {
+        painPoints,
+        totalCallsAnalyzed: callData.metadata.callsWithContent,
+        analysisTimestamp: new Date().toISOString(),
+        processingTimeMs: Date.now() - startTime
+      };
+      
+    } catch (error: any) {
+      console.error('❌ Error in chunk analysis:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Lightweight analysis for high-volume call processing (300+ calls)
    * Why this matters: Uses streamlined data extraction to process full call volume within timeout limits.
    */
