@@ -23,6 +23,7 @@ import enhancedPersonaDetectionRoutes from './routes/enhancedPersonaDetection';
 import ctaGenerationRoutes from './routes/ctaGeneration';
 import competitorConquestingRoutes from './routes/competitorConquesting';
 import sitemapRoutes from './routes/sitemap';
+import sitemapChunkedRoutes from './routes/sitemapChunked';
 
 // Load environment variables
 dotenv.config();
@@ -64,6 +65,7 @@ app.use('/api/enhanced-persona-detection', enhancedPersonaDetectionRoutes);
 app.use('/api/cta-generation', ctaGenerationRoutes);
 app.use('/api/competitor-conquesting', competitorConquestingRoutes);
 app.use('/api/sitemap', sitemapRoutes);
+app.use('/api/sitemap-chunked', sitemapChunkedRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
