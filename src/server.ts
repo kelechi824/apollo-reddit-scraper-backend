@@ -105,7 +105,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         enhancedPersonaDetection: '/api/enhanced-persona-detection/*',
         ctaGeneration: '/api/cta-generation/*',
         competitorConquesting: '/api/competitor-conquesting/*',
-        sitemap: '/api/sitemap/*'
+        sitemap: '/api/sitemap/*',
+        sitemapChunked: '/api/sitemap-chunked/*'
       }
     }
   });

@@ -33,6 +33,7 @@ export interface ApiInfoResponse {
     ctaGeneration: string;
     competitorConquesting: string;
     sitemap: string;
+    sitemapChunked: string;
   };
   };
 }
