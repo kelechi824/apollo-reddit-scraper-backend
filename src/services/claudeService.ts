@@ -745,7 +745,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
                 }
               ]
             }),
-            this.createTimeoutPromise(120000) // 2 minute timeout for longer content generation
+            this.createTimeoutPromise(300000) // 5 minute timeout for comprehensive content generation
           ]);
 
           if (!response.content || response.content.length === 0) {
@@ -844,7 +844,7 @@ MESSAGES SO FAR: ${conversation.messages.length}
   private createTimeoutPromise(timeoutMs: number): Promise<never> {
     return new Promise((_, reject) => {
       setTimeout(() => {
-        reject(createServiceError(new Error(`Claude request timeout after ${timeoutMs}ms`), 'Claude 3.5 Sonnet', 'Timeout'));
+        reject(createServiceError(new Error(`Claude request timeout after ${timeoutMs}ms (${Math.round(timeoutMs/1000/60)} minutes)`), 'Claude Sonnet 4', 'Timeout'));
       }, timeoutMs);
     });
   }

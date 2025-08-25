@@ -198,24 +198,25 @@ function generateDefaultPrompts(keyword: string, sitemapData: any, brandKit: any
   
   // Generate random CTA anchor text to prevent LLM bias
   const ctaOptions = [
-    "Start Your Free Trial",
+    "Start Free with Apollo",
     "Try Apollo Free", 
     "Start a Trial",
     "Schedule a Demo",
+    "Start Your Free Trial",
     "Request a Demo", 
     "Start Prospecting",
     "Get Leads Now"
   ];
   const selectedCTA = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
   
-  // Generate UTM-tracked URL for this keyword
+  // Generate UTM-tracked URL for this keyword with utm_term parameter
   const sanitizedKeyword = keyword.toLowerCase()
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
     .trim();
-  const apolloSignupURL = `https://www.apollo.io/sign-up?utm_campaign=blog_creator_${sanitizedKeyword}`;
+  const apolloSignupURL = `https://www.apollo.io/sign-up?utm_campaign=blog_creator&utm_term=${sanitizedKeyword}`;
   
   // Handle both compressed and uncompressed sitemap formats
   const formatSitemapUrls = (data: any[]) => {
@@ -241,6 +242,15 @@ BRAND INTEGRATION:
 - Brand POV: ${brandKit.brandPointOfView || brandKit.brand_point_of_view || 'data-driven sales excellence'}
 - Tone: ${brandKit.toneOfVoice || brandKit.tone_of_voice || 'professional yet approachable'}
 - Apply these naturally throughout content, especially in examples and testimonials
+
+CUSTOMER TESTIMONIALS (MANDATORY):
+- MUST include 2-3 authentic customer quotes naturally integrated throughout the content
+- Create realistic quotes that match the Ideal Customer profile: ${brandKit.idealCustomerProfile || brandKit.ideal_customer_profile || 'sales professionals'}
+- Quotes should reflect real challenges, outcomes, and experiences relevant to the topic
+- Format quotes with proper attribution (job title, company size, industry when relevant)
+- Place quotes strategically: one in introduction/early section, others in key benefit sections
+- Example format: "Quote text here" - [Job Title], [Company Type/Industry]
+- Make quotes specific, credible, and directly related to the article's main topic
 ` : '';
 
   // Optimized prompts - reduced redundancy while keeping important nuances

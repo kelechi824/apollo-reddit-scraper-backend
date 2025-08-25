@@ -281,11 +281,11 @@ export const DEFAULT_RETRY_CONFIGS: Record<string, RetryConfig> = {
     jitterMs: 2000
   },
   claude: {
-    maxRetries: 3,
-    baseDelayMs: 1500,
-    maxDelayMs: 15000,
+    maxRetries: 2, // Reduced retries since we increased timeout to 5 minutes
+    baseDelayMs: 2000,
+    maxDelayMs: 20000,
     backoffMultiplier: 2,
-    jitterMs: 750
+    jitterMs: 1000
   }
 };
 

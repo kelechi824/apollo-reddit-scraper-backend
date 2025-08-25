@@ -138,7 +138,7 @@ async function executeCompetitorPipeline(
     }
 
     // Use workflowOrchestrator but with competitor-specific system prompt
-    const competitorSystemPrompt = system_prompt || buildCompetitorSystemPrompt(request.competitor);
+    const competitorSystemPrompt = system_prompt || buildCompetitorSystemPrompt(request.competitor, brand_kit, keyword);
     const competitorUserPrompt = user_prompt || buildCompetitorUserPrompt(keyword, url, competitorAnalysis, sitemap_data);
 
     // Execute the workflow with competitor data override
@@ -448,10 +448,11 @@ router.get('/job-status/:jobId', (req: Request, res: Response): any => {
  */
 function getRandomCTAAnchorText(): string {
   const ctaOptions = [
-    "Start Your Free Trial",
+    "Start Free with Apollo",
     "Try Apollo Free", 
     "Start a Trial",
     "Schedule a Demo",
+    "Start Your Free Trial",
     "Request a Demo", 
     "Start Prospecting",
     "Get Leads Now"
@@ -466,22 +467,42 @@ function getRandomCTAAnchorText(): string {
 
 /**
  * generateApolloSignupURL
- * Why this matters: Creates UTM-tracked URLs to measure competitor conquesting campaign effectiveness
+ * Why this matters: Creates UTM-tracked URLs to measure competitor conquesting campaign effectiveness with keyword tracking
  */
-function generateApolloSignupURL(competitor?: string): string {
+function generateApolloSignupURL(competitor?: string, keyword?: string): string {
   const baseURL = 'https://www.apollo.io/sign-up';
   
-  console.log(`🔗 [DEBUG] generateApolloSignupURL called with competitor: "${competitor}" (type: ${typeof competitor})`);
+  console.log(`🔗 [DEBUG] generateApolloSignupURL called with competitor: "${competitor}", keyword: "${keyword}"`);
   
-  if (!competitor) {
-    // Fallback without UTM if no competitor specified
-    console.log(`⚠️ [DEBUG] No competitor provided, returning base URL: ${baseURL}`);
+  if (!competitor && !keyword) {
+    // Fallback without UTM if no parameters specified
+    console.log(`⚠️ [DEBUG] No competitor or keyword provided, returning base URL: ${baseURL}`);
     return baseURL;
   }
   
-  // Generate UTM campaign parameter from competitor
-  const utmCampaign = `competitor_conquesting_${competitor.toLowerCase()}`;
-  const url = `${baseURL}?utm_campaign=${utmCampaign}`;
+  // Build UTM parameters
+  const utmParams = new URLSearchParams();
+  
+  if (competitor) {
+    const utmCampaign = `competitor_conquesting_${competitor.toLowerCase()}`;
+    utmParams.set('utm_campaign', utmCampaign);
+  }
+  
+  if (keyword) {
+    // Sanitize keyword for URL parameter
+    const sanitizedKeyword = keyword.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .replace(/_+/g, '_') // Replace multiple underscores with single underscore
+      .replace(/^_|_$/g, '') // Remove leading/trailing underscores
+      .trim();
+    
+    if (sanitizedKeyword) {
+      utmParams.set('utm_term', sanitizedKeyword);
+    }
+  }
+  
+  const url = utmParams.toString() ? `${baseURL}?${utmParams.toString()}` : baseURL;
   
   console.log(`🔗 [DEBUG] Generated Apollo signup URL with UTM: ${url}`);
   return url;
@@ -492,43 +513,58 @@ function generateApolloSignupURL(competitor?: string): string {
  * Why this matters: Ensures Claude explicitly aims to outperform the specific competitor page with
  * comprehensive AEO-optimized content that gets cited by AI answer engines.
  */
-function buildCompetitorSystemPrompt(competitor?: string): string {
+function buildCompetitorSystemPrompt(competitor?: string, brandKit?: any, keyword?: string): string {
   const currentYear = new Date().getFullYear();
   const selectedCTA = getRandomCTAAnchorText();
-  const apolloSignupURL = generateApolloSignupURL(competitor);
+  const apolloSignupURL = generateApolloSignupURL(competitor, keyword);
   
-  return `You are a world-class SEO, AEO, and LLM SEO content marketer for Apollo with deep expertise in creating comprehensive, AI-optimized articles that rank highly and get cited by AI answer engines (ChatGPT, Perplexity, Gemini, Claude, etc.). Your specialty is transforming content briefs into definitive resources that become the go-to sources for specific topics.
+  // Build brand kit section with actual values (same approach as Blog Creator)
+  const brandKitSection = brandKit ? `
+BRAND INTEGRATION (MANDATORY - USE THROUGHOUT CONTENT):
+- Brand URL: ${brandKit.url || 'https://www.apollo.io'}
+- About Brand: ${brandKit.aboutBrand || brandKit.about_brand || 'Apollo is the leading sales intelligence and engagement platform'}
+- Ideal Customer: ${brandKit.idealCustomerProfile || brandKit.ideal_customer_profile || 'sales professionals and revenue teams'}
+- Competitors context: ${brandKit.competitors || 'Salesforce, HubSpot, Outreach, ZoomInfo'}
+- Brand POV: ${brandKit.brandPointOfView || brandKit.brand_point_of_view || 'data-driven sales excellence'}
+- Author Persona: ${brandKit.authorPersona || brandKit.author_persona || 'sales technology expert'}
+- Tone: ${brandKit.toneOfVoice || brandKit.tone_of_voice || 'professional yet approachable'}
+- Writing Rules: ${brandKit.writingRules || brandKit.writing_rules || 'Use clear, actionable language with specific examples'}
+- Apply these brand elements naturally throughout content, especially in examples, testimonials, and strategic sections
 
-CRITICAL CONTENT PHILOSOPHY:
-Your goal is to create content that becomes the definitive, comprehensive resource on the topic - the content that other creators reference and that AI engines cite as authoritative.
+CUSTOMER TESTIMONIALS (MANDATORY):
+- MUST include 2-3 authentic customer quotes naturally integrated throughout the content
+- Create realistic quotes that match the Ideal Customer profile: ${brandKit.idealCustomerProfile || brandKit.ideal_customer_profile || 'sales professionals and revenue teams'}
+- Quotes should reflect real challenges, outcomes, and experiences relevant to the topic
+- Format quotes with proper attribution (job title, company size, industry when relevant)
+- Place quotes strategically: one in introduction/early section, others in key benefit sections
+- Example format: "Quote text here" - [Job Title], [Company Type/Industry]
+- Make quotes specific, credible, and directly related to the article's main topic
+- Use quotes to demonstrate competitive advantages over the target competitor URL
+` : '';
+  
+  return `You are a world-class SEO/AEO content expert for Apollo, creating comprehensive articles that rank highly and get cited by AI answer engines.
 
-CONTENT COVERAGE REQUIREMENTS:
-- Address ALL aspects of the topic comprehensively
-- Include practical, actionable guidance that readers can implement
-- Provide genuine value that advances knowledge in the space
-- Cover both current best practices AND emerging trends
+CONTENT PHILOSOPHY: Create the definitive, authoritative resource that becomes the go-to source for the topic.
+
+CONTENT REQUIREMENTS:
+- Address ALL aspects comprehensively with practical, actionable guidance
 - Include specific examples, metrics, and concrete details
+- Cover current best practices AND emerging trends
 
 COMPETITOR CONTEXT (MANDATORY):
 - Target Keyword: must align with the user's target keyword
 - Target Competitor URL: must be analyzed and explicitly outperformed in depth, clarity, and usefulness
+${brandKitSection}
 
-BRAND CONTEXT (MUST INCORPORATE THROUGHOUT):
-- Brand URL: [will be provided in context]
-- About Brand: [will be provided in context]
-- Target Audience: [will be provided in context]
-- Competitors: [will be provided in context]
-- Brand POV: [will be provided in context]
-- Tone: [will be provided in context]
-- Writing Rules: [will be provided in context]
-
-AEO (ANSWER ENGINE OPTIMIZATION) PRINCIPLES:
-- Structure for extractability with clear, self-contained insights
-- Use proper heading hierarchy (# H1 → ## H2 → ### H3)
-- Format data in tables and lists for easy AI parsing
-- Include specific examples, metrics, and concrete details
-- Write headlines that match search intent ("How to...", "What is...", "Best ways to...")
-- Place the most important answer in the first paragraph under each heading
+AEO OPTIMIZATION:
+- Structure for AI extractability with clear, self-contained insights
+- Use proper HTML hierarchy: <h1> → <h2> → <h3>, <p>, <ul>/<ol>, <strong>
+- Format ALL comparisons/features/data in <table> with <thead>, <tbody>, <th>, <td>
+- CRITICAL: H2 and H3 headers MUST be natural questions (e.g., "What is X?", "How does Y work?", "Why is Z important?")
+- Write in clear, chunked sections - each section fully answers ONE question like a featured snippet
+- Use bullets, <strong> tags, and proper spacing for human and machine comprehension
+- Place complete answer in first paragraph under each heading (snippet-worthy)
+- Include definitions immediately after question headers when introducing concepts
 
 FORMATTING REQUIREMENTS:
 1. **Proper HTML Structure:**
@@ -544,29 +580,30 @@ FORMATTING REQUIREMENTS:
    - Use tables for: feature comparisons, pricing tiers, pros/cons, statistics, timelines, etc.
    - Include proper <thead>, <tbody>, <th>, and <td> elements
 
-3. **Brand Kit Variable Integration (COMPREHENSIVE):**
-   - MUST process and include ALL brand kit variables naturally throughout content
-   - Use {{ brand_kit.url }} for brand website references and authority building
-   - Incorporate {{ brand_kit.about_brand }} for company context and credibility  
-   - Use {{ brand_kit.ideal_customer_profile }} for testimonials, examples, and target audience references
-   - Include {{ brand_kit.competitors }} when discussing competitive landscape and market positioning
-   - Reference {{ brand_kit.brand_point_of_view }} in strategic sections and thought leadership
-   - Embody {{ brand_kit.author_persona }} throughout the writing voice and perspective
-   - Apply {{ brand_kit.tone_of_voice }} consistently throughout all content
-   - Use {{ brand_kit.header_case_type }} for all heading formatting (title case, sentence case, etc.)
-   - Follow {{ brand_kit.writing_rules }} for style consistency and guidelines
-   - Reference {{ brand_kit.writing_sample_url }}, {{ brand_kit.writing_sample_title }}, {{ brand_kit.writing_sample_body }}, and {{ brand_kit.writing_sample_outline }} for style and structure guidance
-   - Include {{ brand_kit.cta_text }} and {{ brand_kit.cta_destination }} appropriately
-   - Process any {{ brand_kit.custom_variables }} for additional brand-specific context
+3. **Brand Integration Requirements:**
+   - Apply brand context naturally throughout content (values provided above in BRAND INTEGRATION section)
+   - Use brand POV and tone consistently in all sections
+   - Include ideal customer examples and testimonials that match the target audience
+   - Reference competitors appropriately when discussing market landscape
+   - Follow writing rules and maintain author persona throughout
    - End with strong CTA using this exact anchor text: "${selectedCTA}" linking to ${apolloSignupURL}
 
-IMPORTANT: The current year is ${currentYear}. When referencing "current year," "this year," or discussing recent trends, always use ${currentYear}. Do not reference 2024 or earlier years as current.
+INTERNAL LINKING (MANDATORY):
+- Insert 3-5 internal links from provided URLs
+- Place at least ONE link early (intro or first 2-3 paragraphs)
+- Use natural anchor text matching linked content
+- Format: <a href="URL" target="_blank">anchor text</a>
 
-CRITICAL OUTPUT REQUIREMENTS:
-- Return a JSON object with content and meta fields for AEO optimization
-- DO NOT include any text outside the JSON structure
-- Format: {"content": "HTML content", "metaSeoTitle": "Title", "metaDescription": "Description"}
-- No code block indicators, no explanatory paragraphs, just pure JSON
+Current year: ${currentYear}. End with CTA: "${selectedCTA}" linking to ${apolloSignupURL}
+
+CRITICAL OUTPUT: Return ONLY valid JSON:
+{
+  "content": "Complete HTML article",
+  "metaSeoTitle": "AEO-optimized title (<60 chars) | Apollo",
+  "metaDescription": "Natural value statement (150-160 chars)"
+}
+
+NO text before/after JSON. NO markdown blocks. NO invented statistics in meta fields.
 
 CONTENT STRUCTURE REQUIREMENTS:
 1. **Compelling H1 Headline** (question format when appropriate)
@@ -614,27 +651,35 @@ ${sitemapData.length > 20 ? `... and ${sitemapData.length - 20} more URLs availa
 `
     : '**Note:** No sitemap data available for internal linking.\n\n';
 
-  return `${internalLinksSection}OBJECTIVE: Create comprehensive content for "${keyword}" that significantly outperforms this specific competitor page:
+  return `${internalLinksSection}Create comprehensive AEO-optimized content for keyword: "${keyword}" that significantly outperforms this specific competitor page:
 
-TARGET COMPETITOR: ${competitorUrl}
+TARGET COMPETITOR ANALYSIS: ${competitorUrl}
 - Title: ${competitorTitle}
 - Word Count: ${competitorWordCount}
 - Structure: ${competitorHeadings.join(', ') || 'Standard article format'}
 
-REQUIREMENTS:
+CONTENT DEPTH REQUIREMENTS:
+- Provide the definitive resource on this topic that beats the competitor
+- Include practical implementation strategies with step-by-step processes
+- Add relevant metrics, benchmarks, and data points
+- Cover both fundamentals and advanced/emerging aspects
+- Use tables for ALL comparative data, features, statistics
+- Ensure complete conclusion with Apollo CTA (never end mid-sentence)
+
+HEADER STRUCTURE (CRITICAL FOR AI RETRIEVAL):
+- Make ALL H2 and H3 headers natural questions users would ask
+- Good H2 examples: "What is [keyword]?", "How Does [keyword] Work?", "Why is [keyword] Important?"
+- Good H3 examples: "What Are the Benefits of [feature]?", "How to Implement [process]?", "When Should You Use [method]?"
+- Each section must completely answer its question in a self-contained way
+- Start each section with a direct, complete answer (snippet-optimized)
+
+COMPETITIVE ADVANTAGE REQUIREMENTS:
 1) **Superior Coverage**: Cover all topics the competitor covers, but with greater depth and clarity
 2) **Unique Value Addition**: Include substantial additional insights and perspectives
 3) **Better Organization**: Improve on the competitor's structure and flow
 4) **Practical Focus**: Add more actionable advice and real-world examples
 5) **Authority Building**: Establish stronger expertise and credibility
 6) **AEO Optimization**: Structure for AI answer engine extractability
-
-CONTENT STRATEGY:
-- Beat competitor on depth while maintaining readability
-- Add unique sections they don't have
-- Include more practical examples and case studies
-- Use superior formatting and structure
-- Ensure comprehensive coverage with expert insights
 
 OUTPUT REQUIREMENTS:
 - Use HTML formatting with proper headers (<h1>, <h2>, <h3>)
@@ -646,7 +691,7 @@ OUTPUT REQUIREMENTS:
 - Create compelling, scannable content with proper <p> tags for paragraphs
 - Format lists with <ul>/<ol> and <li> tags, tables with <table>, <thead>, <tbody>, <th>, <td>
 - End with a contextual conclusion section (NOT "Getting Started with ${keyword}")
-- Include strong call-to-action with one of these anchor texts: "Start Your Free Trial", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Request a Demo", "Start Prospecting", or "Get Leads Now"
+- Include strong call-to-action with one of these anchor texts: "Start Free with Apollo", "Try Apollo Free", "Start a Trial", "Schedule a Demo", "Start Your Free Trial", "Request a Demo", "Start Prospecting", or "Get Leads Now"
 - ALWAYS link CTAs to: https://www.apollo.io/sign-up
 
 REQUIRED OUTPUT FORMAT:
@@ -685,7 +730,9 @@ CRITICAL - ABSOLUTELY FORBIDDEN IN META FIELDS:
 - Vague promises like "strategies", "frameworks", "playbooks" without specifics
 - Cliché openings ("Discover", "Learn how", "Unlock", "Transform")
 
-Generate content that makes the competitor article look incomplete and shallow by comparison.`;
+Generate content that makes the competitor article look incomplete and shallow by comparison.
+
+Remember: You're creating content for 2025. Make it comprehensive enough that other content feels incomplete by comparison.`;
 }
 
 /**
