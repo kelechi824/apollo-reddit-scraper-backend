@@ -478,6 +478,93 @@ class VoCDataExtractor {
   }
 
   /**
+   * Extract a specific chunk of calls for chunked processing
+   * Why this matters: Processes only a subset of calls to stay within timeout limits.
+   */
+  async getCallDataChunk(daysBack: number = 90, startIndex: number = 0, endIndex: number = 50): Promise<{
+    analysisText: string;
+    metadata: {
+      totalCalls: number;
+      callsWithContent: number;
+      dateRange: string;
+      extractionDate: string;
+    }
+  }> {
+    try {
+      const chunkSize = endIndex - startIndex;
+      console.log(`📦 Extracting chunk: calls ${startIndex}-${endIndex} (${chunkSize} calls)`);
+      
+      // Get the exact chunk size we need, not all 300
+      // Why this matters: We fetch only what we need to process, avoiding unnecessary API calls
+      const maxCallsToFetch = Math.min(endIndex, 100); // Gong might limit to 100 calls
+      const recentCalls = await this.gongService.getRecentCalls(daysBack, maxCallsToFetch);
+      
+      console.log(`📞 Fetched ${recentCalls.length} calls from Gong`);
+      
+      // Extract only the chunk we need
+      const chunkCalls = recentCalls.slice(startIndex, Math.min(endIndex, recentCalls.length));
+      
+      if (chunkCalls.length === 0) {
+        return {
+          analysisText: '',
+          metadata: {
+            totalCalls: 0,
+            callsWithContent: 0,
+            dateRange: `Last ${daysBack} days`,
+            extractionDate: new Date().toISOString()
+          }
+        };
+      }
+      
+      // Use the same extraction approach as the working method
+      // Why this matters: We know extractCallSummaries works, so we use the same approach
+      const extractionResult = await this.extractCallSummaries(daysBack, maxCallsToFetch);
+      
+      // Get the chunk we need from the extraction result
+      const callSummaries = extractionResult.callSummaries.slice(startIndex, Math.min(endIndex, extractionResult.callSummaries.length));
+      
+      // Format for analysis
+      const analysisTexts: string[] = [];
+      let callsWithContent = 0;
+      
+      callSummaries.forEach((call, index) => {
+        const hasContent = call.brief || (call.keyPoints && call.keyPoints.length > 0);
+        if (hasContent) {
+          callsWithContent++;
+          const callText = [
+            `CALL ${startIndex + index + 1}:`,
+            `Title: ${call.title}`,
+            `Date: ${call.date}`,
+            call.brief ? `Brief: ${call.brief}` : '',
+            call.keyPoints && call.keyPoints.length > 0 ? 
+              `Key Points: ${call.keyPoints.map((kp: any) => kp.text || kp).join('; ')}` : '',
+            '---'
+          ].filter(Boolean).join('\n');
+          analysisTexts.push(callText);
+        }
+      });
+      
+      const analysisText = analysisTexts.join('\n\n');
+      
+      console.log(`✅ Chunk extraction complete: ${callsWithContent}/${chunkCalls.length} calls with content`);
+      
+      return {
+        analysisText,
+        metadata: {
+          totalCalls: chunkCalls.length,
+          callsWithContent,
+          dateRange: `Last ${daysBack} days`,
+          extractionDate: new Date().toISOString()
+        }
+      };
+      
+    } catch (error: any) {
+      console.error('❌ Error extracting chunk:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Lightweight call data extraction for high-volume processing (300+ calls)
    * Why this matters: Skips detailed conversation processing to extract basic call data quickly,
    * maintaining full call volume while staying within serverless timeout limits.
