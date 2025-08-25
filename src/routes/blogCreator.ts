@@ -135,7 +135,7 @@ function deleteJobData(jobId: string): boolean {
  */
 router.post('/generate-content', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit, sitemap_data, system_prompt, user_prompt } = req.body;
+    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit, sitemap_data, system_prompt, user_prompt, use_default_prompts } = req.body;
 
     if (!keyword || keyword.trim().length === 0) {
       return res.status(400).json({
@@ -144,9 +144,18 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
       });
     }
 
+    // Generate prompts server-side if requested (to reduce payload size)
+    let finalSystemPrompt = system_prompt;
+    let finalUserPrompt = user_prompt;
+    
+    if (use_default_prompts || (!system_prompt && !user_prompt)) {
+      const generatedPrompts = generateDefaultPrompts(keyword, sitemap_data, brand_kit);
+      finalSystemPrompt = generatedPrompts.systemPrompt;
+      finalUserPrompt = generatedPrompts.userPrompt;
+      console.log('📝 Using server-generated prompts to reduce payload size');
+    }
+
     console.log(`🚀 Starting SYNCHRONOUS content generation for keyword: "${keyword}"`);
-
-
 
     // Execute the 4-model pipeline synchronously
     const result = await workflowOrchestrator.executeContentPipeline({
@@ -156,8 +165,8 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
       focus_areas,
       brand_kit,
       sitemap_data,
-      system_prompt,
-      user_prompt
+      system_prompt: finalSystemPrompt,
+      user_prompt: finalUserPrompt
     });
 
     console.log(`✅ SYNCHRONOUS content generation completed for keyword: "${keyword}"`);
@@ -180,9 +189,135 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
  * POST /api/blog-creator/generate-content-async
  * Generate content for a single keyword asynchronously with progress tracking
  */
+/**
+ * Generate default prompts server-side to reduce request payload size
+ * This prevents 413 "Payload Too Large" errors on Vercel/Netlify
+ */
+function generateDefaultPrompts(keyword: string, sitemapData: any, brandKit: any) {
+  const currentYear = 2025;
+  
+  // Generate random CTA anchor text to prevent LLM bias
+  const ctaOptions = [
+    "Start Your Free Trial",
+    "Try Apollo Free", 
+    "Start a Trial",
+    "Schedule a Demo",
+    "Request a Demo", 
+    "Start Prospecting",
+    "Get Leads Now"
+  ];
+  const selectedCTA = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
+  
+  // Generate UTM-tracked URL for this keyword
+  const sanitizedKeyword = keyword.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .trim();
+  const apolloSignupURL = `https://www.apollo.io/sign-up?utm_campaign=blog_creator_${sanitizedKeyword}`;
+  
+  // Handle both compressed and uncompressed sitemap formats
+  const formatSitemapUrls = (data: any[]) => {
+    if (!data || data.length === 0) return '';
+    
+    // Check if data is in compressed format (has 't' and 'u' keys) or full format
+    const isCompressed = data[0] && 't' in data[0] && 'u' in data[0];
+    
+    if (isCompressed) {
+      // Compressed format: {t: title, u: url}
+      return data.slice(0, 20).map((item: any) => `• ${item.t}: ${item.u}`).join('\n');
+    } else {
+      // Full format: {title, description, url}
+      return data.slice(0, 20).map((item: any) => `• ${item.title}: ${item.url}`).join('\n');
+    }
+  };
+  
+  // Build brand kit section if available
+  const brandKitSection = brandKit ? `
+BRAND INTEGRATION:
+- Ideal Customer: ${brandKit.idealCustomerProfile || brandKit.ideal_customer_profile || 'sales professionals'}
+- Competitors context: ${brandKit.competitors || 'other sales platforms'}
+- Brand POV: ${brandKit.brandPointOfView || brandKit.brand_point_of_view || 'data-driven sales excellence'}
+- Tone: ${brandKit.toneOfVoice || brandKit.tone_of_voice || 'professional yet approachable'}
+- Apply these naturally throughout content, especially in examples and testimonials
+` : '';
+
+  // Optimized prompts - reduced redundancy while keeping important nuances
+  const systemPrompt = `You are a world-class SEO/AEO content expert for Apollo, creating comprehensive articles that rank highly and get cited by AI answer engines.
+
+CONTENT PHILOSOPHY: Create the definitive, authoritative resource that becomes the go-to source for the topic.
+
+CONTENT REQUIREMENTS:
+- Address ALL aspects comprehensively with practical, actionable guidance
+- Include specific examples, metrics, and concrete details
+- Cover current best practices AND emerging trends
+
+AEO OPTIMIZATION:
+- Structure for AI extractability with clear, self-contained insights
+- Use proper HTML hierarchy: <h1> → <h2> → <h3>, <p>, <ul>/<ol>, <strong>
+- Format ALL comparisons/features/data in <table> with <thead>, <tbody>, <th>, <td>
+- CRITICAL: H2 and H3 headers MUST be natural questions (e.g., "What is X?", "How does Y work?", "Why is Z important?")
+- Write in clear, chunked sections - each section fully answers ONE question like a featured snippet
+- Use bullets, <strong> tags, and proper spacing for human and machine comprehension
+- Place complete answer in first paragraph under each heading (snippet-worthy)
+- Include definitions immediately after question headers when introducing concepts
+${brandKitSection}
+INTERNAL LINKING (MANDATORY):
+- Insert 3-5 internal links from provided URLs
+- Place at least ONE link early (intro or first 2-3 paragraphs)
+- Use natural anchor text matching linked content
+- Format: <a href="URL" target="_blank">anchor text</a>
+
+Current year: ${currentYear}. End with CTA: "${selectedCTA}" linking to ${apolloSignupURL}
+
+CRITICAL OUTPUT: Return ONLY valid JSON:
+{
+  "content": "Complete HTML article",
+  "metaSeoTitle": "AEO-optimized title (<60 chars) | Apollo",
+  "metaDescription": "Natural value statement (150-160 chars)"
+}
+
+NO text before/after JSON. NO markdown blocks. NO invented statistics in meta fields.`;
+
+  const userPrompt = `Create comprehensive AEO-optimized content for keyword: "${keyword}"
+
+${sitemapData && sitemapData.length > 0 ? `AVAILABLE INTERNAL LINKS (MUST use 3-5, at least 1 in intro):
+${formatSitemapUrls(sitemapData)}` : 'Note: No internal links available.'}
+
+CONTENT DEPTH REQUIREMENTS:
+- Provide the definitive resource on this topic
+- Include practical implementation strategies with step-by-step processes
+- Add relevant metrics, benchmarks, and data points
+- Cover both fundamentals and advanced/emerging aspects
+- Use tables for ALL comparative data, features, statistics
+- Ensure complete conclusion with Apollo CTA (never end mid-sentence)
+
+HEADER STRUCTURE (CRITICAL FOR AI RETRIEVAL):
+- Make ALL H2 and H3 headers natural questions users would ask
+- Good H2 examples: "What is [keyword]?", "How Does [keyword] Work?", "Why is [keyword] Important?"
+- Good H3 examples: "What Are the Benefits of [feature]?", "How to Implement [process]?", "When Should You Use [method]?"
+- Each section must completely answer its question in a self-contained way
+- Start each section with a direct, complete answer (snippet-optimized)
+
+Remember: You're creating content for 2025. Make it comprehensive enough that other content feels incomplete by comparison.`;
+
+  return { systemPrompt, userPrompt };
+}
+
 router.post('/generate-content-async', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit, sitemap_data, system_prompt, user_prompt } = req.body;
+    const { 
+      keyword, 
+      target_audience, 
+      content_length = 'medium', 
+      focus_areas = [], 
+      brand_kit, 
+      sitemap_data, 
+      system_prompt, 
+      user_prompt,
+      use_default_prompts 
+    } = req.body;
 
     if (!keyword || keyword.trim().length === 0) {
       return res.status(400).json({
@@ -191,11 +326,26 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       });
     }
 
-    // Debug logging for sitemap data
+    // Generate prompts server-side if requested (to reduce payload size)
+    let finalSystemPrompt = system_prompt;
+    let finalUserPrompt = user_prompt;
+    
+    if (use_default_prompts || (!system_prompt && !user_prompt)) {
+      const generatedPrompts = generateDefaultPrompts(keyword, sitemap_data, brand_kit);
+      finalSystemPrompt = generatedPrompts.systemPrompt;
+      finalUserPrompt = generatedPrompts.userPrompt;
+      console.log('📝 Using server-generated prompts to reduce payload size');
+    }
+
+    // Debug logging for sitemap data (handle both compressed and full formats)
+    const isCompressedFormat = sitemap_data && sitemap_data[0] && 't' in sitemap_data[0];
     console.log(`🗺️ [DEBUG] Sitemap data received:`, {
       hasSitemapData: !!sitemap_data,
       sitemapCount: sitemap_data ? sitemap_data.length : 0,
-      firstFewUrls: sitemap_data ? sitemap_data.slice(0, 3).map((url: any) => ({ title: url.title, url: url.url })) : []
+      format: isCompressedFormat ? 'compressed' : 'full',
+      firstFewUrls: sitemap_data ? sitemap_data.slice(0, 3).map((url: any) => 
+        isCompressedFormat ? { title: url.t, url: url.u } : { title: url.title, url: url.url }
+      ) : []
     });
 
     // Generate unique job ID
@@ -218,8 +368,8 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       focus_areas,
       brand_kit,
       sitemap_data,
-      system_prompt,
-      user_prompt
+      system_prompt: finalSystemPrompt,
+      user_prompt: finalUserPrompt
     }, {
       onProgress: (stage: string, message: string, progress: number) => {
         updateJobData(jobId, {
@@ -383,7 +533,7 @@ router.get('/job-status/:jobId', (req: Request, res: Response): any => {
  */
 router.post('/bulk-generate', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { keywords, target_audience, content_length = 'medium', focus_areas = [], brand_kit, sitemap_data, system_prompt, user_prompt } = req.body;
+    const { keywords, target_audience, content_length = 'medium', focus_areas = [], brand_kit, sitemap_data, system_prompt, user_prompt, use_default_prompts } = req.body;
 
     if (!keywords || keywords.length === 0) {
       return res.status(400).json({
@@ -405,15 +555,25 @@ router.post('/bulk-generate', async (req: Request, res: Response): Promise<any> 
       
       const chunkPromises = chunk.map(async (keyword: string) => {
         try {
-                     const result = await workflowOrchestrator.executeContentPipeline({
+          // Generate prompts for each keyword if needed
+          let finalSystemPrompt = system_prompt;
+          let finalUserPrompt = user_prompt;
+          
+          if (use_default_prompts || (!system_prompt && !user_prompt)) {
+            const generatedPrompts = generateDefaultPrompts(keyword, sitemap_data, brand_kit);
+            finalSystemPrompt = generatedPrompts.systemPrompt;
+            finalUserPrompt = generatedPrompts.userPrompt;
+          }
+          
+          const result = await workflowOrchestrator.executeContentPipeline({
             keyword: keyword.trim(),
             target_audience,
             content_length,
             focus_areas,
             brand_kit,
             sitemap_data,
-            system_prompt,
-            user_prompt
+            system_prompt: finalSystemPrompt,
+            user_prompt: finalUserPrompt
           });
           return { keyword, success: true, data: result };
         } catch (error) {
