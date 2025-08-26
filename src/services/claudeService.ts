@@ -1175,8 +1175,8 @@ CONTENT-AWARE APPROACH:
 
 AEO OPTIMIZATION REQUIREMENTS:
 
-META TITLE REQUIREMENTS (max 70 chars INCLUDING " | Apollo"):
-- MUST be a natural question that includes the main keyword
+META TITLE REQUIREMENTS (aim for 50-70 chars INCLUDING " | Apollo"):
+- MUST be a natural, complete question that includes the main keyword
 - MUST reflect the content's unique angle or primary value proposition
 - Choose format based on keyword type AND content focus:
   * Job titles: "Who Is A [Job Title]? [Unique Content Angle]" 
@@ -1185,6 +1185,7 @@ META TITLE REQUIREMENTS (max 70 chars INCLUDING " | Apollo"):
   * Strategies: "Why Use [Strategy]? [Specific Outcomes/Data in Content]"
 - MUST use proper Title Case (capitalize all major words)
 - Include specific descriptive elements from the actual content
+- Keep concise but NEVER truncate - always complete the thought/question
 - Optimize for AI search engines with intelligent, human-like phrasing
 
 META DESCRIPTION REQUIREMENTS (150-160 chars):
@@ -1218,6 +1219,7 @@ ABSOLUTELY FORBIDDEN:
 - Marketing language like "ultimate," "complete guide," "everything you need"
 - Made-up statistics or claims not supported by the content
 - Formulaic openings that don't match the content's approach
+- TRUNCATING TITLES MID-WORD OR MID-THOUGHT - always complete the question naturally
 
 OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
         messages: [
@@ -1238,8 +1240,9 @@ INSTRUCTIONS:
 4. Write a description that highlights the specific insights and value in THIS content
 5. Ensure both fields work together as a natural question-answer pair for AI search engines
 6. Make it sound human-written while maintaining AEO optimization
+7. CRITICAL: Keep titles concise (aim for 50-65 chars with " | Apollo") but NEVER truncate mid-word or mid-thought - always complete the question naturally
 
-Focus on what makes THIS content unique and valuable, not generic information about the keyword.`
+Focus on what makes THIS content unique and valuable, not generic information about the keyword. Prioritize natural completeness over strict character limits.`
           }
         ]
       });
@@ -1280,13 +1283,13 @@ Focus on what makes THIS content unique and valuable, not generic information ab
         throw new Error('Missing metaSeoTitle or metaDescription in Claude response');
       }
 
-      // Validate title length (including " | Apollo")
+      // Validate title length (including " | Apollo") - warn but don't truncate
       const titleWithBrand = `${parsedResponse.metaSeoTitle} | Apollo`;
       if (titleWithBrand.length > 70) {
-        console.warn(`⚠️ SEO title too long (${titleWithBrand.length} chars): ${titleWithBrand}`);
-        // Truncate if necessary while preserving the question format
-        const maxTitleLength = 70 - 9; // 9 chars for " | Apollo"
-        parsedResponse.metaSeoTitle = parsedResponse.metaSeoTitle.substring(0, maxTitleLength).trim();
+        console.warn(`⚠️ SEO title longer than typical (${titleWithBrand.length} chars): ${titleWithBrand}`);
+        console.log(`📝 Keeping complete title to avoid truncation - natural completeness prioritized over length limit`);
+      } else {
+        console.log(`✅ SEO title length optimal (${titleWithBrand.length} chars): ${titleWithBrand}`);
       }
 
       // Validate description length
