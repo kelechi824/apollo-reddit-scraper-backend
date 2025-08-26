@@ -559,8 +559,12 @@ ${brandKitSection}
 AEO OPTIMIZATION:
 - Structure for AI extractability with clear, self-contained insights
 - Use proper HTML hierarchy: <h1> → <h2> → <h3>, <p>, <ul>/<ol>, <strong>
+- CRITICAL: H1 headlines MUST use proper Title Case (capitalize all major words) and NEVER include "| Apollo" (that's only for SEO titles)
 - Format ALL comparisons/features/data in <table> with <thead>, <tbody>, <th>, <td>
-- CRITICAL: H2 and H3 headers MUST be natural questions (e.g., "What is X?", "How does Y work?", "Why is Z important?")
+- CRITICAL: H2 and H3 headers MUST be natural, grammatically correct questions in Title Case:
+  * Singular: "Who Is A Sales Consultant?", "How Does Lead Generation Work?"
+  * Plural: "Who Are Sales Consultants?", "Why Are Account Executives Important?"
+  * Process: "What Is Sales Prospecting?", "How Does CRM Integration Work?"
 - Write in clear, chunked sections - each section fully answers ONE question like a featured snippet
 - Use bullets, <strong> tags, and proper spacing for human and machine comprehension
 - Place complete answer in first paragraph under each heading (snippet-worthy)
@@ -599,11 +603,67 @@ Current year: ${currentYear}. End with CTA: "${selectedCTA}" linking to ${apollo
 CRITICAL OUTPUT: Return ONLY valid JSON:
 {
   "content": "Complete HTML article",
-  "metaSeoTitle": "AEO-optimized title (<60 chars) | Apollo",
-  "metaDescription": "Natural value statement (150-160 chars)"
+  "metaSeoTitle": "Question-based title with keyword (<60 chars) | Apollo",
+  "metaDescription": "Direct answer to title question using keyword (150-160 chars)"
 }
 
+META FIELD REQUIREMENTS FOR AI SEARCH OPTIMIZATION:
+
+metaSeoTitle:
+- Maximum 70 characters INCLUDING " | Apollo" (total <= 70 chars)
+- MUST use proper Title Case (capitalize all major words)
+- MUST include descriptive context beyond just the basic question
+- Add relevant descriptive elements: roles, responsibilities, salary, benefits, strategies, tools, best practices, etc.
+- MUST be a natural question format that includes the main keyword
+- Choose format based on keyword type:
+  * Job titles (singular): "Who Is A [Job Title]? [Descriptive Context]" (e.g., "Who Is An SDR Manager? Roles, Responsibilities, Salary")
+  * Job titles (plural): "Who Are [Job Titles]? [Descriptive Context]" (e.g., "Who Are Sales Consultants? Roles, Skills, Career Path")
+  * Processes/concepts: "What Is [Process]? [Descriptive Context]" (e.g., "What Is Sales Prospecting? Strategies, Tools, Best Practices")
+  * Tools/software: "How Does [Tool] Work? [Descriptive Context]" (e.g., "How Does CRM Software Work? Features, Benefits, Implementation")
+  * Strategies/methods: "Why Use [Strategy]? [Descriptive Context]" (e.g., "Why Use Account-Based Marketing? Benefits, Process, ROI")
+- The keyword should appear naturally and grammatically correctly
+- Optimize for AI search engines with human-like, intelligent phrasing
+
+metaDescription:
+- Exactly 150-160 characters
+- MUST directly answer the title question using the main keyword naturally
+- Adapt answer format to keyword type:
+  * Job roles: "A [Job Title] is [role definition/who they are]. They [main responsibilities/activities]. Apollo helps [job titles] [specific benefit]."
+  * Processes: "[Process] is [definition]. It involves [key steps]. Apollo provides [specific tools/features]."
+  * Tools: "[Tool] helps [main function]. It [key capabilities]. Apollo offers [specific advantage]."
+- Must be complete sentences ending with a period
+- Write naturally with proper grammar and intelligent phrasing
+
+CRITICAL REQUIREMENTS:
+- Title MUST be a natural, grammatically correct question that includes the main keyword
+- Description MUST directly answer the title question using the keyword naturally
+- Both title and description must work together as an intelligent question-answer pair
+- Choose appropriate question format based on keyword type (job titles, processes, tools, etc.)
+
+ABSOLUTELY FORBIDDEN IN META FIELDS:
+- Grammatically incorrect questions ("What Is A Sales Consultants?", "What Are A Sales Consultant?", "What Is A Account Executives?")
+- Including "| Apollo" in H1 headlines (that's only for SEO titles, not content headlines)
+- Robotic/boilerplate phrasing that doesn't sound human-written
+- Rigid "What Is [keyword]?" format for all keyword types without considering singular/plural grammar
+- Non-question titles ("Sales Tips", "Lead Generation Methods", "Prospecting Techniques")
+- Titles with colons or lists ("Sales Prospecting: 7 Methods", "Tools: Features & Comparison")
+- The word "Guide" or "Guides" (use intelligent question format instead)
+- "Complete Guide" or "Comprehensive Guide" (use appropriate question type)
+- "Ultimate Guide" (use natural question format)
+- Descriptions that don't answer the title question directly
+- Descriptions that don't include the main keyword naturally
+- Marketing language like "game-changing", "revolutionary", "ultimate"
+- Vague promises like "strategies", "frameworks", "playbooks" without specifics
+- Generic terms like "everything you need to know"
+- Cliché openings ("Discover", "Learn how", "Unlock", "Transform")
+
 NO text before/after JSON. NO markdown blocks. NO invented statistics in meta fields.
+
+CRITICAL REMINDER:
+- SEO titles (metaSeoTitle) include "| Apollo" 
+- H1 headlines in content NEVER include "| Apollo"
+- H2/H3 headers must be grammatically correct (singular vs plural)
+- All headers use Title Case
 
 CONTENT STRUCTURE REQUIREMENTS:
 1. **Compelling H1 Headline** (question format when appropriate)
@@ -698,37 +758,40 @@ REQUIRED OUTPUT FORMAT:
 You MUST return your response in this exact JSON format:
 {
   "content": "[Your full HTML-formatted article content here with proper tags]",
-  "metaSeoTitle": "[AEO-optimized title for AI search engines (max 60 chars + ' | Apollo')]",
-  "metaDescription": "[Natural, value-focused description (150-160 chars) optimized for AI search extraction. Must be a complete sentence and end with a period.]"
+  "metaSeoTitle": "[Question-based title with main keyword (max 60 chars + ' | Apollo')]",
+  "metaDescription": "[Direct answer to title question using keyword (150-160 chars). Must be complete sentence ending with period.]"
 }
 
-META FIELD REQUIREMENTS FOR AI SEARCH OPTIMIZATION:
+INTELLIGENT QUESTION-ANSWER EXAMPLES FOR AI SEARCH OPTIMIZATION:
 
-metaSeoTitle:
-- Maximum 60 characters plus " | Apollo" (total <= 70 chars)
-- Format: "[Primary Keyword]: [Specific Context]" or "What is [Keyword]? [Clear Answer]"
-- NEVER invent statistics, percentages, or specific numbers
-- Focus on clarity and search intent matching
-- Optimize for AI search engines (ChatGPT Search, Perplexity, etc.)
+PERFECT Title + Description Pairs by Keyword Type:
 
-metaDescription:
-- Exactly 150-160 characters
-- Start with what the reader will understand or be able to do
-- Use simple, factual language without exaggeration
-- Focus on practical value and specific use cases
-- End with how Apollo enables this capability
-- Write naturally for AI comprehension and extraction
-- All descriptions must be complete sentences without truncation and end with a period.
+• Job Title (Singular): "Who Is An SDR Manager? Roles, Responsibilities, Salary | Apollo"
+  Description: "An SDR Manager is a sales leader who oversees development teams and prospecting strategies. They coach reps and optimize processes. Apollo helps SDR Managers track team performance."
 
-CRITICAL - ABSOLUTELY FORBIDDEN IN META FIELDS:
-- The word "Master" or "Mastering" (use "understand", "implement", "use" instead)
-- The word "proven" (use "practical", "effective", "established" instead)
-- The word "comprehensive" (use "detailed", "complete", "thorough" instead)
-- Any percentages or numbers not from the actual content
-- ROI claims, benchmarks, or performance metrics unless specifically cited
-- Marketing language like "game-changing", "revolutionary", "ultimate"
-- Vague promises like "strategies", "frameworks", "playbooks" without specifics
-- Cliché openings ("Discover", "Learn how", "Unlock", "Transform")
+• Job Title (Plural): "Who Are Sales Consultants? Skills, Career Path, Salary | Apollo"
+  Description: "Sales Consultants are professionals who advise prospects on solutions for their business needs. They build relationships and close deals. Apollo provides consultants with prospect intelligence."
+
+• Process/Concept: "What Is Sales Prospecting? Strategies, Tools, Best Practices | Apollo"
+  Description: "Sales prospecting is the process of identifying and reaching out to potential customers. It involves research, qualification, and outreach. Apollo automates prospecting workflows."
+
+• Tool/Software: "How Does CRM Software Work? Features, Benefits, Implementation | Apollo"
+  Description: "CRM software manages customer relationships and sales data in one platform. It tracks interactions and pipeline progress. Apollo integrates with leading CRM systems."
+
+• Strategy/Method: "Why Use Account-Based Marketing? Benefits, Process, ROI | Apollo"
+  Description: "Account-based marketing targets specific high-value accounts with personalized campaigns. It aligns sales and marketing efforts. Apollo provides ABM contact data and tools."
+
+AVOID These Non-Question Formats:
+- "Sales Prospecting: 7 Methods That Generate Leads | Apollo" (not a question)
+- "Cold Email Templates: 5 High-Response Formats | Apollo" (not a question)
+- "Lead Generation Tools: Features & Comparison | Apollo" (not a question)
+- "Complete Guide to Sales Prospecting | Apollo" (guide format)
+- "Master Account-Based Marketing: Ultimate Guide | Apollo" (guide format)
+
+AVOID These Non-Answer Descriptions:
+- "Learn 7 proven sales prospecting methods..." (doesn't define what sales prospecting is)
+- "Get 5 cold email templates..." (doesn't explain what cold email automation is)
+- "Discover the ultimate ABM strategies..." (doesn't answer what ABM is or how it works)
 
 Generate content that makes the competitor article look incomplete and shallow by comparison.
 

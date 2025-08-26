@@ -266,8 +266,12 @@ CONTENT REQUIREMENTS:
 AEO OPTIMIZATION:
 - Structure for AI extractability with clear, self-contained insights
 - Use proper HTML hierarchy: <h1> → <h2> → <h3>, <p>, <ul>/<ol>, <strong>
+- CRITICAL: H1 headlines MUST use proper Title Case (capitalize all major words) and NEVER include "| Apollo" (that's only for SEO titles)
 - Format ALL comparisons/features/data in <table> with <thead>, <tbody>, <th>, <td>
-- CRITICAL: H2 and H3 headers MUST be natural questions (e.g., "What is X?", "How does Y work?", "Why is Z important?")
+- CRITICAL: H2 and H3 headers MUST be natural, grammatically correct questions in Title Case:
+  * Singular: "What Is A Sales Consultant?", "How Does Lead Generation Work?"
+  * Plural: "What Are Sales Consultants?", "Why Are Account Executives Important?"
+  * Process: "What Is Sales Prospecting?", "How Does CRM Integration Work?"
 - Write in clear, chunked sections - each section fully answers ONE question like a featured snippet
 - Use bullets, <strong> tags, and proper spacing for human and machine comprehension
 - Place complete answer in first paragraph under each heading (snippet-worthy)
@@ -284,11 +288,78 @@ Current year: ${currentYear}. End with CTA: "${selectedCTA}" linking to ${apollo
 CRITICAL OUTPUT: Return ONLY valid JSON:
 {
   "content": "Complete HTML article",
-  "metaSeoTitle": "AEO-optimized title (<60 chars) | Apollo",
-  "metaDescription": "Natural value statement (150-160 chars)"
+  "metaSeoTitle": "Question-based title with keyword (<70 chars) | Apollo",
+  "metaDescription": "Direct answer to title question using keyword (150-160 chars)"
 }
 
-NO text before/after JSON. NO markdown blocks. NO invented statistics in meta fields.`;
+META FIELD REQUIREMENTS FOR AI SEARCH OPTIMIZATION:
+
+metaSeoTitle:
+- Maximum 70 characters INCLUDING " | Apollo" (total <= 70 chars)
+- MUST use proper Title Case (capitalize all major words)
+- MUST include descriptive context beyond just the basic question
+- Add relevant descriptive elements: roles, responsibilities, salary, benefits, strategies, tools, best practices, etc.
+- MUST be a natural question format that includes the main keyword
+- Choose format based on keyword type:
+  * Job titles (singular): "Who Is A [Job Title]? [Descriptive Context]" (e.g., "Who Is An SDR Manager? Roles, Responsibilities, Salary")
+  * Job titles (plural): "Who Are [Job Titles]? [Descriptive Context]" (e.g., "Who Are Sales Consultants? Roles, Skills, Career Path")
+  * Processes/concepts: "What Is [Process]? [Descriptive Context]" (e.g., "What Is Sales Prospecting? Strategies, Tools, Best Practices")
+  * Tools/software: "How Does [Tool] Work? [Descriptive Context]" (e.g., "How Does CRM Software Work? Features, Benefits, Implementation")
+  * Strategies/methods: "Why Use [Strategy]? [Descriptive Context]" (e.g., "Why Use Account-Based Marketing? Benefits, Process, ROI")
+- The keyword should appear naturally and grammatically correctly
+- Optimize for AI search engines with human-like, intelligent phrasing
+
+metaDescription:
+- Exactly 150-160 characters
+- MUST directly answer the title question using the main keyword naturally
+- Adapt answer format to keyword type:
+  * Job roles: "A [Job Title] is [role definition/who they are]. They [main responsibilities/activities]. Apollo helps [job titles] [specific benefit]."
+  * Processes: "[Process] is [definition]. It involves [key steps]. Apollo provides [specific tools/features]."
+  * Tools: "[Tool] helps [main function]. It [key capabilities]. Apollo offers [specific advantage]."
+- Must be complete sentences ending with a period
+- Write naturally with proper grammar and intelligent phrasing
+
+QUESTION-ANSWER FORMAT EXAMPLES:
+
+INTELLIGENT Question-Answer Examples by Keyword Type:
+
+• Job Title (Singular): "Who Is An SDR Manager? Roles, Responsibilities, Salary | Apollo"
+  Description: "An SDR Manager is a sales leader who oversees development teams and prospecting strategies. They coach reps and optimize processes. Apollo helps SDR Managers track team performance."
+
+• Job Title (Plural): "Who Are Sales Consultants? Skills, Career Path, Salary | Apollo"
+  Description: "Sales Consultants are professionals who advise prospects on solutions for their business needs. They build relationships and close deals. Apollo provides consultants with prospect intelligence."
+
+• Process/Concept: "What Is Cold Email Marketing? Strategies, Tools, Best Practices | Apollo"
+  Description: "Cold email marketing is outreach to prospects without prior contact. It uses personalized messages to generate leads. Apollo provides templates and automation tools."
+
+• Tool/Software: "How Does CRM Software Work? Features, Benefits, Implementation | Apollo"
+  Description: "CRM software manages customer relationships and sales data in one platform. It tracks interactions and pipeline progress. Apollo integrates with leading CRM systems."
+
+• Strategy/Method: "Why Use Account-Based Marketing? Benefits, Process, ROI | Apollo"
+  Description: "Account-based marketing targets specific high-value accounts with personalized campaigns. It aligns sales and marketing teams. Apollo enables ABM with contact data."
+
+CRITICAL - ABSOLUTELY FORBIDDEN IN META FIELDS:
+- Grammatically incorrect questions ("What Is A Sales Consultants?", "What Are A Sales Consultant?", "What Is A Account Executives?")
+- Including "| Apollo" in H1 headlines (that's only for SEO titles, not content headlines)
+- Robotic/boilerplate phrasing that doesn't sound human-written
+- Non-question titles ("Sales Prospecting Tips", "Lead Generation Methods")
+- The word "Guide" or "Guides" (use intelligent question format instead)
+- "Complete Guide" or "Comprehensive Guide" (use appropriate question type)
+- "Ultimate Guide" (use natural question format)
+- Descriptions that don't answer the title question directly
+- Descriptions that don't include the main keyword naturally
+- Marketing language like "game-changing", "revolutionary", "ultimate"
+- Vague promises like "strategies", "frameworks", "playbooks" without specifics
+- Generic terms like "everything you need to know"
+- Rigid "What Is [keyword]?" format for all keyword types without considering singular/plural grammar
+
+NO text before/after JSON. NO markdown blocks. NO invented statistics in meta fields.
+
+CRITICAL REMINDER:
+- SEO titles (metaSeoTitle) include "| Apollo" 
+- H1 headlines in content NEVER include "| Apollo"
+- H2/H3 headers must be grammatically correct (singular vs plural)
+- All headers use Title Case`;
 
   const userPrompt = `Create comprehensive AEO-optimized content for keyword: "${keyword}"
 
