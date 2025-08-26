@@ -375,8 +375,8 @@ class WorkflowOrchestrator {
         content: contentResult.processed_content,
         raw_content: rawContentResult.content,
         metadata: {
-          title: rawContentResult.title || `${keyword} - Comprehensive Guide`,
-          description: rawContentResult.description || `Everything you need to know about ${keyword}`,
+          title: rawContentResult.title || `What is ${keyword}?`,
+          description: rawContentResult.description || `${keyword} is a key business process that helps organizations achieve their goals. Learn how Apollo can support your ${keyword} efforts.`,
           metaSeoTitle: rawContentResult.metaSeoTitle,
           metaDescription: rawContentResult.metaDescription,
           word_count: this.calculateWordCount(contentResult.processed_content),
