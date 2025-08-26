@@ -278,11 +278,11 @@ class WorkflowOrchestrator {
         try {
           progressCallback?.onProgress(
             'gap_analysis',
-            '📊 Analyzing gaps between research findings and competitor content with GPT 4.1 nano...',
+            '📊 Analyzing gaps between research findings and competitor content with GPT-5 nano...',
             75
           );
 
-          console.log('🎯 Stage 3: Gap Analysis with GPT 4.1 nano');
+          console.log('🎯 Stage 3: Gap Analysis with GPT-5 nano');
           gapAnalysisResult = await gapAnalysisService.performGapAnalysis({
             keyword,
             deepResearchResult: deepResearchResult!,
