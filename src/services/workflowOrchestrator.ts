@@ -359,6 +359,31 @@ class WorkflowOrchestrator {
         keyword
       );
 
+      // Stage 6: Enhance meta fields based on actual content
+      progressCallback?.onProgress(
+        'meta_enhancement',
+        '✨ Enhancing SEO title and description based on actual content...',
+        95
+      );
+
+      console.log('✨ Stage 6: Meta field enhancement based on content');
+      let enhancedMetaFields;
+      try {
+        enhancedMetaFields = await claudeService.enhanceMetaFieldsFromContent({
+          keyword: keyword.trim(),
+          content: contentResult.processed_content,
+          competitor: competitor
+        });
+        console.log('✅ Meta fields enhanced successfully');
+      } catch (metaError) {
+        console.warn('⚠️ Meta enhancement failed, using original meta fields:', metaError);
+        // Fallback to original meta fields if enhancement fails
+        enhancedMetaFields = {
+          metaSeoTitle: rawContentResult.metaSeoTitle,
+          metaDescription: rawContentResult.metaDescription
+        };
+      }
+
       // Calculate total duration
       const totalDuration = (Date.now() - startTime) / 1000;
 
@@ -377,8 +402,8 @@ class WorkflowOrchestrator {
         metadata: {
           title: rawContentResult.title || `What is ${keyword}?`,
           description: rawContentResult.description || `${keyword} is a key business process that helps organizations achieve their goals. Learn how Apollo can support your ${keyword} efforts.`,
-          metaSeoTitle: rawContentResult.metaSeoTitle,
-          metaDescription: rawContentResult.metaDescription,
+          metaSeoTitle: enhancedMetaFields.metaSeoTitle,
+          metaDescription: enhancedMetaFields.metaDescription,
           word_count: this.calculateWordCount(contentResult.processed_content),
           seo_optimized: true,
           citations_included: contentResult.citations_count > 0,
@@ -397,7 +422,8 @@ class WorkflowOrchestrator {
             'Firecrawl Search API',
             'o3-deep-research-2025-06-26',
             'gpt-5-nano',
-            'claude-sonnet-4-20250514'
+            'claude-sonnet-4-20250514',
+            'claude-sonnet-4-20250514 (Meta Enhancement)'
           ],
           content_quality_score: this.calculateQualityScore(gapAnalysisResult, { content: contentResult.processed_content }),
           processing_steps: contentResult.processing_steps,

@@ -1131,6 +1131,238 @@ OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
   }
 
   /**
+   * Enhance meta fields based on actual generated content
+   * Why this matters: Creates natural, content-aware SEO titles and descriptions that reflect
+   * the actual value and insights in the generated content, while maintaining AEO best practices.
+   */
+  async enhanceMetaFieldsFromContent(params: {
+    keyword: string;
+    content: string;
+    competitor?: string;
+  }): Promise<{ metaSeoTitle: string; metaDescription: string }> {
+    try {
+      if (!this.client) {
+        throw new Error('Claude service not initialized');
+      }
+
+      console.log(`🎯 Enhancing meta fields for keyword: ${params.keyword} based on actual content`);
+      console.log(`📄 Content length: ${params.content.length} characters`);
+      if (params.competitor) {
+        console.log(`🏆 Competitor context: ${params.competitor}`);
+      }
+
+      // Extract key insights from content for better meta generation
+      const contentPreview = this.extractContentInsights(params.content);
+      console.log(`💡 Content insights extracted: ${contentPreview.length} characters`);
+
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        temperature: 0.3, // Lower temperature for more consistent, focused meta fields
+        system: `You are an expert SEO/AEO specialist creating natural, content-aware meta fields optimized for AI search engines (ChatGPT Search, Perplexity, Claude, Gemini).
+
+CRITICAL MISSION: Analyze the actual content provided and create SEO title and description that:
+1. Reflect what users would ACTUALLY search for based on the content's unique value
+2. Highlight the specific insights, data, and value propositions in THIS content
+3. Sound human-written and natural, not AI-generated or templated
+4. Follow AEO best practices for AI answer engine optimization
+
+CONTENT-AWARE APPROACH:
+- Base titles on the content's actual unique angle and value proposition
+- Use specific insights, data points, or frameworks mentioned in the content
+- Differentiate from generic competitor content by highlighting unique elements
+- Match real user search intent based on what the content delivers
+
+AEO OPTIMIZATION REQUIREMENTS:
+
+META TITLE REQUIREMENTS (max 70 chars INCLUDING " | Apollo"):
+- MUST be a natural question that includes the main keyword
+- MUST reflect the content's unique angle or primary value proposition
+- Choose format based on keyword type AND content focus:
+  * Job titles: "Who Is A [Job Title]? [Unique Content Angle]" 
+  * Processes: "What Is [Process]? [Specific Approach/Framework in Content]"
+  * Tools: "How Does [Tool] Work? [Key Benefits/Features Covered]"
+  * Strategies: "Why Use [Strategy]? [Specific Outcomes/Data in Content]"
+- MUST use proper Title Case (capitalize all major words)
+- Include specific descriptive elements from the actual content
+- Optimize for AI search engines with intelligent, human-like phrasing
+
+META DESCRIPTION REQUIREMENTS (150-160 chars):
+- MUST directly answer the title question using insights from the actual content
+- Highlight specific value propositions, data, or frameworks mentioned in the content
+- Adapt format based on content's primary value:
+  * If content has data/statistics: Include specific metrics or findings
+  * If content has frameworks: Mention the approach or methodology
+  * If content has case studies: Reference real-world applications
+  * If content has tools/features: Highlight key capabilities covered
+- Must be complete sentences ending with a period
+- Write naturally with proper grammar and intelligent phrasing
+- Include "Apollo" naturally in the context of the content's value
+
+CONTENT ANALYSIS FOCUS:
+- What unique insights does this content provide?
+- What specific data, frameworks, or methodologies are covered?
+- What makes this content different from generic articles on the topic?
+- What would users actually search for to find this specific value?
+
+QUESTION-ANSWER FORMAT FOR AEO:
+- Title and description must work as an intelligent question-answer pair
+- Structure for AI extractability with clear, content-specific insights
+- Avoid generic templates - base on actual content value
+
+ABSOLUTELY FORBIDDEN:
+- Generic templates that could apply to any article on the topic
+- Rigid "What Is [keyword]?" without considering content's unique angle
+- Descriptions that don't reflect the specific value in THIS content
+- Robotic/boilerplate phrasing that sounds AI-generated
+- Marketing language like "ultimate," "complete guide," "everything you need"
+- Made-up statistics or claims not supported by the content
+- Formulaic openings that don't match the content's approach
+
+OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
+        messages: [
+          {
+            role: 'user',
+            content: `Analyze this content and create natural, content-aware SEO meta fields:
+
+KEYWORD: "${params.keyword}"
+${params.competitor ? `COMPETITOR CONTEXT: "${params.competitor}"` : ''}
+
+CONTENT TO ANALYZE:
+${contentPreview}
+
+INSTRUCTIONS:
+1. Identify the unique value proposition and key insights in this content
+2. Determine what users would actually search for to find this specific value
+3. Create a natural SEO title that reflects the content's unique angle (not a generic template)
+4. Write a description that highlights the specific insights and value in THIS content
+5. Ensure both fields work together as a natural question-answer pair for AI search engines
+6. Make it sound human-written while maintaining AEO optimization
+
+Focus on what makes THIS content unique and valuable, not generic information about the keyword.`
+          }
+        ]
+      });
+
+      const content = response.content[0];
+      
+      if (!content || content.type !== 'text') {
+        console.error('❌ No valid content generated from Claude for meta enhancement');
+        throw new Error('No valid content generated for meta enhancement');
+      }
+
+      console.log(`🔍 Raw Claude meta enhancement response (${content.text.length} chars):`, content.text.substring(0, 300));
+
+      // Clean and parse the response
+      let cleanedResponse = content.text.trim();
+      
+      // Remove markdown code blocks if present
+      cleanedResponse = cleanedResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      
+      // Remove any explanatory text before/after JSON
+      const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedResponse = jsonMatch[0];
+      }
+
+      let parsedResponse;
+      try {
+        parsedResponse = JSON.parse(cleanedResponse);
+      } catch (parseError) {
+        console.error('❌ Failed to parse Claude meta enhancement response as JSON:', parseError);
+        console.error('❌ Raw response:', cleanedResponse);
+        throw new Error('Invalid JSON response from Claude for meta enhancement');
+      }
+
+      // Validate required fields
+      if (!parsedResponse.metaSeoTitle || !parsedResponse.metaDescription) {
+        console.error('❌ Missing required meta fields in Claude response:', parsedResponse);
+        throw new Error('Missing metaSeoTitle or metaDescription in Claude response');
+      }
+
+      // Validate title length (including " | Apollo")
+      const titleWithBrand = `${parsedResponse.metaSeoTitle} | Apollo`;
+      if (titleWithBrand.length > 70) {
+        console.warn(`⚠️ SEO title too long (${titleWithBrand.length} chars): ${titleWithBrand}`);
+        // Truncate if necessary while preserving the question format
+        const maxTitleLength = 70 - 9; // 9 chars for " | Apollo"
+        parsedResponse.metaSeoTitle = parsedResponse.metaSeoTitle.substring(0, maxTitleLength).trim();
+      }
+
+      // Validate description length
+      if (parsedResponse.metaDescription.length < 150 || parsedResponse.metaDescription.length > 160) {
+        console.warn(`⚠️ SEO description length not optimal (${parsedResponse.metaDescription.length} chars): ${parsedResponse.metaDescription}`);
+      }
+
+      console.log(`✅ Enhanced meta fields generated successfully`);
+      console.log(`📝 Title: ${parsedResponse.metaSeoTitle} | Apollo (${titleWithBrand.length} chars)`);
+      console.log(`📝 Description: ${parsedResponse.metaDescription} (${parsedResponse.metaDescription.length} chars)`);
+
+      return {
+        metaSeoTitle: parsedResponse.metaSeoTitle,
+        metaDescription: parsedResponse.metaDescription
+      };
+
+    } catch (error) {
+      console.error('❌ Failed to enhance meta fields from content:', error);
+      console.error('❌ Error details:', error instanceof Error ? error.message : String(error));
+      throw new Error(`Failed to enhance meta fields from content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Extract key insights from content for meta field generation
+   * Why this matters: Provides Claude with the most relevant content snippets to create
+   * accurate, content-aware meta fields without overwhelming the context window.
+   */
+  private extractContentInsights(content: string): string {
+    // Remove HTML tags for cleaner analysis
+    const cleanContent = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    
+    // If content is short enough, return it all
+    if (cleanContent.length <= 3000) {
+      return cleanContent;
+    }
+
+    // Extract key sections for analysis
+    const sections = cleanContent.split(/\n\s*\n/);
+    let insights = '';
+    
+    // Always include the first few paragraphs (introduction/overview)
+    const introSections = sections.slice(0, 3).join('\n\n');
+    insights += `INTRODUCTION/OVERVIEW:\n${introSections}\n\n`;
+    
+    // Look for sections with data, statistics, or key insights
+    const keywordPatterns = [
+      /\d+%|\d+\.\d+%/g, // Percentages
+      /\$\d+|\d+\s*(million|billion|thousand)/gi, // Money/large numbers
+      /according to|research shows|study found|data reveals/gi, // Research indicators
+      /key benefits|main advantages|primary features/gi, // Value propositions
+      /step \d+|phase \d+|stage \d+/gi, // Process indicators
+    ];
+    
+    const insightfulSections = sections.filter(section => {
+      return keywordPatterns.some(pattern => pattern.test(section));
+    }).slice(0, 3); // Limit to top 3 insightful sections
+    
+    if (insightfulSections.length > 0) {
+      insights += `KEY INSIGHTS/DATA:\n${insightfulSections.join('\n\n')}\n\n`;
+    }
+    
+    // Include conclusion if present
+    const conclusionSection = sections.find(section => 
+      /conclusion|summary|takeaway|key points/gi.test(section)
+    );
+    
+    if (conclusionSection) {
+      insights += `CONCLUSION/SUMMARY:\n${conclusionSection}`;
+    }
+    
+    // Trim to reasonable length for Claude context
+    return insights.length > 4000 ? insights.substring(0, 4000) + '...' : insights;
+  }
+
+  /**
    * Start a new CRO-focused conversation with Gong call context
    * Why this matters: Initializes CRO optimization guidance with specific call insights,
    * setting up conversion rate optimization discovery questions.

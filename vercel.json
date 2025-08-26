@@ -4,7 +4,6 @@
   "alias": ["apollo-reddit-scraper-backend.vercel.app"],
   "functions": {
     "api/index.ts": {
-      "memory": 3008,
       "maxDuration": 60
     }
   },
