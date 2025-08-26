@@ -772,7 +772,7 @@ This analysis provides the foundation for creating superior content that outrank
         description: `Competitive analysis of top SERP results for ${keyword}`,
         tags: [keyword, 'serp-analysis', 'competitor-research']
       },
-      top_results: searchResults.slice(0, 10).map((result, index) => {
+      top_results: searchResults.slice(0, 3).map((result, index) => {
         const analysis = analyses.find(a => a.url === result.url);
         return {
           position: index + 1,
