@@ -117,28 +117,18 @@ class OpenAIService {
     const prompt = this.buildAnalysisPrompt(post, keywords, subreddits);
     
     try {
-      const completion = await this.client!.chat.completions.create({
+      const completion = await this.client!.responses.create({
         model: "gpt-5-nano",
-        messages: [
-          {
-            role: "system",
-            content: "You are a business analyst expert at identifying pain points, audience insights, and content opportunities from social media discussions. You provide structured analysis in JSON format."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_completion_tokens: 500,
-        response_format: { type: "json_object" }
+        input: `You are a business analyst expert at identifying pain points, audience insights, and content opportunities from social media discussions. You provide structured analysis in JSON format.
+
+${prompt}`
       });
 
       // Log token usage and cost calculation for content analysis
       if (completion.usage) {
-        const inputTokens = completion.usage.prompt_tokens;
-        const outputTokens = completion.usage.completion_tokens;
-        const totalTokens = completion.usage.total_tokens;
+        const inputTokens = completion.usage.input_tokens || 0;
+        const outputTokens = completion.usage.output_tokens || 0;
+        const totalTokens = inputTokens + outputTokens;
         
         // GPT-4.1-nano pricing (approximate)
         const inputCost = (inputTokens / 1000) * 0.0015;
@@ -149,7 +139,7 @@ class OpenAIService {
         console.log(`💵 Content Analysis Cost - Input: $${inputCost.toFixed(4)}, Output: $${outputCost.toFixed(4)}, Total: $${totalCost.toFixed(4)}`);
       }
 
-      const responseContent = completion.choices[0]?.message?.content;
+      const responseContent = completion.output_text;
       
       if (!responseContent) {
         throw new Error('Empty response from OpenAI');
@@ -197,12 +187,12 @@ Subreddit: r/${post.subreddit}
 Author: u/${post.author}
 
 ANALYSIS REQUIRED:
-Provide a JSON response with exactly these fields:
+Provide a JSON response with exactly these fields. Use clear, readable formatting with bullet points and short paragraphs:
 
 {
-  "pain_point": "What specific problem or frustration is this post revealing? Be concrete and actionable.",
-  "audience_insight": "What does this tell us about the target audience's needs, behaviors, mindset, and demographics? Include specific details about who they are (job roles, experience level, industry, etc.) and what drives them.",
-  "content_opportunity": "What type of content could address this pain point or serve this audience?",
+  "pain_point": "What specific problem or frustration is this post revealing? Format as: Brief overview sentence, then bullet points for specific issues. Keep each bullet point concise (1-2 sentences max).",
+  "audience_insight": "What does this tell us about the target audience? Format as: Who they are (job roles, experience, industry), then bullet points for their specific needs, behaviors, and motivations. Use clear, scannable formatting.",
+  "content_opportunity": "What content could address this pain point? Format as: Brief intro sentence, then numbered list of specific content ideas. Each idea should be actionable and specific (e.g., '1. Create a step-by-step guide for...').",
   "urgency_level": "high|medium|low - How urgent/important is this pain point?"
 }
 
@@ -211,6 +201,13 @@ Focus on:
 2. Specific audience insights that inform marketing/product decisions  
 3. Actionable content opportunities
 4. Professional, business-focused language
+
+FORMATTING REQUIREMENTS:
+- Use bullet points (•) for lists within each field
+- Keep sentences concise and scannable
+- Use line breaks (\n) to separate sections
+- Number content opportunities (1., 2., 3., etc.)
+- Avoid dense paragraph blocks
 
 Respond only with valid JSON.`;
   }
@@ -225,19 +222,12 @@ Respond only with valid JSON.`;
     }
     
     try {
-      const testCompletion = await this.client.chat.completions.create({
+      const testCompletion = await this.client.responses.create({
         model: "gpt-5-nano",
-        messages: [
-          {
-            role: "user",
-            content: "Respond with just the word 'success' if you can read this message."
-          }
-        ],
-        max_completion_tokens: 10,
-        temperature: 0
+        input: "Respond with just the word 'success' if you can read this message."
       });
 
-      const response = testCompletion.choices[0]?.message?.content?.toLowerCase();
+      const response = testCompletion.output_text?.toLowerCase();
       const isSuccess = response?.includes('success') || false;
       
       if (isSuccess) {
@@ -272,12 +262,9 @@ Respond only with valid JSON.`;
     console.log(`📝 Converting raw data to markdown for job title: ${job_title}`);
 
     try {
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: 'gpt-5-nano', // Latest GPT-5 nano model
-        messages: [
-          {
-            role: 'system',
-            content: `You are a skilled technical writer specializing in converting raw text data into clean, well-structured markdown format for business playbooks. Your task is to transform unstructured data into organized markdown that can be easily processed by other systems.
+        input: `You are a skilled technical writer specializing in converting raw text data into clean, well-structured markdown format for business playbooks. Your task is to transform unstructured data into organized markdown that can be easily processed by other systems.
 
 IMPORTANT CONTEXT: You are working with executive job title data and business metrics. When you see common business abbreviations, interpret them in their executive/business context:
 - CRO = Chief Revenue Officer (NOT Conversion Rate Optimization)
@@ -288,23 +275,17 @@ IMPORTANT CONTEXT: You are working with executive job title data and business me
 - VP = Vice President
 - etc.
 
-Always use the executive job title interpretation for these abbreviations in your markdown output.`
-          },
-          {
-            role: 'user',
-            content: `Turn this raw text data about the executive role "${job_title}" into a single markdown output for easy processing. This is business performance data for an executive position, not marketing metrics. DO NOT separate each template. Think deeply about what I just asked you to do before creating the markdown. Ensure you understand the task before proceeding.
+Always use the executive job title interpretation for these abbreviations in your markdown output.
+
+Turn this raw text data about the executive role "${job_title}" into a single markdown output for easy processing. This is business performance data for an executive position, not marketing metrics. DO NOT separate each template. Think deeply about what I just asked you to do before creating the markdown. Ensure you understand the task before proceeding.
 
 Raw data:
 ${raw_data}
 
 Please convert this into clean, structured markdown format that preserves all the important information while making it easy to process programmatically. Remember that any abbreviations should be interpreted in their executive/business context.`
-          }
-        ],
-        max_completion_tokens: 4000,
-        temperature: 0.3, // Lower temperature for more consistent formatting
       });
 
-      const markdownContent = response.choices[0]?.message?.content;
+      const markdownContent = response.output_text;
       
       if (!markdownContent) {
         throw new Error('No markdown content generated');
