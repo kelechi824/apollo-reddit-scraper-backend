@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { workflowOrchestrator } from '../services/workflowOrchestrator';
 import { brandkitService } from '../services/brandkitService';
+import PreGenerationCtaService from '../services/preGenerationCtaService';
+import StreamingContentGenerator from '../services/streamingContentGenerator';
+import SimpleContextualCtaService from '../services/simpleContextualCtaService';
+import UTMUrlGenerator from '../services/utmUrlGenerator';
 
 const router = Router();
 
@@ -130,6 +134,140 @@ function deleteJobData(jobId: string): boolean {
 }
 
 /**
+ * POST /api/blog-creator/generate-content-streaming
+ * Generate content with streaming contextual CTA insertion (NEW APPROACH)
+ * Why this matters: Uses real paragraph context to insert truly contextual CTAs
+ */
+router.post('/generate-content-streaming', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { keyword, target_audience, content_length = 'medium', focus_areas = [], brand_kit, sitemap_data, system_prompt, user_prompt, use_default_prompts, use_simple_cta_service = true } = req.body;
+
+    if (!keyword || keyword.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Keyword is required'
+      });
+    }
+
+    console.log(`🚀 Starting STREAMING content generation for keyword: "${keyword}"`);
+
+    // Generate prompts server-side if requested
+    let finalSystemPrompt = system_prompt;
+    let finalUserPrompt = user_prompt;
+    
+    if (use_default_prompts || (!system_prompt && !user_prompt)) {
+      const generatedPrompts = await generateDefaultPrompts(keyword, sitemap_data, brand_kit);
+      finalSystemPrompt = generatedPrompts.systemPrompt;
+      finalUserPrompt = generatedPrompts.userPrompt;
+      console.log('📝 Using server-generated prompts for streaming generation');
+    }
+
+    // CTAs are now generated naturally during content creation, no post-processing needed
+    console.log('✅ [BlogCreator] Using natural CTA integration during content generation (no post-processing)');
+    
+    if (false) { // Disabled: use_simple_cta_service
+      // Use simple CTA service approach (more reliable, sitemap-aware)
+      console.log('🎯 Using simple CTA service for content enhancement...');
+      
+      // First generate base content using workflow orchestrator
+      const baseResult = await workflowOrchestrator.executeContentPipeline({
+        keyword: keyword.trim(),
+        target_audience,
+        content_length,
+        focus_areas,
+        brand_kit,
+        sitemap_data,
+        system_prompt: finalSystemPrompt,
+        user_prompt: finalUserPrompt
+      });
+
+      // Then enhance with simple CTA service
+      const simpleCtaService = new SimpleContextualCtaService();
+      
+      // Transform sitemap data to match expected format
+      const transformedSitemapData = sitemap_data ? [{
+        id: 'sitemap-1',
+        sitemapUrl: 'https://www.apollo.io/sitemap.xml',
+        totalUrls: sitemap_data.length,
+        scrapedAt: new Date(),
+        urls: sitemap_data.map((item: any, index: number) => ({
+          id: `url-${index + 1}`,
+          title: item.title,
+          description: item.description,
+          url: item.url,
+          scrapedAt: new Date()
+        }))
+      }] : undefined;
+
+      const ctaResult = await simpleCtaService.insertContextualCtas({
+        content: baseResult.content,
+        contentFormat: 'html',
+        targetKeyword: keyword,
+        campaignType: 'blog_creator',
+        maxCtasPerArticle: 3,
+        sitemapData: transformedSitemapData
+      });
+
+      console.log(`✅ SIMPLE CTA content generation completed for keyword: "${keyword}"`);
+      console.log(`🎯 Inserted ${ctaResult.insertionAnalytics.totalCtasInserted} contextual CTAs`);
+
+      res.json({
+        success: true,
+        data: {
+          content: ctaResult.success ? ctaResult.enhancedContent : baseResult.content,
+          metaSeoTitle: baseResult.metadata.metaSeoTitle || baseResult.metadata.title || '',
+          metaDescription: baseResult.metadata.metaDescription || baseResult.metadata.description || '',
+          ctaInsertions: {
+            totalInserted: ctaResult.insertionAnalytics.totalCtasInserted,
+            insertionPoints: ctaResult.insertionAnalytics.insertionPoints
+          },
+          processingTimeMs: Date.now() - Date.now(),
+          approach: 'simple_cta_service'
+        }
+      });
+    } else {
+      // Use streaming content generator (original approach)
+      const streamingGenerator = new StreamingContentGenerator();
+      const result = await streamingGenerator.generateContentWithContextualCtas({
+        keyword: keyword.trim(),
+        systemPrompt: finalSystemPrompt,
+        userPrompt: finalUserPrompt,
+        campaignType: 'blog_creator',
+        maxCtasPerArticle: 3,
+        brand_kit,
+        sitemap_data
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Streaming content generation failed');
+      }
+
+      console.log(`✅ STREAMING content generation completed for keyword: "${keyword}"`);
+      console.log(`🎯 Inserted ${result.ctaInsertions.totalInserted} contextual CTAs`);
+
+      res.json({
+        success: true,
+        data: {
+          content: result.content,
+          metaSeoTitle: result.metaSeoTitle,
+          metaDescription: result.metaDescription,
+          ctaInsertions: result.ctaInsertions,
+          processingTimeMs: result.processingTimeMs,
+          approach: 'streaming_with_contextual_ctas'
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ STREAMING content generation failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Streaming content generation failed'
+    });
+  }
+});
+
+/**
  * POST /api/blog-creator/generate-content
  * Generate content for a single keyword using the 4-model pipeline (SYNCHRONOUS - works in serverless)
  */
@@ -149,7 +287,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
     let finalUserPrompt = user_prompt;
     
     if (use_default_prompts || (!system_prompt && !user_prompt)) {
-      const generatedPrompts = generateDefaultPrompts(keyword, sitemap_data, brand_kit);
+      const generatedPrompts = await generateDefaultPrompts(keyword, sitemap_data, brand_kit);
       finalSystemPrompt = generatedPrompts.systemPrompt;
       finalUserPrompt = generatedPrompts.userPrompt;
       console.log('📝 Using server-generated prompts to reduce payload size');
@@ -190,10 +328,11 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
  * Generate content for a single keyword asynchronously with progress tracking
  */
 /**
- * Generate default prompts server-side to reduce request payload size
+ * Generate default prompts server-side with contextual CTAs to reduce request payload size
  * This prevents 413 "Payload Too Large" errors on Vercel/Netlify
+ * Why this matters: Includes pre-generated contextual CTAs in prompts like internal links
  */
-function generateDefaultPrompts(keyword: string, sitemapData: any, brandKit: any) {
+async function generateDefaultPrompts(keyword: string, sitemapData: any, brandKit: any) {
   const currentYear = 2025;
   
   // Generate random CTA anchor text to prevent LLM bias
@@ -218,6 +357,22 @@ function generateDefaultPrompts(keyword: string, sitemapData: any, brandKit: any
     .trim();
   const apolloSignupURL = `https://www.apollo.io/sign-up?utm_campaign=blog_creator&utm_term=${sanitizedKeyword}`;
   
+  // Initialize UTM URL generator for contextual CTAs
+  const utmGenerator = new UTMUrlGenerator();
+  
+  // Generate UTM-tracked URLs for all Apollo product pages
+  const generateUTMUrl = (apolloUrl: string): string => {
+    if (!keyword) return apolloUrl;
+    
+    try {
+      const utmResult = utmGenerator.generateBlogCreatorUTMUrl(apolloUrl, keyword);
+      return utmResult.utmUrl;
+    } catch (error) {
+      console.warn(`Failed to generate UTM URL for ${apolloUrl}:`, error);
+      return apolloUrl; // Fallback to original URL
+    }
+  };
+  
   // Handle both compressed and uncompressed sitemap formats
   const formatSitemapUrls = (data: any[]) => {
     if (!data || data.length === 0) return '';
@@ -234,6 +389,8 @@ function generateDefaultPrompts(keyword: string, sitemapData: any, brandKit: any
     }
   };
   
+  // Note: Contextual CTAs will be handled via streaming generation approach
+
   // Build brand kit section if available
   const brandKitSection = brandKit ? `
 BRAND INTEGRATION:
@@ -277,13 +434,66 @@ AEO OPTIMIZATION:
 - Place complete answer in first paragraph under each heading (snippet-worthy)
 - Include definitions immediately after question headers when introducing concepts
 ${brandKitSection}
-INTERNAL LINKING (MANDATORY):
-- Insert 3-5 internal links from provided URLs
+INTERNAL LINKING & CONTEXTUAL CTAS (MANDATORY):
+- Insert 3-5 internal links from provided URLs naturally throughout content
 - Place at least ONE link early (intro or first 2-3 paragraphs)
 - Use natural anchor text matching linked content
 - Format: <a href="URL" target="_blank">anchor text</a>
 
-Current year: ${currentYear}. End with CTA: "${selectedCTA}" linking to ${apolloSignupURL}
+CONTEXTUAL APOLLO INTEGRATION (CRITICAL):
+- Weave Apollo naturally into content with contextually relevant anchor phrases linking to specific product pages
+- Match Apollo URLs to content context and pain points:
+
+**PROSPECTING & LEAD GENERATION:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/search')} for: "advanced prospecting tools", "lead generation platforms", "contact discovery solutions"
+- Use ${generateUTMUrl('https://www.apollo.io/sales-pipeline')} for: "pipeline building tools", "sales pipeline platforms", "lead qualification systems"
+
+**SALES ENGAGEMENT & OUTREACH:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/sales-engagement')} for: "sales engagement platforms", "outreach automation tools", "multi-channel communication systems"
+- Use ${generateUTMUrl('https://www.apollo.io/product/ai-sales-automation')} for: "AI-powered sales automation", "automated outreach systems", "intelligent sales workflows"
+
+**DATA & ENRICHMENT:**
+- Use ${generateUTMUrl('https://www.apollo.io/data-enrichment')} for: "B2B contact databases", "data enrichment services", "verified contact information"
+- Use ${generateUTMUrl('https://www.apollo.io/product/enrich')} for: "contact enrichment tools", "data verification platforms", "lead intelligence systems"
+- Use ${generateUTMUrl('https://www.apollo.io/product/waterfall')} for: "waterfall enrichment", "multi-source data verification", "comprehensive contact discovery"
+
+**MEETINGS & CONVERSATIONS:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/meetings')} for: "meeting scheduling platforms", "calendar coordination tools", "appointment booking systems"
+- Use ${generateUTMUrl('https://www.apollo.io/ai-call-assistant')} for: "AI call assistants", "conversation intelligence platforms", "call recording and analysis tools"
+- Use ${generateUTMUrl('https://www.apollo.io/product/conversations')} for: "conversation tracking systems", "call management platforms", "communication analytics"
+
+**PIPELINE & DEAL MANAGEMENT:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/deal-management')} for: "deal management platforms", "sales pipeline tracking", "opportunity management systems"
+- Use ${generateUTMUrl('https://www.apollo.io/go-to-market')} for: "go-to-market platforms", "revenue operations tools", "sales strategy systems"
+
+**AI & AUTOMATION:**
+- Use ${generateUTMUrl('https://www.apollo.io/ai')} for: "AI sales platforms", "artificial intelligence tools", "machine learning systems"
+- Use ${generateUTMUrl('https://www.apollo.io/product/workflow-engine')} for: "workflow automation", "sales process automation", "task management systems"
+
+**INTEGRATIONS & TOOLS:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/integrations')} for: "CRM integrations", "sales tool connections", "platform integrations"
+- Use ${generateUTMUrl('https://www.apollo.io/product/chrome-extension')} for: "browser extensions", "prospecting browser tools", "LinkedIn integration tools"
+
+- Examples of inline pain-point CTAs:
+  * After discussing data quality issues: "Tired of dirty data? <a href='${generateUTMUrl('https://www.apollo.io/data-enrichment')}' target='_blank'>Start free with Apollo's 210M+ verified contacts</a>."
+  * After mentioning prospecting challenges: "Struggling to find qualified leads? <a href='${generateUTMUrl('https://www.apollo.io/product/search')}' target='_blank'>Search Apollo's 275M+ contacts with 65+ filters</a>."
+  * After discussing manual outreach problems: "Spending hours on manual outreach? <a href='${generateUTMUrl('https://www.apollo.io/product/sales-engagement')}' target='_blank'>Automate your sequences with Apollo's multi-channel platform</a>."
+  * After mentioning call management issues: "Tired of taking notes during calls? <a href='${generateUTMUrl('https://www.apollo.io/ai-call-assistant')}' target='_blank'>Let Apollo's AI handle call summaries and next steps</a>."
+  * After discussing pipeline visibility problems: "Can't track your deals effectively? <a href='${generateUTMUrl('https://www.apollo.io/product/deal-management')}' target='_blank'>Get complete pipeline visibility with Apollo's deal management</a>."
+
+**CTA FORMULA:** [Pain Point Question] + [Solution Benefit] + [Specific Apollo URL]
+- Start with a direct question addressing the pain point just mentioned
+- Follow with a clear benefit statement
+- Link to the most relevant Apollo product page
+- Keep it conversational and helpful, not salesy
+
+- Distribute 2-3 inline pain-point CTAs throughout: early context, middle examples, solution discussion
+- Always match the URL to the specific pain point or solution being discussed
+- Use conversational, problem-solving language that feels helpful, not promotional
+- Address the reader directly with questions like "Tired of...", "Struggling with...", "Spending too much time on..."
+
+Current year: ${currentYear}. 
+REMEMBER: Include 2-3 contextual Apollo mentions with descriptive anchor text throughout content + end with CTA: "${selectedCTA}" linking to ${apolloSignupURL}
 
 CRITICAL OUTPUT: Return ONLY valid JSON:
 {
@@ -412,7 +622,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
     let finalUserPrompt = user_prompt;
     
     if (use_default_prompts || (!system_prompt && !user_prompt)) {
-      const generatedPrompts = generateDefaultPrompts(keyword, sitemap_data, brand_kit);
+      const generatedPrompts = await generateDefaultPrompts(keyword, sitemap_data, brand_kit);
       finalSystemPrompt = generatedPrompts.systemPrompt;
       finalUserPrompt = generatedPrompts.userPrompt;
       console.log('📝 Using server-generated prompts to reduce payload size');
@@ -641,7 +851,7 @@ router.post('/bulk-generate', async (req: Request, res: Response): Promise<any> 
           let finalUserPrompt = user_prompt;
           
           if (use_default_prompts || (!system_prompt && !user_prompt)) {
-            const generatedPrompts = generateDefaultPrompts(keyword, sitemap_data, brand_kit);
+            const generatedPrompts = await generateDefaultPrompts(keyword, sitemap_data, brand_kit);
             finalSystemPrompt = generatedPrompts.systemPrompt;
             finalUserPrompt = generatedPrompts.userPrompt;
           }
