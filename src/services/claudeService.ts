@@ -234,7 +234,7 @@ Generate a practical, action-oriented opening that identifies the engagement opp
     try {
       const completion = await this.client!.messages.create({
         model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
-        max_tokens: 300,
+        max_tokens: 2000, // Increased from 300 to allow comprehensive socratic learning responses
         temperature: 0.7,
         system: systemPrompt,
         messages: [{ role: "user", content: initialPrompt }]
@@ -298,7 +298,7 @@ What angle feels most natural for your approach?`,
 
       const completion = await this.client!.messages.create({
         model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
-        max_tokens: 400,
+        max_tokens: 2000, // Increased from 400 to allow comprehensive socratic learning responses
         temperature: 0.7,
         system: systemPrompt + "\n\n" + conversationHistory,
         messages: messages
