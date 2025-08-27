@@ -50,7 +50,7 @@ class OpenAIService {
       throw new Error('No posts provided for analysis');
     }
 
-    console.log(`🧠 Analyzing ${posts.length} Reddit posts with OpenAI`);
+    console.log(`🧠 Analyzing ${posts.length} Reddit posts with OpenAI (parallel processing)`);
     
     const analyzedPosts: AnalyzedPost[] = [];
 

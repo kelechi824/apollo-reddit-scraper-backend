@@ -8,8 +8,10 @@ class RedditService {
   private readonly baseURL = 'https://oauth.reddit.com';
 
   constructor() {
-    // Initialize immediately - environment variables should be available
-    this.initializeClient();
+    // Delay initialization to allow environment variables to load
+    setTimeout(() => {
+      this.initializeClient();
+    }, 100);
   }
 
   /**
