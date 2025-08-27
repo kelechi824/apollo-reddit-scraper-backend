@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { workflowOrchestrator } from '../services/workflowOrchestrator';
 import FirecrawlService, { ArticleContent } from '../services/firecrawlService';
+import SimpleContextualCtaService from '../services/simpleContextualCtaService';
+import UTMUrlGenerator from '../services/utmUrlGenerator';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { createJob, updateJob, getJob, deleteJob, getStoreDiagnostics } from '../services/jobStore';
@@ -22,6 +24,7 @@ interface CompetitorConquestingRequest {
   }>;
   system_prompt?: string;
   user_prompt?: string;
+  use_simple_cta_service?: boolean;
 }
 
 interface BulkCompetitorRequest {
@@ -224,7 +227,8 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
       brand_kit, 
       sitemap_data,
       system_prompt, 
-      user_prompt 
+      user_prompt,
+      use_simple_cta_service = true
     }: CompetitorConquestingRequest = req.body;
 
     if (!keyword || !url) {
@@ -266,10 +270,20 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
         timeoutPromise
       ]);
 
+            // CTAs are now generated naturally during content creation, no post-processing needed
+      let finalContent = result.content;
+      let ctaEnhancementResult = null;
+      
+      console.log('✅ [CompetitorConquesting] Using natural CTA integration during content generation (no post-processing)');
+
       // Return the result in Blog Creator compatible format
       return res.json({
         success: true,
-        data: result
+        data: {
+          ...result,
+          content: finalContent,
+          ctaEnhancementResult
+        }
       });
     } catch (timeoutError: any) {
       if (timeoutError.message === 'Operation timed out after 55 seconds') {
@@ -304,7 +318,8 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
       brand_kit, 
       sitemap_data,
       system_prompt, 
-      user_prompt 
+      user_prompt,
+      use_simple_cta_service = true
     }: CompetitorConquestingRequest = req.body;
 
     // Debug logging to trace UTM parameter flow
@@ -355,12 +370,22 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
           progress
         }).catch((e) => console.error('Failed to update job progress:', e));
       }
-    }).then((result: any) => {
+    }).then(async (result: any) => {
+            // CTAs are now generated naturally during content creation, no post-processing needed
+      let finalContent = result.content;
+      let ctaEnhancementResult = null;
+      
+      console.log('✅ [CompetitorConquesting-Async] Using natural CTA integration during content generation (no post-processing)');
+
       updateJob(jobId, {
         status: 'completed',
         progress: 100,
         message: 'Competitor content generation complete!',
-        result
+        result: {
+          ...result,
+          content: finalContent,
+          ctaEnhancementResult
+        }
       }).catch((e) => console.error('Failed to finalize job:', e));
     }).catch((error: any) => {
       updateJob(jobId, {
@@ -518,6 +543,22 @@ function buildCompetitorSystemPrompt(competitor?: string, brandKit?: any, keywor
   const selectedCTA = getRandomCTAAnchorText();
   const apolloSignupURL = generateApolloSignupURL(competitor, keyword);
   
+  // Initialize UTM URL generator for contextual CTAs
+  const utmGenerator = new UTMUrlGenerator();
+  
+  // Generate UTM-tracked URLs for all Apollo product pages
+  const generateUTMUrl = (apolloUrl: string): string => {
+    if (!keyword) return apolloUrl;
+    
+    try {
+      const utmResult = utmGenerator.generateCompetitorUTMUrl(apolloUrl, keyword, competitor || 'generic');
+      return utmResult.utmUrl;
+    } catch (error) {
+      console.warn(`Failed to generate UTM URL for ${apolloUrl}:`, error);
+      return apolloUrl; // Fallback to original URL
+    }
+  };
+  
   // Build brand kit section with actual values (same approach as Blog Creator)
   const brandKitSection = brandKit ? `
 BRAND INTEGRATION (MANDATORY - USE THROUGHOUT CONTENT):
@@ -590,15 +631,69 @@ FORMATTING REQUIREMENTS:
    - Include ideal customer examples and testimonials that match the target audience
    - Reference competitors appropriately when discussing market landscape
    - Follow writing rules and maintain author persona throughout
+   - Include contextual Apollo mentions throughout content as specified in CONTEXTUAL APOLLO INTEGRATION section
    - End with strong CTA using this exact anchor text: "${selectedCTA}" linking to ${apolloSignupURL}
 
-INTERNAL LINKING (MANDATORY):
-- Insert 3-5 internal links from provided URLs
+INTERNAL LINKING & CONTEXTUAL CTAS (MANDATORY):
+- Insert 3-5 internal links from provided URLs naturally throughout content
 - Place at least ONE link early (intro or first 2-3 paragraphs)
 - Use natural anchor text matching linked content
 - Format: <a href="URL" target="_blank">anchor text</a>
 
-Current year: ${currentYear}. End with CTA: "${selectedCTA}" linking to ${apolloSignupURL}
+CONTEXTUAL APOLLO INTEGRATION (CRITICAL):
+- Weave Apollo naturally into content with contextually relevant anchor phrases linking to specific product pages
+- Match Apollo URLs to content context and pain points:
+
+**PROSPECTING & LEAD GENERATION:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/search')} for: "advanced prospecting tools", "lead generation platforms", "contact discovery solutions"
+- Use ${generateUTMUrl('https://www.apollo.io/sales-pipeline')} for: "pipeline building tools", "sales pipeline platforms", "lead qualification systems"
+
+**SALES ENGAGEMENT & OUTREACH:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/sales-engagement')} for: "sales engagement platforms", "outreach automation tools", "multi-channel communication systems"
+- Use ${generateUTMUrl('https://www.apollo.io/product/ai-sales-automation')} for: "AI-powered sales automation", "automated outreach systems", "intelligent sales workflows"
+
+**DATA & ENRICHMENT:**
+- Use ${generateUTMUrl('https://www.apollo.io/data-enrichment')} for: "B2B contact databases", "data enrichment services", "verified contact information"
+- Use ${generateUTMUrl('https://www.apollo.io/product/enrich')} for: "contact enrichment tools", "data verification platforms", "lead intelligence systems"
+- Use ${generateUTMUrl('https://www.apollo.io/product/waterfall')} for: "waterfall enrichment", "multi-source data verification", "comprehensive contact discovery"
+
+**MEETINGS & CONVERSATIONS:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/meetings')} for: "meeting scheduling platforms", "calendar coordination tools", "appointment booking systems"
+- Use ${generateUTMUrl('https://www.apollo.io/ai-call-assistant')} for: "AI call assistants", "conversation intelligence platforms", "call recording and analysis tools"
+- Use ${generateUTMUrl('https://www.apollo.io/product/conversations')} for: "conversation tracking systems", "call management platforms", "communication analytics"
+
+**PIPELINE & DEAL MANAGEMENT:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/deal-management')} for: "deal management platforms", "sales pipeline tracking", "opportunity management systems"
+- Use ${generateUTMUrl('https://www.apollo.io/go-to-market')} for: "go-to-market platforms", "revenue operations tools", "sales strategy systems"
+
+**AI & AUTOMATION:**
+- Use ${generateUTMUrl('https://www.apollo.io/ai')} for: "AI sales platforms", "artificial intelligence tools", "machine learning systems"
+- Use ${generateUTMUrl('https://www.apollo.io/product/workflow-engine')} for: "workflow automation", "sales process automation", "task management systems"
+
+**INTEGRATIONS & TOOLS:**
+- Use ${generateUTMUrl('https://www.apollo.io/product/integrations')} for: "CRM integrations", "sales tool connections", "platform integrations"
+- Use ${generateUTMUrl('https://www.apollo.io/product/chrome-extension')} for: "browser extensions", "prospecting browser tools", "LinkedIn integration tools"
+
+- Examples of inline pain-point CTAs:
+  * After discussing data quality issues: "Tired of dirty data? <a href='${generateUTMUrl('https://www.apollo.io/data-enrichment')}' target='_blank'>Start free with Apollo's 210M+ verified contacts</a>."
+  * After mentioning prospecting challenges: "Struggling to find qualified leads? <a href='${generateUTMUrl('https://www.apollo.io/product/search')}' target='_blank'>Search Apollo's 275M+ contacts with 65+ filters</a>."
+  * After discussing manual outreach problems: "Spending hours on manual outreach? <a href='${generateUTMUrl('https://www.apollo.io/product/sales-engagement')}' target='_blank'>Automate your sequences with Apollo's multi-channel platform</a>."
+  * After mentioning call management issues: "Tired of taking notes during calls? <a href='${generateUTMUrl('https://www.apollo.io/ai-call-assistant')}' target='_blank'>Let Apollo's AI handle call summaries and next steps</a>."
+  * After discussing pipeline visibility problems: "Can't track your deals effectively? <a href='${generateUTMUrl('https://www.apollo.io/product/deal-management')}' target='_blank'>Get complete pipeline visibility with Apollo's deal management</a>."
+
+**CTA FORMULA:** [Pain Point Question] + [Solution Benefit] + [Specific Apollo URL]
+- Start with a direct question addressing the pain point just mentioned
+- Follow with a clear benefit statement
+- Link to the most relevant Apollo product page
+- Keep it conversational and helpful, not salesy
+
+- Distribute 2-3 inline pain-point CTAs throughout: early context, middle examples, solution discussion
+- Always match the URL to the specific pain point or solution being discussed
+- Use conversational, problem-solving language that feels helpful, not promotional
+- Address the reader directly with questions like "Tired of...", "Struggling with...", "Spending too much time on..."
+
+Current year: ${currentYear}. 
+REMEMBER: Include 2-3 contextual Apollo mentions with descriptive anchor text throughout content + end with CTA: "${selectedCTA}" linking to ${apolloSignupURL}
 
 CRITICAL OUTPUT: Return ONLY valid JSON:
 {
