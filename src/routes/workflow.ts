@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { redditService } from '../services/redditService';
-import openaiService from '../services/openaiService';
+import openaiServiceOptimized from '../services/openaiServiceOptimized';
 import GoogleSheetsService from '../services/googleSheetsService';
 import { WorkflowRequest, WorkflowResponse, ApiError } from '../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -8,86 +8,158 @@ import { v4 as uuidv4 } from 'uuid';
 const router = Router();
 const sheetsService = new GoogleSheetsService();
 
+// In-memory storage for workflow status (in production, use Redis or database)
+const workflowStatus = new Map<string, {
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: number;
+  result?: WorkflowResponse;
+  error?: string;
+  startTime: number;
+}>();
+
 /**
  * POST /api/workflow/run-analysis
- * Complete Reddit content analysis workflow
- * Why this matters: This is the main end-to-end API that combines Reddit scraping,
- * OpenAI analysis, and Google Sheets export into a single powerful business intelligence pipeline.
+ * Start async Reddit content analysis workflow
+ * Why this matters: Returns immediately with workflow ID, then processes in background
+ * to avoid serverless timeout limits while providing real-time progress updates.
  */
 router.post('/run-analysis', async (req: Request, res: Response): Promise<any> => {
   const workflowId = uuidv4();
   const startTime = Date.now();
   
+  // Validate request first
+  const { keywords, subreddits, limit, export_to_sheets }: WorkflowRequest = req.body;
+
+  if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+    return res.status(400).json({
+      error: 'Validation Error',
+      message: 'keywords array is required and must not be empty',
+      status: 400,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (!subreddits || !Array.isArray(subreddits) || subreddits.length === 0) {
+    return res.status(400).json({
+      error: 'Validation Error', 
+      message: 'subreddits array is required and must not be empty',
+      status: 400,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Initialize workflow status
+  workflowStatus.set(workflowId, {
+    status: 'pending',
+    progress: 0,
+    startTime
+  });
+
+  // Return immediately with workflow ID
+  res.json({
+    success: true,
+    workflow_id: workflowId,
+    status: 'pending',
+    message: 'Analysis started. Use /api/workflow/status/{workflow_id} to check progress.'
+  });
+
+  // Start async processing (don't await - let it run in background)
+  processWorkflowAsync(workflowId, { keywords, subreddits, limit, export_to_sheets });
+});
+
+/**
+ * GET /api/workflow/status/:workflowId
+ * Check status of specific workflow
+ * Why this matters: Allows frontend to poll for completion and get results when ready
+ */
+router.get('/status/:workflowId', async (req: Request, res: Response): Promise<any> => {
+  const { workflowId } = req.params;
+  
+  const status = workflowStatus.get(workflowId);
+  if (!status) {
+    return res.status(404).json({
+      error: 'Workflow Not Found',
+      message: 'Workflow ID not found or expired',
+      status: 404,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Clean up completed workflows after 1 hour
+  if (status.status === 'completed' || status.status === 'failed') {
+    const age = Date.now() - status.startTime;
+    if (age > 60 * 60 * 1000) { // 1 hour
+      workflowStatus.delete(workflowId);
+      return res.status(404).json({
+        error: 'Workflow Expired',
+        message: 'Workflow results have expired',
+        status: 404,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  res.json({
+    workflow_id: workflowId,
+    status: status.status,
+    progress: status.progress,
+    result: status.result,
+    error: status.error,
+    duration_ms: Date.now() - status.startTime
+  });
+});
+
+/**
+ * Async workflow processor that runs in background
+ * Why this matters: Handles the actual long-running analysis without blocking the API response
+ */
+async function processWorkflowAsync(workflowId: string, request: WorkflowRequest) {
+  const statusEntry = workflowStatus.get(workflowId)!;
+  
   try {
-    console.log(`🚀 Starting workflow ${workflowId}`);
+    console.log(`🚀 Starting async workflow ${workflowId}`);
     
-    // Validate request body
-    const { keywords, subreddits, limit, export_to_sheets }: WorkflowRequest = req.body;
-
-    if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'keywords array is required and must not be empty',
-        status: 400,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    if (!subreddits || !Array.isArray(subreddits) || subreddits.length === 0) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'subreddits array is required and must not be empty',
-        status: 400,
-        timestamp: new Date().toISOString()
-      });
-    }
+    // Update status to running
+    statusEntry.status = 'running';
+    statusEntry.progress = 10;
+    
+    const { keywords, subreddits, limit, export_to_sheets } = request;
 
     console.log(`📊 Workflow parameters: ${keywords.join(', ')} in r/${subreddits.join(', r/')}`);
 
     // Step 1: Search Reddit
     console.log(`🔍 Step 1: Searching Reddit...`);
+    statusEntry.progress = 25;
+    
     const redditResults = await redditService.searchPosts({
       keywords: keywords.map(k => String(k).trim()).filter(k => k.length > 0),
       subreddits: subreddits.map(s => String(s).trim()).filter(s => s.length > 0),
-             limit: limit ? Math.min(Math.max(parseInt(String(limit)), 1), 50) : 25,
+      limit: limit ? Math.min(Math.max(parseInt(String(limit)), 1), 50) : 25,
       timeframe: 'week',
       sort: 'top'
     });
 
     if (redditResults.posts.length === 0) {
-      return res.json({
-        success: false,
-        message: 'No Reddit posts found matching the criteria',
-        reddit_results: redditResults,
-        analyzed_posts: [],
-        workflow_id: workflowId,
-        completed_at: new Date().toISOString()
-      });
-    }
-
-    // Quality check: Ensure we have enough posts for analysis (reduced threshold for more results)
-    if (redditResults.posts.length < 1) {
-      return res.json({
-        success: false,
-        message: `No posts found matching the criteria. Try different keywords or subreddits.`,
-        reddit_results: redditResults,
-        analyzed_posts: [],
-        workflow_id: workflowId,
-        completed_at: new Date().toISOString()
-      });
+      statusEntry.status = 'failed';
+      statusEntry.progress = 100;
+      statusEntry.error = 'No Reddit posts found matching the criteria';
+      return;
     }
 
     console.log(`✅ Step 1 complete: Found ${redditResults.posts.length} quality Reddit posts`);
 
     // Step 2: Analyze with OpenAI
     console.log(`🧠 Step 2: Analyzing posts with OpenAI...`);
-    const analyzedPosts = await openaiService.analyzePosts({
+    statusEntry.progress = 50;
+    
+    const analyzedPosts = await openaiServiceOptimized.analyzePosts({
       posts: redditResults.posts,
       keywords_used: redditResults.keywords_used,
       subreddits_used: redditResults.subreddits_used
     });
 
     console.log(`✅ Step 2 complete: Analyzed ${analyzedPosts.length} posts`);
+    statusEntry.progress = 75;
 
     // Step 3: Export to Google Sheets (optional)
     let sheetsExport = undefined;
@@ -107,11 +179,13 @@ router.post('/run-analysis', async (req: Request, res: Response): Promise<any> =
       }
     }
 
-    const duration = Date.now() - startTime;
+    const duration = Date.now() - statusEntry.startTime;
     console.log(`🎉 Workflow ${workflowId} completed in ${duration}ms`);
 
-    // Build response
-    const response: WorkflowResponse = {
+    // Mark as completed with results
+    statusEntry.status = 'completed';
+    statusEntry.progress = 100;
+    statusEntry.result = {
       success: true,
       reddit_results: redditResults,
       analyzed_posts: analyzedPosts,
@@ -120,26 +194,15 @@ router.post('/run-analysis', async (req: Request, res: Response): Promise<any> =
       completed_at: new Date().toISOString()
     };
 
-    res.json(response);
-
   } catch (error) {
-    const duration = Date.now() - startTime;
+    const duration = Date.now() - statusEntry.startTime;
     console.error(`❌ Workflow ${workflowId} failed after ${duration}ms:`, error);
     
-    const apiError: ApiError = {
-      error: 'Workflow Failed',
-      message: error instanceof Error ? error.message : 'Unknown workflow error',
-      status: 500,
-      timestamp: new Date().toISOString()
-    };
-    
-    res.status(500).json({
-      ...apiError,
-      workflow_id: workflowId,
-      duration_ms: duration
-    });
+    statusEntry.status = 'failed';
+    statusEntry.progress = 0;
+    statusEntry.error = error instanceof Error ? error.message : 'Unknown workflow error';
   }
-});
+}
 
 /**
  * GET /api/workflow/status
@@ -151,12 +214,12 @@ router.get('/status', async (req: Request, res: Response): Promise<any> => {
   try {
     // Check all services
     const redditStatus = redditService.getClientStatus();
-    const openaiStatus = openaiService.getServiceStatus();
+    const openaiStatus = openaiServiceOptimized.getServiceStatus();
     const sheetsStatus = sheetsService.getServiceStatus();
 
     // Test connections if services are initialized
     const redditConnected = redditStatus.initialized ? await redditService.testConnection() : false;
-    const openaiConnected = openaiStatus.initialized ? await openaiService.testConnection() : false;
+    const openaiConnected = openaiStatus.initialized ? await openaiServiceOptimized.testConnection() : false;
     const sheetsConnected = sheetsStatus.initialized ? await sheetsService.testConnection() : false;
 
     const allServicesReady = redditConnected && openaiConnected;
@@ -199,4 +262,4 @@ router.get('/status', async (req: Request, res: Response): Promise<any> => {
   }
 });
 
-export default router; 
+export default router;
