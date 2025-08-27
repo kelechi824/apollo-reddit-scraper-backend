@@ -7,6 +7,8 @@
 import ContentSemanticAnalyzer from './contentSemanticAnalyzer';
 import ContextualCtaComposer from './contextualCtaComposer';
 import SmartInsertionPointDetector from './smartInsertionPointDetector';
+import { ContentSolutionMatch } from './contentSolutionMatcher';
+import { ApolloSolution } from './apolloSolutionsDatabase';
 
 export interface PreGeneratedCta {
   id: string;
@@ -169,17 +171,52 @@ class PreGenerationCtaService {
     for (const painPoint of keywordAnalysis.painPoints.slice(0, 5)) { // Limit to top 5
       for (const theme of keywordAnalysis.themes.slice(0, 3)) { // Limit to top 3
         try {
+          // Create a proper ContentSolutionMatch for the CTA composer
+          const contentMatch = {
+            chunkId: `chunk-${Date.now()}`,
+            chunk: {
+              id: `chunk-${Date.now()}`,
+              content: `${painPoint} ${theme}`,
+              position: 0,
+              wordCount: `${painPoint} ${theme}`.split(' ').length,
+              themes: [theme],
+              painPoints: [painPoint],
+              solutionOpportunities: ['Apollo integration'],
+              contextClues: [request.targetKeyword],
+              confidenceScore: 85,
+              isCtaCandidate: true
+            },
+            matchedSolution: {
+              id: `solution-${Date.now()}`,
+              title: 'Apollo Solution',
+              description: theme,
+              url: 'https://www.apollo.io',
+              category: 'general' as const,
+              painPointKeywords: [painPoint, request.targetKeyword],
+              solutionKeywords: [theme, 'Apollo'],
+              contextClues: [request.targetKeyword, theme],
+              priority: 8,
+              source: 'hybrid' as const
+            },
+            confidenceScore: 80,
+            matchReasons: ['Keyword match', 'Pain point alignment'],
+            semanticSimilarity: 75,
+            keywordMatches: [request.targetKeyword],
+            contextRelevance: 80,
+            apolloUrl: 'https://www.apollo.io'
+          };
+
           const ctaRequest = {
-            painPoint,
-            solutionContext: theme,
+            match: contentMatch,
             targetKeyword: request.targetKeyword,
             campaignType: request.campaignType,
             competitorName: request.competitorName
           };
 
-          const contextualCta = await this.ctaComposer.generateContextualCTA(ctaRequest);
+          const ctaResult = await this.ctaComposer.composeContextualCTA(ctaRequest);
           
-          if (contextualCta && contextualCta.confidence >= 50) { // Minimum threshold
+          if (ctaResult && ctaResult.primaryCta && ctaResult.primaryCta.confidence >= 50) { // Minimum threshold
+            const contextualCta = ctaResult.primaryCta;
             const preGeneratedCta: PreGeneratedCta = {
               id: `cta-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               anchorText: this.extractAnchorText(contextualCta.fullCta),
