@@ -72,6 +72,76 @@ class RedditService {
   }
 
   /**
+   * Fetch posts from a subreddit within a specific time window by paginating /new
+   * Why this matters: Reddit doesn't support arbitrary date ranges. Streaming /new
+   * and filtering by created_utc lets us implement exact windows (e.g., 1–30 days,
+   * 31–120 days) with predictable, non-overlapping results.
+   */
+  private async fetchPostsByWindow(params: {
+    subreddit: string;
+    keyword: string;
+    sinceUnix: number;     // older bound (inclusive)
+    untilUnix: number;     // newer bound (exclusive)
+    maxToCollect: number;  // safety cap to avoid unbounded pagination
+    userAgent: string;
+  }): Promise<any[]> {
+    const { subreddit, keyword, sinceUnix, untilUnix, maxToCollect, userAgent } = params;
+
+    let after: string | undefined = undefined;
+    const collected: any[] = [];
+    const searchTerm = keyword.toLowerCase();
+
+    console.log(`🔍 Searching r/${subreddit} for "${keyword}" between ${new Date(sinceUnix * 1000).toDateString()} and ${new Date(untilUnix * 1000).toDateString()}`);
+    
+    while (collected.length < maxToCollect) {
+      await this.rateLimitDelay();
+      const resp: any = await axios.get(`${this.baseURL}/r/${subreddit}/new`, {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'User-Agent': userAgent,
+        },
+        params: { limit: 100, after },
+      });
+
+      const children: any[] = resp?.data?.data?.children || [];
+      console.log(`📄 Got ${children.length} posts from Reddit API`);
+      if (children.length === 0) break;
+
+      for (const child of children) {
+        const p = child?.data;
+        if (!p?.created_utc) continue;
+        const ts: number = p.created_utc;
+
+        // Debug: Log first few posts to see what we're getting
+        if (collected.length === 0) {
+          console.log(`📅 First post timestamp: ${ts} (${new Date(ts * 1000).toDateString()})`);
+        }
+
+        // Results are newest -> older; once older than lower bound we can stop early
+        if (ts < sinceUnix) {
+          console.log(`⏹️ Reached posts older than target range. Stopping search.`);
+          return collected;
+        }
+
+        if (ts >= sinceUnix && ts < untilUnix) {
+          const title = (p.title || '').toLowerCase();
+          const content = (p.selftext || '').toLowerCase();
+          if (title.includes(searchTerm) || content.includes(searchTerm)) {
+            console.log(`✅ Found matching post: "${p.title}" (${new Date(ts * 1000).toDateString()})`);
+            collected.push(child);
+            if (collected.length >= maxToCollect) break;
+          }
+        }
+      }
+
+      after = resp?.data?.data?.after;
+      if (!after) break;
+    }
+
+    return collected;
+  }
+
+  /**
    * Ensure Reddit client is initialized
    */
   private async ensureInitialized(): Promise<void> {
@@ -92,126 +162,105 @@ class RedditService {
   async searchPosts(request: RedditSearchRequest): Promise<RedditSearchResponse> {
     await this.ensureInitialized();
 
-    const { keywords, subreddits, limit = 25, timeframe = 'week', sort = 'top' } = request;
+    const { keywords, subreddits, limit = 25, timeframe = 'recent' } = request;
     const allPosts: RedditPost[] = [];
     const seenIds = new Set<string>();
 
     console.log(`🔍 Searching Reddit: ${keywords.join(', ')} in r/${subreddits.join(', r/')}`);
 
     try {
+      const userAgent = process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0';
+      const now = Math.floor(Date.now() / 1000);
+
+      // Windows (exact per your spec):
+      // Newest: 1–30 days; Older: 31–120 days
+      let windowSince = 0; // older bound (inclusive)
+      let windowUntil = now; // newer bound (exclusive)
+
+      if (timeframe === 'recent') {
+        // Recent: 1-30 days old (last month)
+        const maxDays = 30;
+        const minDays = 1;
+        windowSince = now - maxDays * 24 * 60 * 60;
+        windowUntil = now - (minDays - 1) * 24 * 60 * 60; // exclusive of 0 days
+      } else if (timeframe === 'older') {
+        // Older: 31-365 days old (2-12 months, no overlap with recent)
+        const minDays = 31;  // 31 days minimum (ensures no overlap with recent 1-30 days)
+        const maxDays = 365; // 12 months maximum (full year of historical data)
+        windowSince = now - maxDays * 24 * 60 * 60;
+        windowUntil = now - (minDays - 1) * 24 * 60 * 60;
+      } else {
+        // Fallback: treat unknown timeframe as recent
+        const maxDays = 30;
+        const minDays = 1;
+        windowSince = now - maxDays * 24 * 60 * 60;
+        windowUntil = now - (minDays - 1) * 24 * 60 * 60;
+      }
+
+      // Collect children within the window for each subreddit/keyword
+      let windowedChildren: any[] = [];
       for (const subreddit of subreddits) {
         for (const keyword of keywords) {
-          await this.rateLimitDelay();
-          console.log(`📡 Searching r/${subreddit} for "${keyword}"`);
-
-          // Use Reddit search API with broader search parameters
-          const response = await axios.get(`${this.baseURL}/r/${subreddit}/search`, {
-            headers: {
-              'Authorization': `Bearer ${this.accessToken}`,
-              'User-Agent': process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0'
-            },
-            params: {
-              q: keyword,                    // Search query
-              restrict_sr: 'true',           // Restrict to subreddit
-              sort: sort,
-              t: 'all',                      // Search all time instead of just 'week' for more results
-              limit: Math.min(limit, 100),   // Increase search limit to get more candidates
-              type: 'link,self'              // Include both link and text posts
-            }
+          const chunk = await this.fetchPostsByWindow({
+            subreddit,
+            keyword,
+            sinceUnix: windowSince,
+            untilUnix: windowUntil,
+            maxToCollect: Math.max(limit * 10, 200),
+            userAgent,
           });
-
-          let posts = response.data.data.children;
-          console.log(`📥 Retrieved ${posts.length} posts from r/${subreddit} search for "${keyword}"`);
-
-          // If search returned no results, try fetching recent posts and filtering manually
-          if (posts.length === 0) {
-            console.log(`🔄 No search results, trying fallback: fetching recent posts from r/${subreddit}`);
-            
-            try {
-              await this.rateLimitDelay(); // Rate limit the fallback request
-              const fallbackResponse = await axios.get(`${this.baseURL}/r/${subreddit}/hot`, {
-                headers: {
-                  'Authorization': `Bearer ${this.accessToken}`,
-                  'User-Agent': process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0'
-                },
-                params: { limit: 100 }
-              });
-              
-              const allRecentPosts = fallbackResponse.data.data.children;
-              console.log(`📥 Fallback: Retrieved ${allRecentPosts.length} recent posts from r/${subreddit}`);
-              
-              // Filter posts that contain the keyword in title or content
-              posts = allRecentPosts.filter((postWrapper: any) => {
-                const post = postWrapper.data;
-                const title = (post.title || '').toLowerCase();
-                const content = (post.selftext || '').toLowerCase();
-                const searchTerm = keyword.toLowerCase();
-                
-                return title.includes(searchTerm) || content.includes(searchTerm);
-              });
-              
-              console.log(`📊 Fallback filtered: ${posts.length} posts contain "${keyword}"`);
-            } catch (fallbackError) {
-              console.error(`❌ Fallback search failed for r/${subreddit}:`, fallbackError);
-            }
-          }
-
-          // Filter posts by keywords and process
-          for (const postWrapper of posts) {
-            const post = postWrapper.data;
-            console.log(`🔍 Checking post: "${post.title}" (score: ${post.score})`);
-            
-            // Skip duplicates and very low-quality posts (reduced threshold for more results)
-            if (seenIds.has(post.id)) {
-              console.log(`❌ Duplicate post filtered: "${post.title}"`);
-              continue;
-            }
-            
-            // Filter out posts with very low engagement (reduced from 50 to 5 for more results)
-            if (post.score < 5) {
-              console.log(`❌ Low score filtered: "${post.title}" (score: ${post.score}, need >= 5)`);
-              continue;
-            }
-            
-            if (post.title === '[deleted]' || post.title === '[removed]') {
-              console.log(`❌ Deleted/removed post filtered: "${post.title}"`);
-              continue;
-            }
-
-            seenIds.add(post.id);
-
-            const processedPost: RedditPost = {
-              id: post.id,
-              title: post.title,
-              content: post.selftext || '',
-              score: post.score,
-              comments: post.num_comments || 0,
-              subreddit: subreddit,
-              url: post.url,
-              permalink: `https://reddit.com${post.permalink}`,
-              author: post.author,
-              engagement: post.score + ((post.num_comments || 0) * 2), // Match n8n calculation exactly
-              created_utc: post.created_utc
-            };
-
-            allPosts.push(processedPost);
-            console.log(`✅ Added post: "${post.title}" to results`);
-          }
+          windowedChildren.push(...chunk);
         }
+      }
+
+      // Deduplicate by id
+      const seenChildIds = new Set<string>();
+      windowedChildren = windowedChildren.filter((c: any) => {
+        const id = c?.data?.id;
+        if (!id) return false;
+        if (seenChildIds.has(id)) return false;
+        seenChildIds.add(id);
+        return true;
+      });
+
+      // Process into RedditPost
+      for (const postWrapper of windowedChildren) {
+        const post = postWrapper.data;
+        if (!post || !post.title || !post.id) continue;
+        if (seenIds.has(post.id)) continue;
+        if (post.title === '[deleted]' || post.title === '[removed]') continue;
+
+        seenIds.add(post.id);
+
+        const processedPost: RedditPost = {
+          id: post.id,
+          title: post.title,
+          content: post.selftext || '',
+          score: post.score,
+          comments: post.num_comments || 0,
+          subreddit: post.subreddit || '',
+          url: post.url,
+          permalink: `https://reddit.com${post.permalink}`,
+          author: post.author,
+          engagement: post.score + ((post.num_comments || 0) * 2),
+          created_utc: post.created_utc,
+        };
+
+        allPosts.push(processedPost);
       }
 
       // Sort by engagement and return top results
       allPosts.sort((a, b) => b.engagement - a.engagement);
-      const topPosts = allPosts.slice(0, Math.min(10, allPosts.length));
+      const topPosts = allPosts.slice(0, Math.min(limit, allPosts.length));
 
-      console.log(`✅ Found ${allPosts.length} posts, returning top ${topPosts.length}`);
+      console.log(`✅ Windowed search (${timeframe}) found ${allPosts.length} posts, returning top ${topPosts.length}`);
 
       return {
         posts: topPosts,
         total_found: allPosts.length,
         keywords_used: keywords.join(','),
         subreddits_used: subreddits.join(','),
-        search_timestamp: new Date().toISOString()
+        search_timestamp: new Date().toISOString(),
       };
 
     } catch (error) {

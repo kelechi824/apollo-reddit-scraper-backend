@@ -240,7 +240,7 @@ export interface RedditSearchRequest {
   keywords: string[];
   subreddits: string[];
   limit?: number;
-  timeframe?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+  timeframe?: 'recent' | 'older' | 'hour' | 'day' | 'week' | 'month' | 'year';
   sort?: 'relevance' | 'hot' | 'top' | 'new' | 'comments';
 }
 
@@ -313,6 +313,7 @@ export interface WorkflowRequest {
   keywords: string[];
   subreddits: string[];
   limit?: number;
+  timeframe?: 'recent' | 'older' | 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
   export_to_sheets?: {
     spreadsheet_id: string;
     sheet_name?: string;
