@@ -24,6 +24,7 @@ import ctaGenerationRoutes from './routes/ctaGeneration';
 import competitorConquestingRoutes from './routes/competitorConquesting';
 import sitemapRoutes from './routes/sitemap';
 import sitemapChunkedRoutes from './routes/sitemapChunked';
+import redditEngagementRoutes from './routes/redditEngagement';
 
 // Load environment variables
 dotenv.config();
@@ -66,6 +67,7 @@ app.use('/api/cta-generation', ctaGenerationRoutes);
 app.use('/api/competitor-conquesting', competitorConquestingRoutes);
 app.use('/api/sitemap', sitemapRoutes);
 app.use('/api/sitemap-chunked', sitemapChunkedRoutes);
+app.use('/api/reddit-engagement', redditEngagementRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -106,7 +108,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         ctaGeneration: '/api/cta-generation/*',
         competitorConquesting: '/api/competitor-conquesting/*',
         sitemap: '/api/sitemap/*',
-        sitemapChunked: '/api/sitemap-chunked/*'
+        sitemapChunked: '/api/sitemap-chunked/*',
+        redditEngagement: '/api/reddit-engagement/*'
       }
     }
   });

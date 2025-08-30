@@ -34,6 +34,7 @@ export interface ApiInfoResponse {
     competitorConquesting: string;
     sitemap: string;
     sitemapChunked: string;
+    redditEngagement: string;
   };
   };
 }
@@ -562,4 +563,35 @@ export interface CopyAnalysisResult {
   overallScore: number;
   keyRecommendations: string[];
   timestamp: Date;
+}
+
+// Reddit Engagement Types
+export interface RedditResponse {
+  id: string;
+  type: 'HELPFUL_EXPERT' | 'CURIOUS_QUESTION' | 'EXPERIENCE_SHARE' | 'RESOURCE_RECOMMENDATION' | 'COMMUNITY_SUPPORT';
+  content: string;
+  engagement_strategy: string;
+}
+
+export interface RedditEngagementResponse {
+  success: boolean;
+  responses: RedditResponse[];
+  metadata: {
+    subreddit: string;
+    post_title: string;
+    generation_timestamp: string;
+    brand_context_applied: boolean;
+  };
+}
+
+export interface RedditEngagementRequest {
+  post_context: {
+    title: string;
+    content: string;
+    subreddit: string;
+    pain_point: string;
+    content_opportunity: string;
+    audience_summary: string;
+  };
+  brand_kit?: any;
 } 
