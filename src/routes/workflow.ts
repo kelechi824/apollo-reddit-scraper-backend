@@ -28,7 +28,10 @@ router.post('/run-analysis', async (req: Request, res: Response): Promise<any> =
   const startTime = Date.now();
   
   // Validate request first
-  const { keywords, subreddits, limit, export_to_sheets }: WorkflowRequest = req.body;
+  const { keywords, subreddits, limit, timeframe, export_to_sheets }: WorkflowRequest = req.body;
+  
+  console.log(`📥 POST /run-analysis received timeframe: "${timeframe}"`);
+  console.log(`📥 Full request body:`, JSON.stringify(req.body, null, 2));
 
   if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
     return res.status(400).json({
@@ -64,7 +67,7 @@ router.post('/run-analysis', async (req: Request, res: Response): Promise<any> =
   });
 
   // Start async processing (don't await - let it run in background)
-  processWorkflowAsync(workflowId, { keywords, subreddits, limit, export_to_sheets });
+  processWorkflowAsync(workflowId, { keywords, subreddits, limit, timeframe, export_to_sheets });
 });
 
 /**
@@ -123,19 +126,39 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
     statusEntry.status = 'running';
     statusEntry.progress = 10;
     
-    const { keywords, subreddits, limit, export_to_sheets } = request;
+    const { keywords, subreddits, limit, timeframe, export_to_sheets } = request;
 
     console.log(`📊 Workflow parameters: ${keywords.join(', ')} in r/${subreddits.join(', r/')}`);
+    console.log(`📊 Raw timeframe received: "${timeframe}" (type: ${typeof timeframe})`);
 
     // Step 1: Search Reddit
     console.log(`🔍 Step 1: Searching Reddit...`);
     statusEntry.progress = 25;
     
+    // Map legacy timeframe values to new ones
+    const mappedTimeframe = (() => {
+      console.log(`🔄 Workflow received timeframe: "${timeframe}"`);
+      switch (timeframe) {
+        case 'hour':
+        case 'day':
+        case 'week':
+          return 'recent';
+        case 'month':
+        case 'year':
+        case 'all':
+          return 'older';
+        default:
+          const result = timeframe || 'recent';
+          console.log(`🔄 Mapped timeframe: "${timeframe}" -> "${result}"`);
+          return result;
+      }
+    })();
+
     const redditResults = await redditService.searchPosts({
       keywords: keywords.map(k => String(k).trim()).filter(k => k.length > 0),
       subreddits: subreddits.map(s => String(s).trim()).filter(s => s.length > 0),
       limit: limit ? Math.min(Math.max(parseInt(String(limit)), 1), 50) : 25,
-      timeframe: 'week',
+      timeframe: mappedTimeframe,
       sort: 'top'
     });
 
