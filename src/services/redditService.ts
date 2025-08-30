@@ -95,19 +95,21 @@ class RedditService {
     
     while (collected.length < maxToCollect) {
       await this.rateLimitDelay();
-      const resp: any = await axios.get(`${this.baseURL}/r/${subreddit}/new`, {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          'User-Agent': userAgent,
-        },
-        params: { limit: 100, after },
-      });
+      
+      try {
+        const resp: any = await axios.get(`${this.baseURL}/r/${subreddit}/new`, {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'User-Agent': userAgent,
+          },
+          params: { limit: 100, after },
+        });
 
-      const children: any[] = resp?.data?.data?.children || [];
-      console.log(`📄 Got ${children.length} posts from Reddit API`);
-      if (children.length === 0) break;
+        const children: any[] = resp?.data?.data?.children || [];
+        console.log(`📄 Got ${children.length} posts from Reddit API`);
+        if (children.length === 0) break;
 
-      for (const child of children) {
+        for (const child of children) {
         const p = child?.data;
         if (!p?.created_utc) continue;
         const ts: number = p.created_utc;
@@ -132,10 +134,25 @@ class RedditService {
             if (collected.length >= maxToCollect) break;
           }
         }
-      }
+        }
 
-      after = resp?.data?.data?.after;
-      if (!after) break;
+        after = resp?.data?.data?.after;
+        if (!after) break;
+        
+      } catch (error: any) {
+        console.error(`❌ Error fetching from r/${subreddit}:`, error?.response?.status, error?.response?.statusText);
+        
+        if (error?.response?.status === 404) {
+          console.error(`❌ Subreddit r/${subreddit} not found or is private/restricted`);
+          throw new Error(`Subreddit r/${subreddit} not found or is private. Please try a different subreddit.`);
+        } else if (error?.response?.status === 403) {
+          console.error(`❌ Access forbidden to r/${subreddit}`);
+          throw new Error(`Access forbidden to r/${subreddit}. The subreddit may be private or restricted.`);
+        } else {
+          console.error(`❌ Reddit API error for r/${subreddit}:`, error?.message);
+          throw new Error(`Reddit API error: ${error?.message || 'Unknown error'}`);
+        }
+      }
     }
 
     return collected;
@@ -169,6 +186,16 @@ class RedditService {
     console.log(`🔍 Searching Reddit: ${keywords.join(', ')} in r/${subreddits.join(', r/')}`);
 
     try {
+      // Validate all subreddits before proceeding
+      console.log(`🔍 Validating ${subreddits.length} subreddits...`);
+      for (const subreddit of subreddits) {
+        const validation = await this.validateSubreddit(subreddit);
+        if (!validation.valid) {
+          throw new Error(validation.error || `Invalid subreddit: r/${subreddit}`);
+        }
+      }
+      console.log(`✅ All subreddits validated successfully`);
+
       const userAgent = process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0';
       const now = Math.floor(Date.now() / 1000);
 
@@ -266,6 +293,40 @@ class RedditService {
     } catch (error) {
       console.error('❌ Reddit search failed:', error);
       throw new Error(`Reddit search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Validate that a subreddit exists and is accessible
+   * Why this matters: Prevents 404 errors by checking subreddit accessibility before attempting to search
+   */
+  async validateSubreddit(subreddit: string): Promise<{ valid: boolean; error?: string }> {
+    try {
+      await this.ensureInitialized();
+      await this.rateLimitDelay();
+      
+      // Test with a simple request to the subreddit
+      const response = await axios.get(`${this.baseURL}/r/${subreddit}/hot`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'User-Agent': process.env.REDDIT_USER_AGENT || 'Apollo-Reddit-Scraper/1.0.0'
+        },
+        params: { limit: 1 }
+      });
+
+      console.log(`✅ Subreddit r/${subreddit} is accessible`);
+      return { valid: true };
+      
+    } catch (error: any) {
+      console.error(`❌ Subreddit validation failed for r/${subreddit}:`, error?.response?.status, error?.response?.statusText);
+      
+      if (error?.response?.status === 404) {
+        return { valid: false, error: `Subreddit r/${subreddit} does not exist` };
+      } else if (error?.response?.status === 403) {
+        return { valid: false, error: `Subreddit r/${subreddit} is private or restricted` };
+      } else {
+        return { valid: false, error: `Unable to access r/${subreddit}: ${error?.message || 'Unknown error'}` };
+      }
     }
   }
 
