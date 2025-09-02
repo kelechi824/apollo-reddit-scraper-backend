@@ -165,7 +165,7 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
     if (redditResults.posts.length === 0) {
       statusEntry.status = 'failed';
       statusEntry.progress = 100;
-      statusEntry.error = 'No Reddit posts found matching the criteria';
+      statusEntry.error = 'No posts found for this keyword in r/' + subreddits[0] + '. Try a different subreddit or keyword for better results.';
       return;
     }
 
