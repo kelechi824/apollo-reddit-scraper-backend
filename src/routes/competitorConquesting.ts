@@ -212,7 +212,7 @@ async function executeCompetitorWorkflow(
 /**
  * POST /api/competitor-conquesting/generate-content
  * Why this matters: Runs the 4-step pipeline using the provided competitor URL instead of search results,
- * returning a result schema compatible with Blog Creator so the frontend can reuse UI and status renderers.
+ * returning a result schema compatible with Blog Agents so the frontend can reuse UI and status renderers.
  */
 router.post('/generate-content', async (req: Request, res: Response): Promise<any> => {
   const startTime = Date.now();
@@ -244,7 +244,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
       return res.status(500).json({ success: false, error: 'Missing OPENAI_API_KEY on the backend' });
     }
 
-    console.log(`🚀 Competitor Conquesting start → keyword="${keyword}", url=${url}`);
+    console.log(`🚀 Outrank Competitors start → keyword="${keyword}", url=${url}`);
     
     // Set a 55-second timeout for Vercel's 60-second limit
     // Why this matters: We need to complete within Vercel's function timeout
@@ -276,7 +276,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
       
       console.log('✅ [CompetitorConquesting] Using natural CTA integration during content generation (no post-processing)');
 
-      // Return the result in Blog Creator compatible format
+      // Return the result in Blog Agents compatible format
       return res.json({
         success: true,
         data: {
@@ -297,7 +297,7 @@ router.post('/generate-content', async (req: Request, res: Response): Promise<an
     }
 
   } catch (error: any) {
-    console.error('❌ Competitor Conquesting pipeline error:', error);
+    console.error('❌ Outrank Competitors pipeline error:', error);
     return res.status(500).json({ success: false, error: error?.message || 'Unknown error' });
   }
 });
@@ -323,7 +323,7 @@ router.post('/generate-content-async', async (req: Request, res: Response): Prom
     }: CompetitorConquestingRequest = req.body;
 
     // Debug logging to trace UTM parameter flow
-    console.log('🔍 [DEBUG] Competitor Conquesting Request:');
+    console.log('🔍 [DEBUG] Outrank Competitors Request:');
     console.log(`  • keyword: "${keyword}"`);
     console.log(`  • url: "${url}"`);
     console.log(`  • competitor: "${competitor}" (type: ${typeof competitor})`);
@@ -559,7 +559,7 @@ function buildCompetitorSystemPrompt(competitor?: string, brandKit?: any, keywor
     }
   };
   
-  // Build brand kit section with actual values (same approach as Blog Creator)
+  // Build brand kit section with actual values (same approach as Blog Agents)
   const brandKitSection = brandKit ? `
 BRAND INTEGRATION (MANDATORY - USE THROUGHOUT CONTENT):
 - Brand URL: ${brandKit.url || 'https://www.apollo.io'}

@@ -1,5 +1,5 @@
 /**
- * Claude Sonnet 4 System Prompt for Blog Creator
+ * Claude Sonnet 4 System Prompt for Blog Agents
  * Adapted from apollo-content-creation-prompt.txt for AEO-optimized content generation
  * Why this matters: Optimizes Claude for creating content that covers competitor topics 
  * PLUS unique insights from deep research, with proper AEO optimization.
