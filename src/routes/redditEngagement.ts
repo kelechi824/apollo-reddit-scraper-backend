@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import redditEngagementService, { RedditEngagementRequest } from '../services/redditEngagementService';
+import redditEngagementService, { RedditEngagementRequest, CommentGenerationRequest } from '../services/redditEngagementService';
 
 const router = Router();
 
@@ -53,6 +53,88 @@ router.post('/generate-responses', async (req: Request, res: Response): Promise<
     return res.status(500).json({
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : 'Failed to generate Reddit responses',
+      status: 500,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * POST /api/reddit-engagement/generate-comment
+ * Generate a single Reddit response for a specific comment
+ * Why this matters: Allows users to create targeted responses to individual comments
+ * with specific context, enabling more precise and relevant engagement.
+ */
+router.post('/generate-comment', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { comment_context, post_context, brand_kit }: CommentGenerationRequest = req.body;
+
+    // Validate required fields
+    if (!comment_context) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'comment_context is required',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (!post_context) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'post_context is required',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const requiredCommentFields = ['content', 'author', 'brand_sentiment', 'helpfulness_sentiment', 'keyword_matches'];
+    const missingCommentFields = requiredCommentFields.filter(field => 
+      !comment_context[field as keyof typeof comment_context]
+    );
+    
+    if (missingCommentFields.length > 0) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: `Missing required comment_context fields: ${missingCommentFields.join(', ')}`,
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const requiredPostFields = ['title', 'subreddit', 'pain_point', 'audience_summary'];
+    const missingPostFields = requiredPostFields.filter(field => 
+      !post_context[field as keyof typeof post_context]
+    );
+    
+    if (missingPostFields.length > 0) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: `Missing required post_context fields: ${missingPostFields.join(', ')}`,
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`💬 Comment response request for r/${post_context.subreddit}: responding to u/${comment_context.author}`);
+
+    // Generate single comment response
+    const result = await redditEngagementService.generateCommentResponse(
+      comment_context,
+      post_context,
+      brand_kit
+    );
+
+    console.log(`✅ Successfully generated comment response`);
+
+    return res.status(200).json(result);
+
+  } catch (error) {
+    console.error('❌ Comment response generation error:', error);
+    
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to generate comment response',
       status: 500,
       timestamp: new Date().toISOString()
     });

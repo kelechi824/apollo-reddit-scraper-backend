@@ -237,6 +237,36 @@ export interface RedditPost {
   created_utc: number;
 }
 
+export interface RedditComment {
+  id: string;
+  content: string;
+  author: string;
+  score: number;
+  created_utc: number;
+  post_id: string;
+  keyword_matches: string[];
+  brand_sentiment?: 'positive' | 'negative' | 'neutral';
+  helpfulness_sentiment?: 'positive' | 'negative' | 'neutral';
+  parent_id?: string;
+}
+
+export interface CommentAnalysisResult {
+  total_comments_analyzed: number;
+  keyword_mentions: number;
+  brand_sentiment_breakdown: {
+    positive: number;
+    negative: number;
+    neutral: number;
+  };
+  helpfulness_sentiment_breakdown: {
+    positive: number;
+    negative: number;
+    neutral: number;
+  };
+  top_comments: RedditComment[];
+  key_themes: string[];
+}
+
 export interface RedditSearchRequest {
   keywords: string[];
   subreddits: string[];
@@ -271,6 +301,8 @@ export interface AnalyzedPost extends RedditPost {
   analysis: ContentAnalysisResult;
   post_rank: number;
   analysis_timestamp: string;
+  comment_analysis?: CommentAnalysisResult;
+  has_comment_insights?: boolean;
 }
 
 // Google Sheets Types
@@ -325,6 +357,7 @@ export interface WorkflowResponse {
   success: boolean;
   reddit_results: RedditSearchResponse;
   analyzed_posts: AnalyzedPost[];
+  pattern_analysis?: any; // PatternAnalysisResult type from pattern analysis service
   sheets_export?: SheetsExportResponse;
   workflow_id: string;
   completed_at: string;
