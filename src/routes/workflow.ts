@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { redditService } from '../services/redditService';
-import openaiServiceOptimized from '../services/openaiServiceOptimized';
+import { redditServiceOptimized } from '../services/redditServiceOptimized';
+import { openaiServiceParallel } from '../services/openaiServiceParallel';
 import GoogleSheetsService from '../services/googleSheetsService';
 import { patternAnalysisService } from '../services/patternAnalysisService';
+import { cacheService } from '../services/cacheService';
 import { WorkflowRequest, WorkflowResponse, ApiError } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -155,7 +156,7 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
       }
     })();
 
-    const redditResults = await redditService.searchPosts({
+    const redditResults = await redditServiceOptimized.searchPosts({
       keywords: keywords.map(k => String(k).trim()).filter(k => k.length > 0),
       subreddits: subreddits.map(s => String(s).trim()).filter(s => s.length > 0),
       limit: limit ? Math.min(Math.max(parseInt(String(limit)), 1), 50) : 25,
@@ -176,7 +177,7 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
     console.log(`🧠 Step 2: Analyzing posts with OpenAI...`);
     statusEntry.progress = 50;
     
-    const analyzedPosts = await openaiServiceOptimized.analyzePosts({
+    const analyzedPosts = await openaiServiceParallel.analyzePosts({
       posts: redditResults.posts,
       keywords_used: redditResults.keywords_used,
       subreddits_used: redditResults.subreddits_used
@@ -189,7 +190,7 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
     statusEntry.progress = 65;
     
     try {
-      const commentAnalysisMap = await redditService.analyzeCommentsForPosts(
+      const commentAnalysisMap = await redditServiceOptimized.analyzeCommentsForPosts(
         redditResults.posts,
         keywords.map(k => String(k).trim()).filter(k => k.length > 0)
       );
@@ -283,14 +284,15 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
  */
 router.get('/status', async (req: Request, res: Response): Promise<any> => {
   try {
-    // Check all services
-    const redditStatus = redditService.getClientStatus();
-    const openaiStatus = openaiServiceOptimized.getServiceStatus();
+    // Check all services (using optimized versions)
+    const redditStatus = redditServiceOptimized.getClientStatus();
+    const openaiStatus = openaiServiceParallel.getServiceStatus();
     const sheetsStatus = sheetsService.getServiceStatus();
+    const cacheStatus = await cacheService.getCacheStats();
 
     // Test connections if services are initialized
-    const redditConnected = redditStatus.initialized ? await redditService.testConnection() : false;
-    const openaiConnected = openaiStatus.initialized ? await openaiServiceOptimized.testConnection() : false;
+    const redditConnected = redditStatus.initialized ? await redditServiceOptimized.testConnection() : false;
+    const openaiConnected = openaiStatus.initialized ? await openaiServiceParallel.testConnection() : false;
     const sheetsConnected = sheetsStatus.initialized ? await sheetsService.testConnection() : false;
 
     const allServicesReady = redditConnected && openaiConnected;
@@ -311,13 +313,25 @@ router.get('/status', async (req: Request, res: Response): Promise<any> => {
           status: sheetsConnected ? 'connected' : 
                  sheetsStatus.hasCredentials ? 'disconnected' : 'not_configured',
           ...sheetsStatus
+        },
+        cache: {
+          status: cacheStatus.connected ? 'connected' : 'disconnected',
+          ...cacheStatus
         }
       },
       capabilities: {
         reddit_search: redditConnected,
         ai_analysis: openaiConnected,
         sheets_export: sheetsConnected,
-        full_workflow: allServicesReady
+        full_workflow: allServicesReady,
+        parallel_processing: true,
+        redis_caching: cacheStatus.connected
+      },
+      performance: {
+        optimization_level: 'maximum',
+        parallel_subreddits: true,
+        parallel_ai_analysis: true,
+        intelligent_caching: cacheStatus.connected
       },
       timestamp: new Date().toISOString()
     });

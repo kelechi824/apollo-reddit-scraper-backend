@@ -92,7 +92,7 @@ class ClaudeService {
     const conversationId = uuidv4();
     const now = new Date().toISOString();
 
-    // Create conversation with Reddit post context
+    // Create conversation with enhanced Reddit post context
     const conversation: ChatConversation = {
       id: conversationId,
       reddit_post_context: {
@@ -100,7 +100,16 @@ class ClaudeService {
         title: request.title,
         content: request.content,
         pain_point: request.pain_point,
-        audience_insight: request.audience_insight
+        audience_insight: request.audience_insight,
+        // Enhanced context for better AI coaching
+        subreddit: request.subreddit,
+        score: request.score,
+        comments: request.comments,
+        post_url: request.post_url,
+        permalink: request.permalink,
+        content_opportunity: request.content_opportunity,
+        urgency_level: request.urgency_level,
+        comment_insights: request.comment_insights
       },
       messages: [],
       created_at: now,
@@ -139,7 +148,7 @@ class ClaudeService {
     const conversationId = uuidv4();
     const now = new Date().toISOString();
 
-    // Create conversation with Reddit post context
+    // Create conversation with enhanced Reddit post context
     const conversation: ChatConversation = {
       id: conversationId,
       reddit_post_context: {
@@ -147,7 +156,16 @@ class ClaudeService {
         title: request.title,
         content: request.content,
         pain_point: request.pain_point,
-        audience_insight: request.audience_insight
+        audience_insight: request.audience_insight,
+        // Enhanced context for better AI coaching
+        subreddit: request.subreddit,
+        score: request.score,
+        comments: request.comments,
+        post_url: request.post_url,
+        permalink: request.permalink,
+        content_opportunity: request.content_opportunity,
+        urgency_level: request.urgency_level,
+        comment_insights: request.comment_insights
       },
       messages: [],
       created_at: now,
@@ -314,7 +332,12 @@ class ClaudeService {
     userMessage: ChatMessage,
     onChunk: (chunk: string, isComplete: boolean) => void
   ): Promise<ChatMessage> {
-    const systemPrompt = this.buildSystemPrompt();
+    // Build system prompt with embedded context and brand integration
+    const baseSystemPrompt = this.buildSystemPrompt();
+    const systemPromptWithBrand = this.buildSystemPromptWithBrandContext(baseSystemPrompt, null);
+    const contextualSystemPrompt = `${systemPromptWithBrand}
+
+${this.buildConversationContext(conversation)}`;
     
     // Build conversation history for Claude
     const messages = conversation.messages.slice(-10).map(msg => ({
@@ -322,16 +345,33 @@ class ClaudeService {
       content: msg.content
     }));
 
+    // Add the current user message
+    messages.push({
+      role: 'user' as const,
+      content: userMessage.content
+    });
+
+    // Debug logging to see what context is being sent
+    const context = conversation.reddit_post_context;
+    console.log(`🔍 [DEBUG] Sending context to AI for conversation ${conversation.id}:`);
+    console.log(`🔍 [DEBUG] Raw context received:`, JSON.stringify(context, null, 2));
+    console.log(`- Title: "${context.title}"`);
+    console.log(`- Content: "${context.content?.substring(0, 100)}..."`);
+    console.log(`- Score: ${context.score} (type: ${typeof context.score})`);
+    console.log(`- Comments: ${context.comments} (type: ${typeof context.comments})`);
+    console.log(`- Subreddit: ${context.subreddit}`);
+    console.log(`- Has enhanced context: ${!!context.subreddit}`);
+
     let fullContent = '';
     const assistantMessageId = uuidv4();
 
     try {
       // Use Claude's streaming API
       const stream = await this.client!.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
         temperature: 0.7,
-        system: systemPrompt,
+        system: contextualSystemPrompt,
         messages: messages,
         stream: true
       });
@@ -369,18 +409,66 @@ class ClaudeService {
 
   /**
    * Generate initial socratic question based on Reddit post context
-   * Why this matters: Sets the tone for discovery-based learning that leads to Apollo insights.
+   * Why this matters: Sets the tone for discovery-based learning that leads to Apollo insights
+   * with Reddit engagement best practices and brand context.
    */
   private async generateInitialMessage(conversation: ChatConversation): Promise<ChatMessage> {
     const context = conversation.reddit_post_context;
     
-    const systemPrompt = this.buildSystemPrompt();
-    const initialPrompt = `
+    // Build system prompt with brand context if available
+    const baseSystemPrompt = this.buildSystemPrompt();
+    const systemPrompt = this.buildSystemPromptWithBrandContext(baseSystemPrompt, null);
+    
+    // Build enhanced context with all available information
+    const hasTextContent = context.content && context.content.trim().length > 0;
+    const postType = hasTextContent ? 'Text Post' : 'Link/Image Post';
+    
+    let contextDetails = `
 REDDIT PROSPECT CONTEXT:
 - Title: "${context.title}"
-- Content: "${context.content}"
+- Post Type: ${postType}
+- Content: ${hasTextContent ? `"${context.content}"` : `No text content - this is a ${context.post_url ? 'link post' : 'media post'}`}${context.post_url ? `\n- Linked URL: ${context.post_url}` : ''}
+- Subreddit: r/${context.subreddit || 'unknown'}
+- Engagement: ${context.score || 0} upvotes, ${context.comments || 0} comments
 - Pain Point Analysis: "${context.pain_point}"
-- Audience Insight: "${context.audience_insight}"
+- Audience Insight: "${context.audience_insight}"`;
+
+    // Add content opportunity if available
+    if (context.content_opportunity) {
+      contextDetails += `
+- Content Opportunity: "${context.content_opportunity}"`;
+    }
+
+    // Add urgency level if available
+    if (context.urgency_level) {
+      contextDetails += `
+- Urgency Level: ${context.urgency_level}`;
+    }
+
+    // Add comment insights if available
+    if (context.comment_insights && context.comment_insights.total_comments > 0) {
+      contextDetails += `
+
+COMMENT DISCUSSION INSIGHTS:
+- Total Comments Analyzed: ${context.comment_insights.total_comments}
+- Keyword Mentions in Comments: ${context.comment_insights.keyword_mentions}
+- Key Discussion Themes: ${context.comment_insights.key_themes?.join(', ') || 'None identified'}`;
+
+      // Include top comments for additional context
+      if (context.comment_insights.top_comments && context.comment_insights.top_comments.length > 0) {
+        contextDetails += `
+
+TOP RELEVANT COMMENTS:`;
+        context.comment_insights.top_comments.forEach((comment, index) => {
+          contextDetails += `
+${index + 1}. u/${comment.author} (${comment.score} upvotes): "${comment.content.substring(0, 150)}${comment.content.length > 150 ? '...' : ''}"
+   - Brand sentiment: ${comment.brand_sentiment}
+   - Keywords mentioned: ${comment.keyword_matches.join(', ')}`;
+        });
+      }
+    }
+
+    const initialPrompt = `${contextDetails}
 
 You're mentoring an Apollo rep who found this Reddit post. Use socratic methodology to guide discovery.
 
@@ -392,13 +480,26 @@ OPENING STRUCTURE:
 2. Connect it to specific Apollo solutions that would genuinely help
 3. Provide actionable conversation starters and engagement strategies
 4. Focus on immediate value they can offer the Reddit user
+5. Reference specific details from the post/comments to show you understand the context
 
 EXAMPLE TONE:
 "I can see why this Reddit post caught your attention - there's a solid engagement opportunity here. Let me help you identify the best angle to start a helpful conversation that could naturally lead to discussing Apollo.
 
 Based on [specific pain point from the post], here are a few ways you could add immediate value while positioning Apollo naturally..."
 
-Generate a practical, action-oriented opening that identifies the engagement opportunity and provides specific strategies for starting a helpful conversation with this Reddit user.`;
+Generate a practical, action-oriented opening that identifies the engagement opportunity and provides specific strategies for starting a helpful conversation with this Reddit user. 
+
+IMPORTANT CONTEXT HANDLING:
+- If this is a TEXT POST with content: Reference specific details from the post content, pain points mentioned, and user's situation
+- If this is a LINK/IMAGE POST without text content: Focus on the title, pain point analysis, community context, and comment discussions to understand the user's situation
+- Always reference the subreddit community (r/${context.subreddit || 'unknown'}) and engagement metrics to show you understand the context
+- Use the pain point analysis and audience insights to provide targeted Apollo solution recommendations
+
+Reference specific details from the available context (post content if available, title, engagement metrics, comment discussions, or pain point analysis) to demonstrate contextual understanding.
+
+CRITICAL: You have complete access to this Reddit post information. When the user asks you to reproduce or reference the post content, title, or any details, you can and should provide them directly from the context above. Do not claim you cannot see or access the post information.
+
+FORMATTING REQUIREMENT: When quoting any Reddit content (post text, comments, titles), ALWAYS format as italicized quotes using SINGLE asterisks: *"Their exact words from the post"* - NEVER use triple asterisks (***)`;
 
     try {
       const completion = await this.client!.messages.create({
@@ -446,7 +547,8 @@ What angle feels most natural for your approach?`,
 
   /**
    * Generate initial socratic question with streaming
-   * Why this matters: Provides consistent streaming UX from the very first AI response.
+   * Why this matters: Provides consistent streaming UX from the very first AI response
+   * with Reddit engagement best practices and brand context.
    */
   private async generateInitialMessageStream(
     conversation: ChatConversation,
@@ -454,13 +556,60 @@ What angle feels most natural for your approach?`,
   ): Promise<ChatMessage> {
     const context = conversation.reddit_post_context;
     
-    const systemPrompt = this.buildSystemPrompt();
-    const initialPrompt = `
+    // Build system prompt with brand context if available
+    const baseSystemPrompt = this.buildSystemPrompt();
+    const systemPrompt = this.buildSystemPromptWithBrandContext(baseSystemPrompt, null);
+    
+    // Build enhanced context with all available information (same as generateInitialMessage)
+    const hasTextContent = context.content && context.content.trim().length > 0;
+    const postType = hasTextContent ? 'Text Post' : 'Link/Image Post';
+    
+    let contextDetails = `
 REDDIT PROSPECT CONTEXT:
 - Title: "${context.title}"
-- Content: "${context.content}"
+- Post Type: ${postType}
+- Content: ${hasTextContent ? `"${context.content}"` : `No text content - this is a ${context.post_url ? 'link post' : 'media post'}`}${context.post_url ? `\n- Linked URL: ${context.post_url}` : ''}
+- Subreddit: r/${context.subreddit || 'unknown'}
+- Engagement: ${context.score || 0} upvotes, ${context.comments || 0} comments
 - Pain Point Analysis: "${context.pain_point}"
-- Audience Insight: "${context.audience_insight}"
+- Audience Insight: "${context.audience_insight}"`;
+
+    // Add content opportunity if available
+    if (context.content_opportunity) {
+      contextDetails += `
+- Content Opportunity: "${context.content_opportunity}"`;
+    }
+
+    // Add urgency level if available
+    if (context.urgency_level) {
+      contextDetails += `
+- Urgency Level: ${context.urgency_level}`;
+    }
+
+    // Add comment insights if available
+    if (context.comment_insights && context.comment_insights.total_comments > 0) {
+      contextDetails += `
+
+COMMENT DISCUSSION INSIGHTS:
+- Total Comments Analyzed: ${context.comment_insights.total_comments}
+- Keyword Mentions in Comments: ${context.comment_insights.keyword_mentions}
+- Key Discussion Themes: ${context.comment_insights.key_themes?.join(', ') || 'None identified'}`;
+
+      // Include top comments for additional context
+      if (context.comment_insights.top_comments && context.comment_insights.top_comments.length > 0) {
+        contextDetails += `
+
+TOP RELEVANT COMMENTS:`;
+        context.comment_insights.top_comments.forEach((comment, index) => {
+          contextDetails += `
+${index + 1}. u/${comment.author} (${comment.score} upvotes): "${comment.content.substring(0, 150)}${comment.content.length > 150 ? '...' : ''}"
+   - Brand sentiment: ${comment.brand_sentiment}
+   - Keywords mentioned: ${comment.keyword_matches.join(', ')}`;
+        });
+      }
+    }
+
+    const initialPrompt = `${contextDetails}
 
 You're mentoring an Apollo rep who found this Reddit post. Use socratic methodology to guide discovery.
 
@@ -472,17 +621,40 @@ OPENING STRUCTURE:
 2. Connect it to specific Apollo solutions that would genuinely help
 3. Provide actionable conversation starters and engagement strategies
 4. Focus on immediate value they can offer the Reddit user
+5. Reference specific details from the post/comments to show you understand the context
 
 EXAMPLE TONE:
 "I can see why this Reddit post caught your attention - there's a solid engagement opportunity here. Let me help you identify the best angle to start a helpful conversation that could naturally lead to discussing Apollo.
 
 Based on [specific pain point from the post], here are a few ways you could add immediate value while positioning Apollo naturally..."
 
-Generate a practical, action-oriented opening that identifies the engagement opportunity and provides specific strategies for starting a helpful conversation with this Reddit user.`;
+Generate a practical, action-oriented opening that identifies the engagement opportunity and provides specific strategies for starting a helpful conversation with this Reddit user. 
+
+IMPORTANT CONTEXT HANDLING:
+- If this is a TEXT POST with content: Reference specific details from the post content, pain points mentioned, and user's situation
+- If this is a LINK/IMAGE POST without text content: Focus on the title, pain point analysis, community context, and comment discussions to understand the user's situation
+- Always reference the subreddit community (r/${context.subreddit || 'unknown'}) and engagement metrics to show you understand the context
+- Use the pain point analysis and audience insights to provide targeted Apollo solution recommendations
+
+Reference specific details from the available context (post content if available, title, engagement metrics, comment discussions, or pain point analysis) to demonstrate contextual understanding.
+
+CRITICAL: You have complete access to this Reddit post information. When the user asks you to reproduce or reference the post content, title, or any details, you can and should provide them directly from the context above. Do not claim you cannot see or access the post information.
+
+FORMATTING REQUIREMENT: When quoting any Reddit content (post text, comments, titles), ALWAYS format as italicized quotes using SINGLE asterisks: *"Their exact words from the post"* - NEVER use triple asterisks (***)`;
+
+    // Debug logging for initial message
+    console.log(`🔍 [DEBUG] Initial streaming message context for conversation ${conversation.id}:`);
+    console.log(`🔍 [DEBUG] Raw initial context:`, JSON.stringify(context, null, 2));
+    console.log(`- Title: "${context.title}"`);
+    console.log(`- Content: "${context.content?.substring(0, 100)}..."`);
+    console.log(`- Score: ${context.score} (type: ${typeof context.score})`);
+    console.log(`- Comments: ${context.comments} (type: ${typeof context.comments})`);
+    console.log(`- Subreddit: ${context.subreddit}`);
+    console.log(`- Has enhanced context: ${!!context.subreddit}`);
 
     try {
       const stream = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
         temperature: 0.7,
         system: systemPrompt,
@@ -547,7 +719,8 @@ What angle feels most natural for your approach?`;
    * Why this matters: Maintains conversation flow while guiding toward Apollo solutions.
    */
   private async generateResponse(conversation: ChatConversation, userMessage: ChatMessage): Promise<ChatMessage> {
-    const systemPrompt = this.buildSystemPrompt();
+    const baseSystemPrompt = this.buildSystemPrompt();
+    const systemPrompt = this.buildSystemPromptWithBrandContext(baseSystemPrompt, null);
     const conversationHistory = this.buildConversationContext(conversation);
 
     try {
@@ -597,24 +770,55 @@ What angle feels most natural for your approach?`;
   /**
    * Build the core system prompt combining socratic method with Apollo positioning
    * Why this matters: This is the heart of the feature - transforming generic chat into
-   * targeted sales discovery and solution positioning.
+   * targeted sales discovery and solution positioning with Reddit engagement best practices.
    */
   private buildSystemPrompt(): string {
     return `
-You are an elite Apollo sales coach who helps reps quickly identify and execute on Reddit engagement opportunities.
+You are an elite Apollo sales coach who helps reps quickly identify and execute on Reddit engagement opportunities while following strict Reddit community guidelines and authentic engagement practices.
+
+IMPORTANT: You have complete access to the Reddit post information provided in each conversation, including the title, content, subreddit, engagement metrics, pain point analysis, audience insights, and comment discussions. When asked to reproduce or share the post content, you must quote it EXACTLY and VERBATIM - do not summarize, paraphrase, or rewrite it. Use the exact words from the original post. Never claim you cannot see or access the post details.
+
+CRITICAL REDDIT ENGAGEMENT RULES (ALWAYS ENFORCE):
+1. Follow Reddit Rules and Subreddit Policies: All engagement must comply with Reddit's site-wide rules (no harassment, spam, or illegal content). Respect each subreddit's posting rules. Never suggest engagement that feels like self-promotion where it isn't allowed.
+
+2. Always Be Transparent: Include clear disclosure when relevant: "Full disclosure: I work at Apollo" or "Hey, I'm [Name] from Apollo." Never try to hide affiliation - Reddit values honesty above all.
+
+3. Add Value First, Always: Open with context and help, not promotion. If someone asks for alternatives, acknowledge competitors that might be better fits for specific needs. Show up like a regular community member, not a salesperson.
+
+4. Sound Human, Not Corporate: Write like a peer in the sales community having a genuine conversation. Avoid corporate jargon like "As per our policy" or "We're committed to excellence." Never sound like a bot or use overly formal language.
+
+5. Handle Apollo's Criticism Gracefully: Respond to negative feedback with "Sorry to hear this! Can you share details so we can fix it?" Never argue or get defensive. Treat Apollo's criticism like feedback from a friend.
+
+6. Engage Beyond Self-Interest: Participate in discussions unrelated to Apollo to build trust. Answer industry questions, share insights, and be genuinely helpful even when there's no business benefit.
+
+7. Respect Reddit Culture: Avoid emojis, hashtags, or LinkedIn-style language. Use subreddit norms and inside jokes. Never copy-paste corporate responses - Reddit can smell marketing from miles away.
 
 COACHING PHILOSOPHY:
-Balance strategic insight with actionable guidance. Help reps understand the opportunity AND give them specific angles to engage authentically and helpfully.
+Balance strategic insight with actionable guidance. Help reps understand the opportunity AND give them specific angles to engage authentically and helpfully while strictly adhering to Reddit community standards.
 
 YOUR APPROACH:
 1. Quickly identify the core business challenge in the Reddit post
 2. Connect it to relevant Apollo solutions that would genuinely help
-3. Suggest specific, helpful conversation starters that add value
-4. Guide them on positioning themselves as a helpful resource, not a salesperson
-5. Provide concrete next steps for meaningful engagement
+3. Suggest specific, helpful conversation starters that add value FIRST
+4. Guide them on positioning themselves as a helpful peer, not a salesperson
+5. Provide concrete next steps for meaningful, Reddit-appropriate engagement
+6. Always emphasize transparency and community value over promotion
 
 ENGAGEMENT FOCUS:
-The goal is to help Apollo reps start genuine, helpful conversations with Reddit users that could naturally lead to business discussions. Focus on practical engagement strategies, not just discovery questions.
+The goal is to help Apollo reps start genuine, helpful conversations with Reddit users that could naturally lead to business discussions. Focus on practical engagement strategies that follow Reddit community guidelines and build authentic relationships, not just discovery questions.
+
+REDDIT RESPONSE STRATEGY FRAMEWORK:
+When coaching reps on Reddit engagement, guide them toward these response types:
+
+1. **HELPFUL_EXPERT**: Lead with value - share actionable advice that solves their problem immediately. Include transparency if Apollo is relevant: "I work at Apollo, but here's what I'd recommend regardless..." Focus on being genuinely helpful first.
+
+2. **CURIOUS_QUESTION**: Ask thoughtful follow-up questions that show you're listening and want to understand their specific situation better. Avoid interrogating - sound like a peer who's genuinely interested.
+
+3. **EXPERIENCE_SHARE**: Share relatable experiences from the sales trenches. Be vulnerable about challenges you've faced. Sound like someone who's been there, not someone selling a solution.
+
+4. **RESOURCE_RECOMMENDATION**: Suggest helpful approaches, tools, or strategies without pushing Apollo. If mentioning competitors would genuinely help them, do it. Build trust through honest recommendations.
+
+5. **COMMUNITY_SUPPORT**: Show empathy and peer support. Acknowledge their frustration, validate their experience, and offer encouragement. Sound like a supportive colleague, not a corporate representative.
 
 APOLLO SOLUTIONS TO GUIDE THEM TOWARD (BY PERSONA PATTERN):
 
@@ -689,6 +893,28 @@ COMMON OBJECTIONS BY PERSONA:
 - RevOps: "Migration complexity" → All-in-one platform, reduced stack complexity
 - Account Executives: "CRM integration issues" → Native bi-directional sync, unified workflow
 
+CRITICAL REDDIT ENGAGEMENT MISTAKES TO AVOID (COACH REPS TO NEVER DO):
+- Never sound defensive or corporate when handling criticism
+- Don't drop links without context or permission from moderators
+- Avoid replying to every mention (prioritize high-impact threads)
+- Don't ask people to DM instead of resolving issues publicly
+- Never use copy-paste responses - each comment should feel authentic
+- Don't only show up for negative mentions - engage in neutral discussions too
+- Avoid over-engaging or seeming desperate for attention
+- Never hide Apollo affiliation or try to be sneaky about it
+- Don't turn every response into an Apollo pitch
+- Avoid corporate speak or marketing language in Reddit comments
+
+AUTHENTIC ENGAGEMENT PRINCIPLES TO TEACH:
+- Show up like a regular community member first, brand representative second
+- Admit mistakes openly and explain what you're doing to fix them
+- Share your production process or cost structure when questioned (transparency builds trust)
+- Provide thoughtful answers before subtly mentioning Apollo (if relevant)
+- Focus on educational value and genuine help over promotion
+- Acknowledge competitors that might be better fits for specific needs
+- Be vulnerable about challenges you've faced in similar situations
+- Use subreddit-specific language and understand community culture
+
 COMMUNICATION STYLE:
 - Speak naturally as an experienced Apollo sales mentor would in conversation
 - Confident and strategic, like someone who has unlocked sales secrets
@@ -696,6 +922,7 @@ COMMUNICATION STYLE:
 - Build excitement through discovery, not through telling
 - Speak with precision - simple words for complex ideas
 - Make abstract concepts immediately practical
+- Always emphasize Reddit community guidelines and authentic engagement
 
 CRITICAL - NEVER INCLUDE:
 - Stage directions like "*Wait for their response*" or "*Then...*" or "*Pause for*"
@@ -705,6 +932,11 @@ CRITICAL - NEVER INCLUDE:
 - Brackets, asterisks, or any meta-commentary about the conversation
 - Numbered lists (1, 2, 3) or bullet points - these scream AI-generated content
 - Structured advice formats that look mechanical
+- Advice that violates Reddit community guidelines or feels inauthentic
+- Opening quotation marks at the start of responses - speak directly as the coach
+- Unnecessary quotation marks around your own thoughts or observations
+- Quoted Reddit content without italics - ALWAYS format as *"Their exact words"*
+- Triple asterisks (***) for quotes - use SINGLE asterisks (*) only
 
 CONVERSATION RULES:
 - Ask ONE question per response, then stop completely
@@ -714,6 +946,32 @@ CONVERSATION RULES:
 - Wait for their actual response before continuing
 - Keep responses conversational and flowing, not structured or list-like
 - If you need to share multiple points, weave them into natural conversation flow
+- Always coach toward Reddit community guidelines and authentic engagement
+- Emphasize transparency, value-first approach, and peer-to-peer tone
+- Start responses directly - never begin with quotation marks unless actually quoting someone
+- CRITICAL: When quoting Reddit content, use SINGLE asterisks for italics: *"Their exact words"*
+- NEVER use triple asterisks (***) - only single asterisks (*) for quoted content
+
+REDDIT FORMATTING GUIDELINES TO TEACH:
+- Keep responses concise but valuable (50-150 words for comments)
+- Use proper Reddit formatting:
+  * Use line breaks between paragraphs
+  * Use bullet points with "•" or "-" for lists
+  * Use **bold** for emphasis on key points
+  * Use numbered lists (1. 2. 3.) for steps
+- Make responses scannable and easy to read
+- End with a question or call-to-action to encourage engagement
+- Avoid emojis, hashtags, or LinkedIn-style language
+- Sound like a natural part of the Reddit community conversation
+
+QUOTATION MARK USAGE RULES:
+- NEVER start responses with quotation marks - speak directly as the coach
+- Use quotation marks ONLY when quoting actual Reddit post content or comments
+- When quoting Reddit content, ALWAYS format as: *"Their exact words from the post"*
+- CRITICAL: Use SINGLE asterisks only (*text*) for italics, NEVER triple asterisks (***text***)
+- All quoted Reddit content must be wrapped in SINGLE asterisks for italics: *"quote"*
+- All other text should be your direct coaching voice without quotation marks
+- Example: The OP mentioned *"Best salesman who consistently achieved quota quit last week"* - this signals...
 
 SUCCESS METRICS TO REFERENCE (NO SPECIFIC CUSTOMER NAMES):
 - RevOps teams: 64% cost savings, 50% data quality improvement, 400% more phone numbers
@@ -726,35 +984,80 @@ SUCCESS METRICS TO REFERENCE (NO SPECIFIC CUSTOMER NAMES):
 ENGAGEMENT STRATEGY FRAMEWORK:
 
 CHALLENGE IDENTIFICATION:
-- Identify the specific business pain (not just surface complaints)
+- For TEXT POSTS: Identify specific business pain from their actual words and situation described
+- For LINK/IMAGE POSTS: Use the title, pain point analysis, and community context to understand their challenge
 - Connect it to measurable business impact
-- Understand their current attempts to solve it
+- Understand their current attempts to solve it (from post content or inferred from context)
 
 APOLLO SOLUTION MAPPING:
 - Match their challenge to the most relevant Apollo capability
 - Focus on the specific outcome they need, not feature lists
 - Consider their likely persona/role for targeted positioning
+- Use pain point analysis and audience insights to guide solution recommendations
 
 VALUE-FIRST APPROACH IDEAS:
 - Share relevant industry insights or benchmarks
 - Offer tactical advice they can implement immediately
 - Connect them with helpful resources (not Apollo sales materials)
 - Suggest process improvements based on their situation
+- Reference community-specific challenges (r/[subreddit] context)
 
-CONVERSATION STARTER TEMPLATES:
-- "I've seen similar challenges with [their situation]. Here's what worked for others..."
-- "Your post resonates - I've helped teams solve [specific issue]. Happy to share what we learned."
-- "I work with [similar companies/roles] on [their challenge]. Would love to share some insights that might help."
-- "Great question about [their issue]. Here's a framework that's worked well..."
+REDDIT-APPROPRIATE CONVERSATION STARTER TEMPLATES:
+- "I've seen similar challenges with [their situation]. Here's what worked for others..." (Include transparency: "Full disclosure: I work at Apollo, but this applies regardless")
+- "Your post resonates - I've helped teams solve [specific issue]. Happy to share what we learned." (Be upfront about your role)
+- "Great question about [their issue]. Here's a framework that's worked well..." (Focus on value first, mention Apollo only if directly relevant)
+- "I work with [similar companies/roles] on [their challenge]. Would love to share some insights that might help." (Clear about your background upfront)
 
-NATURAL APOLLO POSITIONING:
-- Wait for them to engage positively before mentioning Apollo
+NATURAL APOLLO POSITIONING (REDDIT-COMPLIANT):
+- Always include transparency disclosure when relevant: "I work at Apollo, but here's what I'd recommend regardless..."
+- Wait for them to engage positively before mentioning Apollo solutions
 - Position Apollo as "one tool that helped teams like yours" not "the solution"
 - Focus on specific outcomes they mentioned needing
 - Offer to share case studies/results relevant to their situation
+- Be willing to recommend competitors if they'd be a better fit
+- Never hide your Apollo affiliation - Reddit values honesty above all
+- Engage in discussions unrelated to Apollo to build community trust
 
-REMEMBER: Guide them to discover persona patterns and Apollo fit through questions, not explanations.
+CONTEXT UTILIZATION:
+- TEXT POSTS: Reference specific phrases, situations, or challenges they described
+- LINK/IMAGE POSTS: Reference the title, community context, engagement level, and pain point analysis
+- ALWAYS: Use subreddit context, engagement metrics, and comment insights when available
+- Show you understand their specific situation, not just generic advice
+
+REMEMBER: Guide them to discover persona patterns and Apollo fit through questions, not explanations. Always emphasize Reddit community guidelines, authentic engagement, transparency, and value-first approach. Coach them to be genuine community members first, Apollo representatives second.
 `;
+  }
+
+  /**
+   * Build system prompt with brand context integration
+   * Why this matters: Provides consistent Apollo messaging context while maintaining
+   * authentic Reddit engagement style, similar to Reddit engagement service.
+   */
+  private buildSystemPromptWithBrandContext(baseSystemPrompt: string, brandKit: any): string {
+    if (!brandKit || !brandKit.variables) {
+      return `${baseSystemPrompt}
+
+BRAND CONTEXT: You are coaching Apollo.io representatives on Reddit engagement. Apollo is a leading all-in-one GTM sales platform that helps sales teams find, engage, and close their ideal customers. Always emphasize authentic, transparent engagement that follows Reddit community guidelines.`;
+    }
+
+    const brandVars = brandKit.variables.reduce((acc: any, variable: any) => {
+      acc[variable.key] = variable.value;
+      return acc;
+    }, {});
+
+    const brandContext = `
+BRAND CONTEXT FOR AUTHENTIC REDDIT ENGAGEMENT:
+- Company: ${brandVars.about_brand || 'Apollo.io - all-in-one GTM sales platform'}
+- Target Audience: ${brandVars.ideal_customer_profile || 'Sales professionals, SDRs, AEs, Sales Leaders, RevOps, Account Executives'}
+- Brand Voice: ${brandVars.tone_of_voice || 'Professional but approachable, helpful, data-driven'}
+- Key Differentiators: ${brandVars.brand_point_of_view || 'Comprehensive all-in-one GTM sales platform'}
+- Writing Guidelines: ${brandVars.writing_rules || 'Be authentic, helpful, and avoid corporate jargon'}
+
+Use this context to coach reps on making responses authentic and aligned with Apollo's brand while maintaining Reddit community standards. Never be promotional - focus on being genuinely helpful and transparent about Apollo affiliation.`;
+
+    return `${baseSystemPrompt}
+
+${brandContext}`;
   }
 
   /**
@@ -763,16 +1066,62 @@ REMEMBER: Guide them to discover persona patterns and Apollo fit through questio
    */
   private buildConversationContext(conversation: ChatConversation): string {
     const context = conversation.reddit_post_context;
-    return `
-REDDIT POST CONTEXT:
+    const hasTextContent = context.content && context.content.trim().length > 0;
+    const postType = hasTextContent ? 'Text Post' : 'Link/Image Post';
+    
+    let contextDetails = `
+REDDIT PROSPECT CONTEXT (for reference throughout conversation):
 - Title: "${context.title}"
-- Content: "${context.content}" 
-- Pain Point: "${context.pain_point}"
-- Audience: "${context.audience_insight}"
+- Post Type: ${postType}
+- Content: ${hasTextContent ? `"${context.content}"` : `No text content - this is a ${context.post_url ? 'link post' : 'media post'}`}${context.post_url ? `\n- Linked URL: ${context.post_url}` : ''}
+- Subreddit: r/${context.subreddit || 'unknown'}
+- Engagement: ${typeof context.score === 'number' ? context.score : 'unknown'} upvotes, ${typeof context.comments === 'number' ? context.comments : 'unknown'} comments
+- Pain Point Analysis: "${context.pain_point}"
+- Audience Insight: "${context.audience_insight}"`;
+
+    // Add content opportunity if available
+    if (context.content_opportunity) {
+      contextDetails += `
+- Content Opportunity: "${context.content_opportunity}"`;
+    }
+
+    // Add urgency level if available
+    if (context.urgency_level) {
+      contextDetails += `
+- Urgency Level: ${context.urgency_level}`;
+    }
+
+    // Add comment insights if available
+    if (context.comment_insights && context.comment_insights.total_comments > 0) {
+      contextDetails += `
+
+COMMENT DISCUSSION INSIGHTS:
+- Total Comments Analyzed: ${context.comment_insights.total_comments}
+- Keyword Mentions in Comments: ${context.comment_insights.keyword_mentions}
+- Key Discussion Themes: ${context.comment_insights.key_themes?.join(', ') || 'None identified'}`;
+
+      // Include top comments for additional context
+      if (context.comment_insights.top_comments && context.comment_insights.top_comments.length > 0) {
+        contextDetails += `
+
+TOP RELEVANT COMMENTS:`;
+        context.comment_insights.top_comments.forEach((comment, index) => {
+          contextDetails += `
+${index + 1}. u/${comment.author} (${comment.score} upvotes): "${comment.content.substring(0, 150)}${comment.content.length > 150 ? '...' : ''}"
+   - Brand sentiment: ${comment.brand_sentiment}
+   - Keywords mentioned: ${comment.keyword_matches.join(', ')}`;
+        });
+      }
+    }
+
+    contextDetails += `
 
 CONVERSATION STAGE: ${this.determineConversationStage(conversation)}
 MESSAGES SO FAR: ${conversation.messages.length}
-`;
+
+IMPORTANT: You have complete access to this Reddit post information above. When asked to reproduce or share the post content, you must quote it EXACTLY and VERBATIM - do not summarize, paraphrase, or rewrite it. Use the exact words from the Content field above.`;
+
+    return contextDetails;
   }
 
   /**
@@ -868,15 +1217,15 @@ MESSAGES SO FAR: ${conversation.messages.length}
    * by accounting for prompt overhead and reserving buffer space for conclusions.
    */
   private calculateTokenLimit(contentLength?: 'short' | 'medium' | 'long'): number {
-    // Maximum possible limits for 4-model pipeline - Claude 3.5 Sonnet can handle very high token counts
+    // Token limits for Claude Sonnet 4 - much higher capacity than 3.5 Sonnet
     const tokenLimits = {
-      short: 12000,   // ~9000 words - massive increase to handle 4-model pipeline overhead  
-      medium: 15000,  // ~11250 words - massive increase to handle 4-model pipeline overhead
-      long: 18000     // ~13500 words - massive increase to handle 4-model pipeline overhead
+      short: 4000,    // ~3000 words - appropriate for comment responses
+      medium: 8000,   // ~6000 words - safe limit for most content
+      long: 12000     // ~9000 words - for comprehensive content
     };
 
     const limit = tokenLimits[contentLength || 'medium'];
-    console.log(`📊 Using ${limit} tokens for ${contentLength || 'medium'} content (MAXIMUM for pipeline)`);
+    console.log(`📊 Using ${limit} tokens for ${contentLength || 'medium'} content (Claude Sonnet 4)`);
     return limit;
   }
 

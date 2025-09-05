@@ -437,7 +437,8 @@ Use this context to make responses authentic and aligned with Apollo's brand whi
           pain_point: postContext.pain_point,
           audience_summary: postContext.audience_summary
         },
-        brand_kit: brandKit
+        brand_kit: brandKit,
+        content_length: 'short' // Comment responses should be concise
       });
 
       if (!claudeResponse || !claudeResponse.content) {
