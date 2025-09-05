@@ -1,14 +1,19 @@
 import axios from 'axios';
 import OpenAI from 'openai';
 import { RedditPost, RedditSearchRequest, RedditSearchResponse } from '../types';
+import ApolloBrandSentimentService from './apolloBrandSentimentService';
 
 class RedditService {
   private accessToken: string | null = null;
   private lastRequestTime: number = 0;
   private readonly rateLimitDelayMs: number = 1000;
   private readonly baseURL = 'https://oauth.reddit.com';
+  private apolloSentimentService: ApolloBrandSentimentService;
 
   constructor() {
+    // Initialize Apollo sentiment service
+    this.apolloSentimentService = new ApolloBrandSentimentService();
+    
     // Delay initialization to allow environment variables to load
     setTimeout(() => {
       this.initializeClient();
@@ -498,83 +503,17 @@ class RedditService {
   }
 
   /**
-   * Analyze brand sentiment in comments using AI-powered contextual analysis
-   * Why this matters: Provides accurate brand sentiment analysis for competitive intelligence,
-   * helping identify engagement opportunities by distinguishing between positive mentions,
-   * negative feedback, and neutral discussions about any brands, companies, or organizations
-   * mentioned in the original post context
+   * Analyze brand sentiment in comments using specialized Apollo sentiment analysis
+   * Why this matters: Provides accurate Apollo-specific brand sentiment analysis for competitive intelligence,
+   * helping identify engagement opportunities by understanding how users specifically feel about Apollo.io
+   * versus generic sentiment analysis that might miss Apollo-specific context and terminology.
    */
   private async analyzeBrandSentiment(
     content: string, 
     postContext?: { title: string; content?: string }
   ): Promise<'positive' | 'negative' | 'neutral'> {
-    // Fallback to simple analysis for very short comments or if AI fails
-    if (!content || content.trim().length < 10) {
-      return this.fallbackSentimentAnalysis(content);
-    }
-
-    try {
-      const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY
-      });
-
-      const contextPrompt = postContext ? 
-        `BUSINESS CONTEXT: You are analyzing brand sentiment for competitive intelligence and engagement opportunities. Identify the main brands/companies being discussed and analyze sentiment toward them.
-
-ORIGINAL POST CONTEXT:
-Title: "${postContext.title}"
-Content: "${postContext.content || 'No additional content'}"
-
-COMMENT TO ANALYZE: "${content}"
-
-First, identify the main brands, companies, products, or organizations mentioned in the post context. Then analyze the sentiment of this comment toward those specific entities. Consider:
-- What is the commenter's attitude toward the brands/companies mentioned in the original post?
-- Are they praising, criticizing, or neutrally discussing these entities?
-- Focus on brand sentiment toward the entities being discussed, not general helpfulness
-
-Examples:
-- "Salesforce is great for CRM" → POSITIVE (praising Salesforce)
-- "HubSpot sucks, terrible interface" → NEGATIVE (criticizing HubSpot)
-- "I use Slack but Teams is better" → NEGATIVE toward Slack, POSITIVE toward Teams
-- "Has anyone tried Notion?" → NEUTRAL (neutral inquiry)
-- "Zoom's pricing is $X per month" → NEUTRAL (factual information)
-- "Shopify helped us increase sales by 30%" → POSITIVE (success story)
-
-Respond with only one word: "positive", "negative", or "neutral"
-
-Guidelines:
-- positive: Praising the mentioned brands, sharing success stories, recommending them, positive experiences
-- negative: Criticizing the brands, warning against them, unfavorable comparisons, complaints about them
-- neutral: Factual questions, neutral information, balanced comparisons, unclear stance toward the brands` :
-        `Analyze the sentiment of this Reddit comment. Consider context, sarcasm, negation, and nuanced language.
-
-Comment: "${content}"
-
-Respond with only one word: "positive", "negative", or "neutral"
-
-Guidelines:
-- positive: Enthusiastic, supportive, helpful, satisfied, recommending
-- negative: Frustrated, disappointed, critical, complaining, warning against
-- neutral: Factual, informational, balanced, or unclear sentiment`;
-
-      const completion = await openai.responses.create({
-        model: "gpt-5-nano",
-        input: contextPrompt
-      });
-
-      const sentiment = completion.output_text?.trim().toLowerCase();
-      
-      if (sentiment === 'positive' || sentiment === 'negative' || sentiment === 'neutral') {
-        return sentiment as 'positive' | 'negative' | 'neutral';
-      }
-      
-      // Fallback if AI response is unexpected
-      return this.fallbackSentimentAnalysis(content);
-      
-    } catch (error) {
-      console.warn('⚠️ AI sentiment analysis failed, using fallback:', error);
-      return this.fallbackSentimentAnalysis(content);
-    }
+    // Use specialized Apollo sentiment analyzer
+    return await this.apolloSentimentService.analyzeApolloSentiment(content, postContext);
   }
 
   /**

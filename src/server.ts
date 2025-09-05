@@ -1,4 +1,7 @@
+// Load environment variables FIRST before any other imports
 import dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { HealthCheckResponse, ApiInfoResponse } from './types';
@@ -25,9 +28,6 @@ import competitorConquestingRoutes from './routes/competitorConquesting';
 import sitemapRoutes from './routes/sitemap';
 import sitemapChunkedRoutes from './routes/sitemapChunked';
 import redditEngagementRoutes from './routes/redditEngagement';
-
-// Load environment variables
-dotenv.config();
 
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || '3003', 10);

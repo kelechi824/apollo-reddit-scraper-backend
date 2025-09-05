@@ -368,7 +368,7 @@ ${this.buildConversationContext(conversation)}`;
     try {
       // Use Claude's streaming API
       const stream = await this.client!.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
         temperature: 0.7,
         system: contextualSystemPrompt,
@@ -503,7 +503,7 @@ FORMATTING REQUIREMENT: When quoting any Reddit content (post text, comments, ti
 
     try {
       const completion = await this.client!.messages.create({
-        model: "claude-3-5-sonnet-20241022", // Using Claude 3.5 Sonnet
+        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 2000, // Increased from 300 to allow comprehensive socratic learning responses
         temperature: 0.7,
         system: systemPrompt,
@@ -654,7 +654,7 @@ FORMATTING REQUIREMENT: When quoting any Reddit content (post text, comments, ti
 
     try {
       const stream = await this.client!.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
         temperature: 0.7,
         system: systemPrompt,
@@ -737,7 +737,7 @@ What angle feels most natural for your approach?`;
       });
 
       const completion = await this.client!.messages.create({
-        model: "claude-3-5-sonnet-20241022", // Using Claude 3.5 Sonnet
+        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 2000, // Increased from 400 to allow comprehensive socratic learning responses
         temperature: 0.7,
         system: systemPrompt + "\n\n" + conversationHistory,
@@ -1217,15 +1217,15 @@ IMPORTANT: You have complete access to this Reddit post information above. When 
    * by accounting for prompt overhead and reserving buffer space for conclusions.
    */
   private calculateTokenLimit(contentLength?: 'short' | 'medium' | 'long'): number {
-    // Maximum possible limits for 4-model pipeline - Claude 3.5 Sonnet can handle very high token counts
+    // Token limits for Claude Sonnet 4 - much higher capacity than 3.5 Sonnet
     const tokenLimits = {
-      short: 12000,   // ~9000 words - massive increase to handle 4-model pipeline overhead  
-      medium: 15000,  // ~11250 words - massive increase to handle 4-model pipeline overhead
-      long: 18000     // ~13500 words - massive increase to handle 4-model pipeline overhead
+      short: 4000,    // ~3000 words - appropriate for comment responses
+      medium: 8000,   // ~6000 words - safe limit for most content
+      long: 12000     // ~9000 words - for comprehensive content
     };
 
     const limit = tokenLimits[contentLength || 'medium'];
-    console.log(`📊 Using ${limit} tokens for ${contentLength || 'medium'} content (MAXIMUM for pipeline)`);
+    console.log(`📊 Using ${limit} tokens for ${contentLength || 'medium'} content (Claude Sonnet 4)`);
     return limit;
   }
 
@@ -1249,7 +1249,7 @@ IMPORTANT: You have complete access to this Reddit post information above. When 
       const response = await retryWithBackoff(
         async () => {
           return await this.client!.messages.create({
-            model: 'claude-3-5-sonnet-20241022',
+            model: 'claude-sonnet-4-20250514',
             max_tokens: 1000,
             temperature: 0.7,
             messages: [
@@ -1350,7 +1350,7 @@ IMPORTANT: You have complete access to this Reddit post information above. When 
           // Generate content with timeout protection
           const response = await Promise.race([
             this.client!.messages.create({
-              model: 'claude-3-5-sonnet-20241022',
+              model: 'claude-sonnet-4-20250514',
               max_tokens: maxTokens,
               temperature: 0.9,
               system: processedSystemPrompt,
@@ -1508,7 +1508,7 @@ IMPORTANT: You have complete access to this Reddit post information above. When 
         async () => {
           const completion = await Promise.race([
             this.client!.messages.create({
-              model: "claude-3-5-sonnet-20241022", // Using Claude 3.5 Sonnet
+              model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
               max_tokens: 50,
               messages: [{ role: "user", content: "Hello, this is a connection test." }]
             }),
@@ -1572,7 +1572,7 @@ ${markdown_data}
 Please use this processed data as context to create a comprehensive playbook following the specified format.`;
 
       const response = await this.client.messages.create({
-        model: 'claude-3-5-sonnet-20241022', // Using Claude 3.5 Sonnet
+        model: 'claude-sonnet-4-20250514', // Using Claude 3.5 Sonnet
         max_tokens: 4000,
         temperature: 0.9, // Increased for more creative and varied playbook outputs
         system: system_prompt,
@@ -1618,7 +1618,7 @@ Please use this processed data as context to create a comprehensive playbook fol
       console.log(`📝 Prompt preview: ${params.prompt.substring(0, 200)}...`);
 
       const response = await this.client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 500,
         temperature: 0.5, // Balanced temperature for creative but controlled meta fields
         system: `You are an expert SEO/AEO specialist optimizing for AI search engines (ChatGPT Search, Perplexity, Claude, Gemini).
@@ -1772,7 +1772,7 @@ OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
       console.log(`💡 Content insights extracted: ${contentPreview.length} characters`);
 
       const response = await this.client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 600,
         temperature: 0.3, // Lower temperature for more consistent, focused meta fields
         system: `You are an expert SEO/AEO specialist creating natural, content-aware meta fields optimized for AI search engines (ChatGPT Search, Perplexity, Claude, Gemini).
@@ -2147,7 +2147,7 @@ Generate a practical, CRO-focused opening that identifies specific conversion op
 
     try {
       const completion = await this.client!.messages.create({
-        model: "claude-3-5-sonnet-20241022", // Using Claude 3.5 Sonnet
+        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 400,
         temperature: 0.7,
         system: systemPrompt,
@@ -2214,7 +2214,7 @@ What's your biggest conversion challenge right now, or would you like me to dive
       });
 
       const completion = await this.client!.messages.create({
-        model: "claude-3-5-sonnet-20241022", // Using Claude 3.5 Sonnet
+        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 500,
         temperature: 0.7,
         system: systemPrompt + "\n\n" + conversationHistory,

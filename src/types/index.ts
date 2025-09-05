@@ -235,6 +235,7 @@ export interface RedditPost {
   author: string;
   engagement: number;
   created_utc: number;
+  relevance_score?: number; // Optional relevance score for intelligent ranking
 }
 
 export interface RedditComment {
