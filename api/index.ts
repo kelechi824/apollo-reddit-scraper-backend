@@ -25,6 +25,7 @@ import competitorConquestingRoutes from '../src/routes/competitorConquesting';
 import sitemapRoutes from '../src/routes/sitemap';
 import sitemapChunkedRoutes from '../src/routes/sitemapChunked';
 import redditEngagementRoutes from '../src/routes/redditEngagement';
+import jokesRoutes from '../src/routes/jokes';
 
 // Load environment variables
 dotenv.config();
@@ -70,6 +71,7 @@ app.use('/api/competitor-conquesting', competitorConquestingRoutes);
 app.use('/api/sitemap', sitemapRoutes);
 app.use('/api/sitemap-chunked', sitemapChunkedRoutes);
 app.use('/api/reddit-engagement', redditEngagementRoutes);
+app.use('/api/jokes', jokesRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -111,7 +113,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         competitorConquesting: '/api/competitor-conquesting/*',
         sitemap: '/api/sitemap/*',
         sitemapChunked: '/api/sitemap-chunked/*',
-        redditEngagement: '/api/reddit-engagement/*'
+        redditEngagement: '/api/reddit-engagement/*',
+        jokes: '/api/jokes/*'
       }
     }
   });
