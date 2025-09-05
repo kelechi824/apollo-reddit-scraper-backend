@@ -13,7 +13,22 @@ const router = Router();
 router.post('/start-conversation', async (req: Request, res: Response): Promise<any> => {
   try {
     // Validate request body
-    const { post_id, title, content, pain_point, audience_insight }: StartConversationRequest = req.body;
+    const { 
+      post_id, 
+      title, 
+      content, 
+      pain_point, 
+      audience_insight,
+      // Enhanced context fields
+      subreddit,
+      score,
+      comments,
+      post_url,
+      permalink,
+      content_opportunity,
+      urgency_level,
+      comment_insights
+    }: StartConversationRequest = req.body;
 
     if (!post_id || !title || !pain_point) {
       return res.status(400).json({
@@ -32,7 +47,16 @@ router.post('/start-conversation', async (req: Request, res: Response): Promise<
       title,
       content: content || '',
       pain_point,
-      audience_insight: audience_insight || ''
+      audience_insight: audience_insight || '',
+      // Enhanced context fields
+      subreddit,
+      score,
+      comments,
+      post_url,
+      permalink,
+      content_opportunity,
+      urgency_level,
+      comment_insights
     });
 
     res.json({
@@ -61,7 +85,22 @@ router.post('/start-conversation', async (req: Request, res: Response): Promise<
 router.post('/start-conversation/stream', async (req: Request, res: Response): Promise<any> => {
   try {
     // Validate request body
-    const { post_id, title, content, pain_point, audience_insight }: StartConversationRequest = req.body;
+    const { 
+      post_id, 
+      title, 
+      content, 
+      pain_point, 
+      audience_insight,
+      // Enhanced context fields
+      subreddit,
+      score,
+      comments,
+      post_url,
+      permalink,
+      content_opportunity,
+      urgency_level,
+      comment_insights
+    }: StartConversationRequest = req.body;
 
     if (!post_id || !title || !pain_point) {
       return res.status(400).json({
@@ -89,7 +128,16 @@ router.post('/start-conversation/stream', async (req: Request, res: Response): P
       title,
       content: content || '',
       pain_point,
-      audience_insight: audience_insight || ''
+      audience_insight: audience_insight || '',
+      // Enhanced context fields
+      subreddit,
+      score,
+      comments,
+      post_url,
+      permalink,
+      content_opportunity,
+      urgency_level,
+      comment_insights
     }, (chunk: string, isComplete: boolean, metadata?: any) => {
       if (metadata?.conversation_id && !isComplete) {
         // Send conversation ID first
