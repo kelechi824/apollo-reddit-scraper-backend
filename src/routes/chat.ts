@@ -54,6 +54,159 @@ router.post('/start-conversation', async (req: Request, res: Response): Promise<
 });
 
 /**
+ * POST /api/chat/start-conversation/stream
+ * Start a new conversation with streaming initial message
+ * Why this matters: Provides consistent streaming UX from the very first AI response.
+ */
+router.post('/start-conversation/stream', async (req: Request, res: Response): Promise<any> => {
+  try {
+    // Validate request body
+    const { post_id, title, content, pain_point, audience_insight }: StartConversationRequest = req.body;
+
+    if (!post_id || !title || !pain_point) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'post_id, title, and pain_point are required',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`🎯 Starting streaming conversation for post: "${title.substring(0, 50)}..."`);
+
+    // Set up Server-Sent Events headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    // Start conversation with streaming
+    await claudeService.startConversationStream({
+      post_id,
+      title,
+      content: content || '',
+      pain_point,
+      audience_insight: audience_insight || ''
+    }, (chunk: string, isComplete: boolean, metadata?: any) => {
+      if (metadata?.conversation_id && !isComplete) {
+        // Send conversation ID first
+        res.write(`data: ${JSON.stringify({ 
+          type: 'conversation_id', 
+          conversation_id: metadata.conversation_id,
+          timestamp: new Date().toISOString()
+        })}\n\n`);
+      }
+      
+      if (isComplete) {
+        // Send final metadata
+        res.write(`data: ${JSON.stringify({ 
+          type: 'complete', 
+          metadata: metadata || {},
+          timestamp: new Date().toISOString()
+        })}\n\n`);
+        res.end();
+      } else {
+        // Send content chunk
+        res.write(`data: ${JSON.stringify({ 
+          type: 'content', 
+          content: chunk,
+          timestamp: new Date().toISOString()
+        })}\n\n`);
+      }
+    });
+
+  } catch (error) {
+    console.error('Start streaming conversation error:', error);
+    
+    // Send error through stream
+    res.write(`data: ${JSON.stringify({ 
+      type: 'error', 
+      error: error instanceof Error ? error.message : 'Unknown streaming error',
+      timestamp: new Date().toISOString()
+    })}\n\n`);
+    res.end();
+  }
+});
+
+/**
+ * POST /api/chat/message/stream
+ * Send a message in an existing conversation and get streaming AI response
+ * Why this matters: Provides real-time streaming responses for better UX during socratic discovery.
+ */
+router.post('/message/stream', async (req: Request, res: Response): Promise<any> => {
+  try {
+    // Validate request body
+    const { conversation_id, message }: SendMessageRequest = req.body;
+
+    if (!conversation_id || !message) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'conversation_id and message are required',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'message must be a non-empty string',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`💬 Processing streaming message in conversation ${conversation_id}`);
+
+    // Set up Server-Sent Events headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    // Send streaming response
+    await claudeService.sendMessageStream({
+      conversation_id,
+      message: message.trim()
+    }, (chunk: string, isComplete: boolean, metadata?: any) => {
+      if (isComplete) {
+        // Send final metadata
+        res.write(`data: ${JSON.stringify({ 
+          type: 'complete', 
+          metadata: metadata || {},
+          timestamp: new Date().toISOString()
+        })}\n\n`);
+        res.end();
+      } else {
+        // Send content chunk
+        res.write(`data: ${JSON.stringify({ 
+          type: 'content', 
+          content: chunk,
+          timestamp: new Date().toISOString()
+        })}\n\n`);
+      }
+    });
+
+  } catch (error) {
+    console.error('Send streaming message error:', error);
+    
+    // Send error through stream
+    res.write(`data: ${JSON.stringify({ 
+      type: 'error', 
+      error: error instanceof Error ? error.message : 'Unknown streaming error',
+      timestamp: new Date().toISOString()
+    })}\n\n`);
+    res.end();
+  }
+});
+
+/**
  * POST /api/chat/message
  * Send a message in an existing conversation and get AI response
  * Why this matters: Continues the socratic discovery process, guiding users through

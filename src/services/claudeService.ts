@@ -125,6 +125,57 @@ class ClaudeService {
   }
 
   /**
+   * Start a new conversation with streaming initial message
+   * Why this matters: Provides consistent streaming UX from the very first AI response.
+   */
+  async startConversationStream(
+    request: StartConversationRequest,
+    onChunk: (chunk: string, isComplete: boolean, metadata?: any) => void
+  ): Promise<void> {
+    if (!this.client) {
+      throw new Error('Claude client not initialized');
+    }
+
+    const conversationId = uuidv4();
+    const now = new Date().toISOString();
+
+    // Create conversation with Reddit post context
+    const conversation: ChatConversation = {
+      id: conversationId,
+      reddit_post_context: {
+        post_id: request.post_id,
+        title: request.title,
+        content: request.content,
+        pain_point: request.pain_point,
+        audience_insight: request.audience_insight
+      },
+      messages: [],
+      created_at: now,
+      updated_at: now,
+      status: 'active'
+    };
+
+    // Store conversation first
+    this.conversations.set(conversationId, conversation);
+
+    // Send conversation ID immediately
+    onChunk('', false, { conversation_id: conversationId });
+
+    // Generate initial socratic question with streaming
+    const initialMessage = await this.generateInitialMessageStream(conversation, onChunk);
+    conversation.messages.push(initialMessage);
+    conversation.updated_at = new Date().toISOString();
+
+    console.log(`🎯 Started streaming conversation ${conversationId} for post: "${request.title.substring(0, 50)}..."`);
+
+    // Send completion with metadata
+    onChunk('', true, { 
+      conversation_stage: 'Pain Exploration',
+      conversation_id: conversationId 
+    });
+  }
+
+  /**
    * Send a user message and get AI response
    * Why this matters: Continues the socratic discovery process, asking follow-up questions
    * that lead toward Apollo solution positioning.
@@ -199,6 +250,124 @@ class ClaudeService {
   }
 
   /**
+   * Send message with streaming response
+   * Why this matters: Provides real-time streaming responses for better UX during socratic discovery.
+   */
+  async sendMessageStream(
+    request: SendMessageRequest, 
+    onChunk: (chunk: string, isComplete: boolean, metadata?: any) => void
+  ): Promise<void> {
+    if (!this.client) {
+      throw new Error('Claude client not initialized');
+    }
+
+    const conversation = this.conversations.get(request.conversation_id);
+    if (!conversation) {
+      throw new Error('Conversation not found or expired');
+    }
+
+    if (conversation.status !== 'active') {
+      throw new Error('Conversation is not active');
+    }
+
+    if (conversation.messages.length >= this.maxMessages) {
+      throw new Error('Conversation has reached maximum message limit');
+    }
+
+    const now = new Date().toISOString();
+
+    // Create user message
+    const userMessage: ChatMessage = {
+      id: uuidv4(),
+      role: 'user',
+      content: request.message.trim(),
+      timestamp: now
+    };
+
+    // Add user message to conversation
+    conversation.messages.push(userMessage);
+
+    // Generate streaming AI response
+    const assistantMessage = await this.generateStreamingResponse(conversation, userMessage, onChunk);
+    conversation.messages.push(assistantMessage);
+    conversation.updated_at = new Date().toISOString();
+
+    // Update conversation in storage
+    this.conversations.set(request.conversation_id, conversation);
+
+    console.log(`💬 Processed streaming message in conversation ${request.conversation_id}`);
+
+    // Send completion with metadata
+    onChunk('', true, {
+      user_message: userMessage,
+      assistant_message: assistantMessage,
+      conversation_stage: this.determineConversationStage(conversation)
+    });
+  }
+
+  /**
+   * Generate streaming AI response
+   * Why this matters: Creates real-time streaming responses for better user experience.
+   */
+  private async generateStreamingResponse(
+    conversation: ChatConversation, 
+    userMessage: ChatMessage,
+    onChunk: (chunk: string, isComplete: boolean) => void
+  ): Promise<ChatMessage> {
+    const systemPrompt = this.buildSystemPrompt();
+    
+    // Build conversation history for Claude
+    const messages = conversation.messages.slice(-10).map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content
+    }));
+
+    let fullContent = '';
+    const assistantMessageId = uuidv4();
+
+    try {
+      // Use Claude's streaming API
+      const stream = await this.client!.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1000,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: messages,
+        stream: true
+      });
+
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta && 'text' in chunk.delta) {
+          const textChunk = chunk.delta.text;
+          fullContent += textChunk;
+          onChunk(textChunk, false);
+        }
+      }
+
+      return {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: fullContent,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Streaming response generation error:', error);
+      
+      // Fallback to non-streaming response
+      const fallbackContent = "I'm having trouble with the streaming response. Let me try a different approach to help you with this conversation.";
+      onChunk(fallbackContent, false);
+      
+      return {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: fallbackContent,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Generate initial socratic question based on Reddit post context
    * Why this matters: Sets the tone for discovery-based learning that leads to Apollo insights.
    */
@@ -270,6 +439,104 @@ Here are 3 ways you could start a helpful conversation:
 The key is leading with genuine help, then naturally mentioning how Apollo has helped similar teams achieve [specific outcome they need].
 
 What angle feels most natural for your approach?`,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Generate initial socratic question with streaming
+   * Why this matters: Provides consistent streaming UX from the very first AI response.
+   */
+  private async generateInitialMessageStream(
+    conversation: ChatConversation,
+    onChunk: (chunk: string, isComplete: boolean, metadata?: any) => void
+  ): Promise<ChatMessage> {
+    const context = conversation.reddit_post_context;
+    
+    const systemPrompt = this.buildSystemPrompt();
+    const initialPrompt = `
+REDDIT PROSPECT CONTEXT:
+- Title: "${context.title}"
+- Content: "${context.content}"
+- Pain Point Analysis: "${context.pain_point}"
+- Audience Insight: "${context.audience_insight}"
+
+You're mentoring an Apollo rep who found this Reddit post. Use socratic methodology to guide discovery.
+
+CRITICAL INSTRUCTION:
+Generate a compelling opening that creates intrigue about what this Reddit post represents as a hidden opportunity, then asks about their context. NO assumptions about the rep's skill level.
+
+OPENING STRUCTURE:
+1. Quickly identify the core business opportunity in this Reddit post
+2. Connect it to specific Apollo solutions that would genuinely help
+3. Provide actionable conversation starters and engagement strategies
+4. Focus on immediate value they can offer the Reddit user
+
+EXAMPLE TONE:
+"I can see why this Reddit post caught your attention - there's a solid engagement opportunity here. Let me help you identify the best angle to start a helpful conversation that could naturally lead to discussing Apollo.
+
+Based on [specific pain point from the post], here are a few ways you could add immediate value while positioning Apollo naturally..."
+
+Generate a practical, action-oriented opening that identifies the engagement opportunity and provides specific strategies for starting a helpful conversation with this Reddit user.`;
+
+    try {
+      const stream = await this.client!.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2000,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: [{ role: "user", content: initialPrompt }],
+        stream: true
+      });
+
+      let fullContent = '';
+      const messageId = uuidv4();
+
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta && 'text' in chunk.delta) {
+          const text = chunk.delta.text;
+          fullContent += text;
+          onChunk(text, false);
+        }
+      }
+
+      return {
+        id: messageId,
+        role: 'assistant',
+        content: fullContent,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Error generating streaming initial message:', error);
+      
+      // Fallback with streaming simulation
+      const fallbackContent = `Great find! This Reddit post has solid engagement potential. The person is dealing with "${context.pain_point}" - which is exactly the type of challenge Apollo helps solve.
+
+Here are 3 ways you could start a helpful conversation:
+
+1. **Share a tactical insight**: "I've seen teams struggle with this exact issue. Here's a quick framework that helped..."
+
+2. **Offer immediate value**: "Your situation reminds me of [similar case]. Here are some metrics/benchmarks that might help you assess the impact."
+
+3. **Connect with similar experience**: "We work with a lot of [their role/industry] facing this challenge. Happy to share what's worked for others."
+
+The key is leading with genuine help, then naturally mentioning how Apollo has helped similar teams achieve [specific outcome they need].
+
+What angle feels most natural for your approach?`;
+
+      // Stream the fallback content
+      for (let i = 0; i < fallbackContent.length; i += 3) {
+        const chunk = fallbackContent.slice(i, i + 3);
+        onChunk(chunk, false);
+        await new Promise(resolve => setTimeout(resolve, 30));
+      }
+
+      return {
+        id: uuidv4(),
+        role: 'assistant',
+        content: fallbackContent,
         timestamp: new Date().toISOString()
       };
     }
