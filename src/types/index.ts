@@ -35,6 +35,7 @@ export interface ApiInfoResponse {
     sitemap: string;
     sitemapChunked: string;
     redditEngagement: string;
+    jokes: string;
   };
   };
 }
