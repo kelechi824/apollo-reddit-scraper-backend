@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { redditService } from '../services/redditService';
 import openaiServiceOptimized from '../services/openaiServiceOptimized';
 import GoogleSheetsService from '../services/googleSheetsService';
+import { patternAnalysisService } from '../services/patternAnalysisService';
 import { WorkflowRequest, WorkflowResponse, ApiError } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -182,6 +183,33 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
     });
 
     console.log(`✅ Step 2 complete: Analyzed ${analyzedPosts.length} posts`);
+
+    // Step 2.5: Analyze Comments (optional)
+    console.log(`💬 Step 2.5: Analyzing comments for keyword mentions...`);
+    statusEntry.progress = 65;
+    
+    try {
+      const commentAnalysisMap = await redditService.analyzeCommentsForPosts(
+        redditResults.posts,
+        keywords.map(k => String(k).trim()).filter(k => k.length > 0)
+      );
+      
+      // Attach comment analysis to analyzed posts
+      analyzedPosts.forEach(post => {
+        const commentData = commentAnalysisMap.get(post.id);
+        if (commentData) {
+          post.comment_analysis = commentData;
+          post.has_comment_insights = true;
+        }
+      });
+      
+      const postsWithComments = analyzedPosts.filter(p => p.has_comment_insights).length;
+      console.log(`✅ Step 2.5 complete: Found comment insights for ${postsWithComments} posts`);
+    } catch (commentError) {
+      console.error(`⚠️  Step 2.5 failed: Comment analysis error:`, commentError);
+      // Continue workflow even if comment analysis fails
+    }
+    
     statusEntry.progress = 75;
 
     // Step 3: Export to Google Sheets (optional)
@@ -202,6 +230,25 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
       }
     }
 
+    // Step 4: Pattern Analysis (optional, runs with analyzed posts)
+    let patternAnalysis = null;
+    if (analyzedPosts.length > 0) {
+      try {
+        console.log(`🧠 Step 4: Running pattern analysis for ${analyzedPosts.length} posts...`);
+        statusEntry.progress = 90;
+        
+        patternAnalysis = await patternAnalysisService.analyzePatterns({
+          analyzed_posts: analyzedPosts,
+          keywords: request.keywords.join(', ')
+        });
+        
+        console.log(`✅ Step 4 completed: Pattern analysis found ${patternAnalysis.categories.length} categories`);
+      } catch (patternError) {
+        console.error(`⚠️  Step 4 failed: Pattern analysis error:`, patternError);
+        // Continue workflow even if pattern analysis fails
+      }
+    }
+
     const duration = Date.now() - statusEntry.startTime;
     console.log(`🎉 Workflow ${workflowId} completed in ${duration}ms`);
 
@@ -212,6 +259,7 @@ async function processWorkflowAsync(workflowId: string, request: WorkflowRequest
       success: true,
       reddit_results: redditResults,
       analyzed_posts: analyzedPosts,
+      pattern_analysis: patternAnalysis,
       sheets_export: sheetsExport,
       workflow_id: workflowId,
       completed_at: new Date().toISOString()

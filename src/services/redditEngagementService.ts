@@ -387,6 +387,298 @@ Use this context to make responses authentic and aligned with Apollo's brand whi
       }
     ];
   }
+
+  /**
+   * Generate a single Reddit response for a specific comment
+   * Why this matters: Creates targeted responses to individual comments using their specific
+   * content, sentiment, and keyword context for more relevant engagement.
+   */
+  async generateCommentResponse(
+    commentContext: {
+      content: string;
+      author: string;
+      brand_sentiment: 'positive' | 'negative' | 'neutral';
+      helpfulness_sentiment: 'positive' | 'negative' | 'neutral';
+      keyword_matches: string[];
+      score?: number;
+      created_utc?: number;
+    },
+    postContext: {
+      title: string;
+      subreddit: string;
+      pain_point: string;
+      audience_summary: string;
+      content?: string;
+    },
+    brandKit?: any
+  ): Promise<CommentGenerationResponse> {
+    try {
+      console.log(`💬 Generating comment response to u/${commentContext.author} in r/${postContext.subreddit}`);
+
+      // Load and process brand kit
+      const processedBrandKit = await brandkitService.loadBrandKit(brandKit);
+      
+      // Build system prompt for comment-specific responses
+      const systemPrompt = this.buildCommentResponseSystemPrompt(processedBrandKit);
+      
+      // Build user prompt with comment and post context
+      const userPrompt = this.buildCommentUserPrompt(commentContext, postContext);
+
+      console.log('🤖 Sending request to Claude for comment response generation...');
+
+      // Generate response using Claude
+      const claudeResponse = await claudeService.generateContent({
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
+        post_context: {
+          title: postContext.title,
+          content: postContext.content || '',
+          subreddit: postContext.subreddit,
+          pain_point: postContext.pain_point,
+          audience_summary: postContext.audience_summary
+        },
+        brand_kit: brandKit
+      });
+
+      if (!claudeResponse || !claudeResponse.content) {
+        throw new Error('Failed to generate comment response from Claude');
+      }
+
+      // Parse the response into structured format
+      const response = this.parseCommentResponse(claudeResponse.content);
+
+      console.log(`✅ Generated comment response successfully`);
+      console.log(`🎯 Brand context applied: ${!!brandKit}`);
+      console.log(`💭 Response sentiment alignment: Brand: ${commentContext.brand_sentiment}, Helpfulness: ${commentContext.helpfulness_sentiment}`);
+
+      return {
+        success: true,
+        response,
+        metadata: {
+          subreddit: postContext.subreddit,
+          post_title: postContext.title,
+          comment_author: commentContext.author,
+          comment_brand_sentiment: commentContext.brand_sentiment,
+          comment_helpfulness_sentiment: commentContext.helpfulness_sentiment,
+          keywords_matched: commentContext.keyword_matches,
+          generation_timestamp: new Date().toISOString(),
+          brand_context_applied: !!brandKit
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error generating comment response:', error);
+      throw new Error(`Comment response generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Build system prompt specifically for comment responses
+   * Why this matters: Creates focused prompts that generate responses to specific comments
+   * rather than general post-level engagement.
+   */
+  private buildCommentResponseSystemPrompt(brandKit: any): string {
+    const brandContext = this.buildBrandContext(brandKit);
+    
+    return `You are a content assistant tasked with generating a single Reddit comment response for Apollo.io, a B2B sales platform. Your goal is to create an authentic, helpful response to a specific comment while strictly adhering to Reddit's community guidelines and maintaining a peer-to-peer tone.
+
+CRITICAL REDDIT ENGAGEMENT RULES:
+1. Follow Reddit Rules and Subreddit Policies: All content must comply with Reddit's site-wide rules (no harassment, spam, or illegal content). Respect each subreddit's posting rules.
+
+2. Always Be Transparent: Include clear disclosure when relevant: "Full disclosure: I work at Apollo" or "Hey, I'm [Name] from Apollo." Never try to hide affiliation - Reddit values honesty above all.
+
+3. Add Value First, Always: Open with context and help, not promotion. Acknowledge their point and provide genuine value before any subtle mention of Apollo if relevant.
+
+4. Sound Human, Not Corporate: Write like a peer in the sales community having a genuine conversation. Avoid corporate jargon. Never sound like a bot or use overly formal language.
+
+5. Respond to Their Specific Point: Address what they actually said, not what you want to talk about. Show you read and understood their comment.
+
+6. Match Their Tone and Sentiment: If they're frustrated, acknowledge it. If they're excited, share that energy. If they're asking for help, be genuinely helpful.
+
+7. Respect Reddit Culture: Avoid emojis, hashtags, or LinkedIn-style language. Use subreddit norms. Never copy-paste corporate responses.
+
+RESPONSE STRATEGY:
+- Read their comment carefully and respond to their specific point
+- Acknowledge their perspective or experience
+- Add value through relevant insight, experience, or helpful information
+- Only mention Apollo if it's genuinely relevant and helpful to their situation
+- Keep it conversational and authentic
+- End with a question or invitation for further discussion if appropriate
+
+FORMATTING REQUIREMENTS:
+- Keep response concise but valuable (30-100 words typically)
+- Use proper Reddit formatting:
+  * Use line breaks between paragraphs if needed
+  * Use **bold** sparingly for key emphasis
+  * Avoid excessive formatting
+- Make it scannable and easy to read
+- Sound like a natural reply in a conversation thread
+
+CRITICAL MISTAKES TO AVOID:
+- Don't ignore what they actually said
+- Don't turn every response into an Apollo pitch
+- Don't be defensive if they mention competitors or criticisms
+- Don't use corporate speak or marketing language
+- Don't make it about you or Apollo unless directly relevant
+- Don't be overly promotional or salesy
+
+AUTHENTIC ENGAGEMENT PRINCIPLES:
+- Show up like a regular community member first
+- Be genuinely helpful and add value
+- Acknowledge their expertise and experience
+- Share relevant insights from your own experience
+- Focus on building relationships over promotion
+
+${brandContext}
+
+CRITICAL OUTPUT REQUIREMENTS:
+- Return response in JSON format with this exact structure:
+- The content must be a natural, conversational Reddit comment
+- Use \\n for line breaks in JSON strings to ensure proper formatting when displayed
+{
+  "response": {
+    "content": "Your comment response here...",
+    "engagement_strategy": "Brief explanation of why this approach works for this specific comment",
+    "tone_match": "How this response matches or appropriately responds to their sentiment",
+    "value_provided": "What specific value or insight this response offers"
+  }
+}
+
+- Do NOT include any text outside the JSON structure
+- Response should be Reddit-appropriate length (not too long)
+- Use authentic, conversational language that directly addresses their comment
+- Focus on being genuinely helpful and building community relationships`;
+  }
+
+  /**
+   * Build user prompt with comment and post context
+   * Why this matters: Provides Claude with specific comment context to generate
+   * targeted, relevant responses.
+   */
+  private buildCommentUserPrompt(
+    commentContext: {
+      content: string;
+      author: string;
+      brand_sentiment: 'positive' | 'negative' | 'neutral';
+      helpfulness_sentiment: 'positive' | 'negative' | 'neutral';
+      keyword_matches: string[];
+      score?: number;
+      created_utc?: number;
+    },
+    postContext: {
+      title: string;
+      subreddit: string;
+      pain_point: string;
+      audience_summary: string;
+      content?: string;
+    }
+  ): string {
+    return `Generate a Reddit comment response for this specific comment:
+
+**Original Post Context:**
+- Subreddit: r/${postContext.subreddit}
+- Post Title: ${postContext.title}
+- Pain Point: ${postContext.pain_point}
+- Audience: ${postContext.audience_summary}
+
+**Comment to Respond To:**
+- Author: u/${commentContext.author}
+- Content: "${commentContext.content}"
+- Brand Sentiment: ${commentContext.brand_sentiment}
+- Helpfulness: ${commentContext.helpfulness_sentiment}
+- Keywords Mentioned: ${commentContext.keyword_matches.join(', ')}
+- Score: ${commentContext.score || 'Unknown'}
+
+**Your Task:**
+Generate a single, authentic Reddit comment that responds directly to u/${commentContext.author}'s comment. Your response should:
+
+1. **Address Their Specific Point**: Respond to what they actually said, not just the general topic
+2. **Match Their Energy**: Acknowledge their ${commentContext.brand_sentiment} brand sentiment appropriately
+3. **Add Genuine Value**: Provide helpful insight, experience, or information relevant to their comment
+4. **Be Community-Focused**: Sound like a peer in the r/${postContext.subreddit} community
+5. **Stay Authentic**: Avoid corporate speak, be conversational and human
+
+Remember: This is a response to their specific comment, not a general post about the topic. Make it feel like a natural part of the conversation thread.`;
+  }
+
+  /**
+   * Parse Claude's response into structured comment response
+   * Why this matters: Converts Claude's JSON response into typed response object
+   * for consistent frontend consumption.
+   */
+  private parseCommentResponse(content: string): CommentResponse {
+    try {
+      // Clean the content to extract JSON
+      let cleanContent = content.trim();
+      
+      // Remove any markdown code blocks if present
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+
+      const parsed = JSON.parse(cleanContent);
+      
+      if (!parsed.response || !parsed.response.content) {
+        throw new Error('Invalid response format: missing response.content');
+      }
+
+      // Validate and process response
+      let content_text = parsed.response.content.trim();
+      const MAX_COMMENT_LENGTH = 1500; // Allow for longer, more detailed Reddit comments
+      
+      if (content_text.length > MAX_COMMENT_LENGTH) {
+        console.warn(`Comment response too long (${content_text.length} chars), applying smart truncation`);
+        
+        // Smart truncation: find the last complete sentence within the limit
+        const truncatedAtLimit = content_text.substring(0, MAX_COMMENT_LENGTH - 3);
+        const lastSentenceEnd = Math.max(
+          truncatedAtLimit.lastIndexOf('.'),
+          truncatedAtLimit.lastIndexOf('!'),
+          truncatedAtLimit.lastIndexOf('?')
+        );
+        
+        if (lastSentenceEnd > MAX_COMMENT_LENGTH * 0.7) {
+          content_text = content_text.substring(0, lastSentenceEnd + 1);
+        } else {
+          const lastSpace = truncatedAtLimit.lastIndexOf(' ');
+          content_text = content_text.substring(0, lastSpace) + '...';
+        }
+      }
+
+      const commentResponse: CommentResponse = {
+        id: `comment_response_${Date.now()}`,
+        content: content_text,
+        engagement_strategy: parsed.response.engagement_strategy || 'Responds authentically to the specific comment',
+        tone_match: parsed.response.tone_match || 'Matches the commenter\'s sentiment appropriately',
+        value_provided: parsed.response.value_provided || 'Provides relevant insight and builds community relationships'
+      };
+
+      console.log(`✅ Successfully parsed comment response`);
+      return commentResponse;
+
+    } catch (error) {
+      console.error('Error parsing comment response:', error);
+      // Return fallback response if parsing fails
+      return this.getFallbackCommentResponse();
+    }
+  }
+
+  /**
+   * Provide fallback comment response if Claude generation fails
+   * Why this matters: Ensures the service always returns a usable response
+   * even if AI generation encounters issues.
+   */
+  private getFallbackCommentResponse(): CommentResponse {
+    return {
+      id: 'comment_response_fallback',
+      content: 'That\'s a really good point! I\'ve seen similar situations come up in the community. What\'s been your experience with that approach?',
+      engagement_strategy: 'Acknowledges their point and asks for their experience to continue the conversation',
+      tone_match: 'Neutral and supportive, works for any sentiment',
+      value_provided: 'Shows engagement and invites them to share more insights'
+    };
+  }
 }
 
 // Type definitions for Reddit engagement responses
@@ -416,6 +708,50 @@ export interface RedditEngagementRequest {
     pain_point: string;
     content_opportunity: string;
     audience_summary: string;
+  };
+  brand_kit?: any;
+}
+
+// Type definitions for comment generation
+export interface CommentResponse {
+  id: string;
+  content: string;
+  engagement_strategy: string;
+  tone_match: string;
+  value_provided: string;
+}
+
+export interface CommentGenerationResponse {
+  success: boolean;
+  response: CommentResponse;
+  metadata: {
+    subreddit: string;
+    post_title: string;
+    comment_author: string;
+    comment_brand_sentiment: 'positive' | 'negative' | 'neutral';
+    comment_helpfulness_sentiment: 'positive' | 'negative' | 'neutral';
+    keywords_matched: string[];
+    generation_timestamp: string;
+    brand_context_applied: boolean;
+  };
+}
+
+export interface CommentGenerationRequest {
+  comment_context: {
+    content: string;
+    author: string;
+    brand_sentiment: 'positive' | 'negative' | 'neutral';
+    helpfulness_sentiment: 'positive' | 'negative' | 'neutral';
+    keyword_matches: string[];
+    score?: number;
+    created_utc?: number;
+  };
+  post_context: {
+    title: string;
+    subreddit: string;
+    pain_point: string;
+    audience_summary: string;
+    content?: string;
   };
   brand_kit?: any;
 }
