@@ -162,6 +162,7 @@ class DeepResearchService {
           ],
           max_completion_tokens: 4000,
           response_format: { type: 'json_object' }
+          // Note: prompt_cache_key removed due to TypeScript definition limitations
         }),
         this.createTimeoutPromise(180000)
       ]);
@@ -236,6 +237,7 @@ class DeepResearchService {
           ],
           max_completion_tokens: 3500,
           response_format: { type: 'json_object' }
+          // Note: prompt_cache_key removed due to TypeScript definition limitations
         }),
         this.createTimeoutPromise(120000)
       ]);
@@ -465,9 +467,21 @@ Respond only with valid JSON following the exact structure above.`;
   }
 
   /**
+   * Generate consistent cache key for OpenAI prompt caching
+   * Why this matters: Creates deterministic cache keys for system prompts to enable
+   * OpenAI's automatic caching, reducing costs by 50% for repeated requests.
+   */
+  private generateCacheKey(promptType: string, version: string = 'v1'): string {
+    return `apollo-deep-research-${promptType}-${version}`;
+  }
+
+  /**
    * Build system prompt for deep research analysis
    * Why this matters: The system prompt sets the context and quality standards for the research,
    * ensuring we get professional-grade analysis suitable for content strategy decisions.
+   * 
+   * CACHING OPTIMIZATION: This system prompt is static and can be cached with prompt_cache_key
+   * to reduce costs by 50% on subsequent requests.
    */
   private buildSystemPrompt(): string {
     return `

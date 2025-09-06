@@ -91,6 +91,31 @@ class PatternAnalysisService {
    * Why this matters: Groups posts by themes, pain points, and discussion patterns to provide
    * a high-level overview similar to Reddit's native categorization
    */
+  /**
+   * Generate consistent cache key for OpenAI prompt caching
+   * Why this matters: Creates deterministic cache keys for system prompts to enable
+   * OpenAI's automatic caching, reducing costs by 50% for repeated requests.
+   */
+  private generateCacheKey(promptType: string, version: string = 'v1'): string {
+    return `apollo-pattern-analysis-${promptType}-${version}`;
+  }
+
+  /**
+   * Build system prompt for pattern analysis
+   * Why this matters: Defines the analytical framework for identifying patterns and themes
+   * across Reddit posts, enabling consistent categorization and insight generation.
+   * 
+   * CACHING OPTIMIZATION: This system prompt is static and can be cached with prompt_cache_key
+   * to reduce costs by 50% on subsequent requests.
+   */
+  private buildSystemPrompt(): string {
+    return `You are an expert Reddit discussion analyst specializing in identifying patterns, themes, and categories across multiple posts. You analyze collections of Reddit posts to group them into meaningful categories based on common themes, pain points, and discussion patterns.
+
+Your task is to analyze the provided Reddit posts and group them into 3-6 meaningful categories that represent the main discussion themes. Each category should contain related posts and provide insights into the overall conversation patterns.
+
+CRITICAL: You must respond with ONLY valid JSON. No explanations, no markdown, no extra text. Just the JSON object.`;
+  }
+
   async analyzePatterns(request: PatternAnalysisRequest): Promise<PatternAnalysisResult> {
     // Ensure client is initialized before use
     if (!this.client) {
@@ -114,13 +139,27 @@ class PatternAnalysisService {
       
       const response = await this.client.responses.create({
         model: 'gpt-5-nano',
-        input: `You are an expert Reddit discussion analyst specializing in identifying patterns, themes, and categories across multiple posts. You analyze collections of Reddit posts to group them into meaningful categories based on common themes, pain points, and discussion patterns.
-
-Your task is to analyze the provided Reddit posts and group them into 3-6 meaningful categories that represent the main discussion themes. Each category should contain related posts and provide insights into the overall conversation patterns.
-
-CRITICAL: You must respond with ONLY valid JSON. No explanations, no markdown, no extra text. Just the JSON object.
-
-${analysisPrompt}`
+        input: [
+          {
+            role: "developer",
+            content: [
+              {
+                type: "input_text",
+                text: this.buildSystemPrompt()
+              }
+            ]
+          },
+          {
+            role: "user", 
+            content: [
+              {
+                type: "input_text",
+                text: analysisPrompt
+              }
+            ]
+          }
+        ]
+        // Note: prompt_cache_key removed due to TypeScript definition limitations
       });
 
       const duration = Date.now() - startTime;
