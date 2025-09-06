@@ -29,6 +29,8 @@ import sitemapRoutes from './routes/sitemap';
 import sitemapChunkedRoutes from './routes/sitemapChunked';
 import redditEngagementRoutes from './routes/redditEngagement';
 import jokesRoutes from './routes/jokes';
+import abTestingRoutes from './routes/abTesting';
+import cacheInvalidationRoutes from './routes/cacheInvalidation';
 
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || '3003', 10);
@@ -70,6 +72,8 @@ app.use('/api/sitemap', sitemapRoutes);
 app.use('/api/sitemap-chunked', sitemapChunkedRoutes);
 app.use('/api/reddit-engagement', redditEngagementRoutes);
 app.use('/api/jokes', jokesRoutes);
+app.use('/api/ab-testing', abTestingRoutes);
+app.use('/api/cache-invalidation', cacheInvalidationRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {

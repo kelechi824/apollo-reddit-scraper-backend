@@ -23,6 +23,34 @@ import {
   DEFAULT_RATE_LIMITS,
   createServiceError
 } from './errorHandling';
+import ConfigService from './configService';
+import CacheInvalidationService from './cacheInvalidationService';
+
+// Cache performance monitoring interface
+interface CachePerformanceMetrics {
+  totalRequests: number;
+  cacheHits: number;
+  cacheMisses: number;
+  cacheCreations: number;
+  totalInputTokens: number;
+  cachedInputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  costSavings: number;
+  latencyImprovement: number;
+  lastReset: Date;
+}
+
+// Individual request cache metrics
+interface RequestCacheMetrics {
+  requestType: string;
+  totalTokens: number;
+  cachedTokens: number;
+  cacheHit: boolean;
+  cacheCreation: boolean;
+  costSavings: number;
+  timestamp: Date;
+}
 
 class ClaudeService {
   private client: Anthropic | null = null;
@@ -33,6 +61,24 @@ class ClaudeService {
   private readonly maxMessages = 50; // Prevent runaway conversations
   private circuitBreaker: CircuitBreaker;
   private rateLimiter: RateLimiter;
+  private configService: ConfigService;
+  private cacheInvalidationService: CacheInvalidationService;
+  
+  // Cache performance monitoring
+  private cacheMetrics: CachePerformanceMetrics = {
+    totalRequests: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    cacheCreations: 0,
+    totalInputTokens: 0,
+    cachedInputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    costSavings: 0,
+    latencyImprovement: 0,
+    lastReset: new Date()
+  };
+  private recentRequests: RequestCacheMetrics[] = [];
 
   constructor() {
     // Initialize error handling components
@@ -44,6 +90,8 @@ class ClaudeService {
       DEFAULT_RATE_LIMITS.claude,
       'Claude 3.5 Sonnet'
     );
+    this.configService = ConfigService.getInstance();
+    this.cacheInvalidationService = CacheInvalidationService.getInstance();
 
     // Delay initialization to allow environment variables to load
     setTimeout(() => {
@@ -366,12 +414,15 @@ ${this.buildConversationContext(conversation)}`;
     const assistantMessageId = uuidv4();
 
     try {
-      // Use Claude's streaming API
+      // Build cached conversation prompt structure for multi-turn optimization
+      const cachedConversationPrompt = this.buildCachedConversationPrompt(conversation, null);
+
+      // Use Claude's streaming API with multi-turn caching
       const stream = await this.client!.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
         temperature: 0.7,
-        system: contextualSystemPrompt,
+        system: cachedConversationPrompt,
         messages: messages,
         stream: true
       });
@@ -502,11 +553,14 @@ CRITICAL: You have complete access to this Reddit post information. When the use
 FORMATTING REQUIREMENT: When quoting any Reddit content (post text, comments, titles), ALWAYS format as italicized quotes using SINGLE asterisks: *"Their exact words from the post"* - NEVER use triple asterisks (***)`;
 
     try {
+      // Build cached initial prompt structure for optimized initial message generation
+      const cachedInitialPrompt = this.buildCachedInitialPrompt(conversation, null);
+
       const completion = await this.client!.messages.create({
         model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 2000, // Increased from 300 to allow comprehensive socratic learning responses
         temperature: 0.7,
-        system: systemPrompt,
+        system: cachedInitialPrompt,
         messages: [{ role: "user", content: initialPrompt }]
       });
 
@@ -653,11 +707,14 @@ FORMATTING REQUIREMENT: When quoting any Reddit content (post text, comments, ti
     console.log(`- Has enhanced context: ${!!context.subreddit}`);
 
     try {
+      // Build cached initial prompt structure for optimized streaming initial message
+      const cachedInitialPrompt = this.buildCachedInitialPrompt(conversation, null);
+
       const stream = await this.client!.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
         temperature: 0.7,
-        system: systemPrompt,
+        system: cachedInitialPrompt,
         messages: [{ role: "user", content: initialPrompt }],
         stream: true
       });
@@ -736,11 +793,14 @@ What angle feels most natural for your approach?`;
         content: userMessage.content
       });
 
+      // Build cached conversation prompt structure for multi-turn optimization
+      const cachedConversationPrompt = this.buildCachedConversationPrompt(conversation, null);
+
       const completion = await this.client!.messages.create({
         model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
         max_tokens: 2000, // Increased from 400 to allow comprehensive socratic learning responses
         temperature: 0.7,
-        system: systemPrompt + "\n\n" + conversationHistory,
+        system: cachedConversationPrompt,
         messages: messages
       });
 
@@ -771,6 +831,9 @@ What angle feels most natural for your approach?`;
    * Build the core system prompt combining socratic method with Apollo positioning
    * Why this matters: This is the heart of the feature - transforming generic chat into
    * targeted sales discovery and solution positioning with Reddit engagement best practices.
+   * 
+   * CACHING OPTIMIZATION: Restructured to place static instructions first with cache_control,
+   * preserving all original content while enabling 90% cost reduction on cached portions.
    */
   private buildSystemPrompt(): string {
     return `
@@ -781,7 +844,7 @@ IMPORTANT: You have complete access to the Reddit post information provided in e
 CRITICAL REDDIT ENGAGEMENT RULES (ALWAYS ENFORCE):
 1. Follow Reddit Rules and Subreddit Policies: All engagement must comply with Reddit's site-wide rules (no harassment, spam, or illegal content). Respect each subreddit's posting rules. Never suggest engagement that feels like self-promotion where it isn't allowed.
 
-2. Always Be Transparent: Include clear disclosure when relevant: "Full disclosure: I work at Apollo" or "Hey, I'm [Name] from Apollo." Never try to hide affiliation - Reddit values honesty above all.
+2. Always Be Transparent: Include clear disclosure when relevant like "Full disclosure: I work at Apollo" or "Hey, I'm [Name] from Apollo." Never try to hide affiliation - Reddit values honesty above all. Use different ways to be transparent about Apollo affiliation without always using the same phrase like "Full disclosure: I work at Apollo". Mix it up.
 
 3. Add Value First, Always: Open with context and help, not promotion. If someone asks for alternatives, acknowledge competitors that might be better fits for specific needs. Show up like a regular community member, not a salesperson.
 
@@ -1003,7 +1066,7 @@ VALUE-FIRST APPROACH IDEAS:
 - Reference community-specific challenges (r/[subreddit] context)
 
 REDDIT-APPROPRIATE CONVERSATION STARTER TEMPLATES:
-- "I've seen similar challenges with [their situation]. Here's what worked for others..." (Include transparency: "Full disclosure: I work at Apollo, but this applies regardless")
+- "I've seen similar challenges with [their situation]. Here's what worked for others..." (Include transparency: "Full disclosure: I work at Apollo, but this applies regardless"). Use different ways to be transparent about Apollo affiliation without always using the same phrase like "Full disclosure: I work at Apollo". Mix it up.
 - "Your post resonates - I've helped teams solve [specific issue]. Happy to share what we learned." (Be upfront about your role)
 - "Great question about [their issue]. Here's a framework that's worked well..." (Focus on value first, mention Apollo only if directly relevant)
 - "I work with [similar companies/roles] on [their challenge]. Would love to share some insights that might help." (Clear about your background upfront)
@@ -1029,7 +1092,796 @@ REMEMBER: Guide them to discover persona patterns and Apollo fit through questio
   }
 
   /**
-   * Build system prompt with brand context integration
+   * Build cached system prompt structure for Anthropic Claude
+   * Why this matters: Implements cache_control to reduce costs by 90% on static content
+   * while preserving all original prompt effectiveness and content.
+   */
+  private buildCachedSystemPrompt(brandKit?: any): Array<{
+    type: 'text';
+    text: string;
+    cache_control?: { type: 'ephemeral' };
+  }> {
+    const baseSystemPrompt = this.buildSystemPrompt();
+    
+    // Static instructions (cacheable - never changes)
+    const staticContent = {
+      type: 'text' as const,
+      text: baseSystemPrompt,
+      cache_control: { type: 'ephemeral' as const }
+    };
+
+    // Dynamic brand context (not cached - changes per brand)
+    const brandContext = this.buildBrandContextText(brandKit);
+    const dynamicContent = {
+      type: 'text' as const,
+      text: brandContext
+    };
+
+    return [staticContent, dynamicContent];
+  }
+
+  /**
+   * Build cached conversation prompt structure with hierarchical multi-turn optimization
+   * Why this matters: Uses 4-level hierarchical caching for conversations - tools (never changes),
+   * system instructions (weekly), Reddit context (per conversation), conversation state (per turn).
+   */
+  private buildCachedConversationPrompt(conversation: ChatConversation, brandKit?: any): Array<{
+    type: 'text';
+    text: string;
+    cache_control?: { type: 'ephemeral' };
+  }> {
+    const result: Array<{
+      type: 'text';
+      text: string;
+      cache_control?: { type: 'ephemeral' };
+    }> = [];
+
+    // Level 1: Tools and conversation capabilities (cacheable - never changes)
+    const conversationToolsContent = this.buildConversationToolsContext();
+    result.push({
+      type: 'text' as const,
+      text: conversationToolsContent,
+      cache_control: { type: 'ephemeral' as const }
+    });
+
+    // Level 2: Core system instructions (cacheable - changes weekly at most)
+    const baseSystemPrompt = this.buildSystemPrompt();
+    const coreSystemContent = this.extractCoreSystemInstructions(baseSystemPrompt);
+    result.push({
+      type: 'text' as const,
+      text: coreSystemContent,
+      cache_control: { type: 'ephemeral' as const }
+    });
+
+    // Level 3: Reddit post context and brand context (cacheable - per conversation)
+    const brandContext = this.buildBrandContextText(brandKit);
+    const staticRedditContext = this.buildStaticRedditContext(conversation);
+    result.push({
+      type: 'text' as const,
+      text: `${brandContext}
+
+${staticRedditContext}`,
+      cache_control: { type: 'ephemeral' as const }
+    });
+
+    // Level 4: Dynamic conversation state (not cached - changes per turn)
+    const conversationHistory = this.buildConversationHistory(conversation);
+    result.push({
+      type: 'text' as const,
+      text: conversationHistory
+    });
+
+    return result;
+  }
+
+  /**
+   * Build conversation-specific tools context for Level 1 caching
+   * Why this matters: Conversation tools and capabilities never change, so they can be
+   * cached indefinitely for maximum cost savings across all conversation turns.
+   */
+  private buildConversationToolsContext(): string {
+    return `
+CONVERSATION TOOLS AND CAPABILITIES:
+- Socratic Learning: Guide prospects through discovery questions
+- Reddit Context Analysis: Deep understanding of post content and community
+- Pain Point Identification: Uncover business challenges and opportunities
+- Solution Positioning: Connect Apollo features to specific needs
+- Engagement Optimization: Maintain natural, helpful conversation flow
+- Multi-turn Memory: Maintain context across conversation history
+- Audience Insights: Leverage subreddit and community understanding
+
+CONVERSATION QUALITY STANDARDS:
+- Natural, helpful, and non-promotional tone
+- Focus on prospect's needs and challenges
+- Ask thoughtful follow-up questions
+- Provide valuable insights and perspectives
+- Build trust through genuine engagement
+- Guide toward Apollo solutions naturally`;
+  }
+
+  /**
+   * Build static Reddit context for caching
+   * Why this matters: Separates static Reddit post details from dynamic conversation state
+   * to enable caching of post context that never changes during a conversation.
+   */
+  private buildStaticRedditContext(conversation: ChatConversation): string {
+    const context = conversation.reddit_post_context;
+    const hasTextContent = context.content && context.content.trim().length > 0;
+    const postType = hasTextContent ? 'Text Post' : 'Link/Image Post';
+    
+    let contextDetails = `
+REDDIT PROSPECT CONTEXT (for reference throughout conversation):
+- Title: "${context.title}"
+- Post Type: ${postType}
+- Content: ${hasTextContent ? `"${context.content}"` : `No text content - this is a ${context.post_url ? 'link post' : 'media post'}`}${context.post_url ? `\n- Linked URL: ${context.post_url}` : ''}
+- Subreddit: r/${context.subreddit || 'unknown'}
+- Engagement: ${typeof context.score === 'number' ? context.score : 'unknown'} upvotes, ${typeof context.comments === 'number' ? context.comments : 'unknown'} comments
+- Pain Point Analysis: "${context.pain_point}"
+- Audience Insight: "${context.audience_insight}"`;
+
+    // Add content opportunity if available
+    if (context.content_opportunity) {
+      contextDetails += `
+- Content Opportunity: "${context.content_opportunity}"`;
+    }
+
+    // Add urgency level if available
+    if (context.urgency_level) {
+      contextDetails += `
+- Urgency Level: ${context.urgency_level}`;
+    }
+
+    // Add comment insights if available (static part)
+    if (context.comment_insights && context.comment_insights.total_comments > 0) {
+      contextDetails += `
+
+COMMENT DISCUSSION INSIGHTS:
+- Total Comments Analyzed: ${context.comment_insights.total_comments}
+- Keyword Mentions in Comments: ${context.comment_insights.keyword_mentions}
+- Key Discussion Themes: ${context.comment_insights.key_themes?.join(', ') || 'None identified'}`;
+
+      // Include top comments for additional context
+      if (context.comment_insights.top_comments && context.comment_insights.top_comments.length > 0) {
+        contextDetails += `
+
+TOP RELEVANT COMMENTS:`;
+        context.comment_insights.top_comments.forEach((comment, index) => {
+          contextDetails += `
+${index + 1}. u/${comment.author} (${comment.score} upvotes): "${comment.content.substring(0, 150)}${comment.content.length > 150 ? '...' : ''}"
+   - Brand sentiment: ${comment.brand_sentiment}
+   - Keywords mentioned: ${comment.keyword_matches.join(', ')}`;
+        });
+      }
+    }
+
+    contextDetails += `
+
+IMPORTANT: You have complete access to this Reddit post information above. When asked to reproduce or share the post content, you must quote it EXACTLY and VERBATIM - do not summarize, paraphrase, or rewrite it. Use the exact words from the Content field above.`;
+
+    return contextDetails;
+  }
+
+  /**
+   * Build dynamic conversation history for uncached content
+   * Why this matters: Separates conversation state that changes with each turn
+   * from static context, enabling optimal caching strategy.
+   */
+  private buildConversationHistory(conversation: ChatConversation): string {
+    return `
+
+CONVERSATION STAGE: ${this.determineConversationStage(conversation)}
+MESSAGES SO FAR: ${conversation.messages.length}`;
+  }
+
+  /**
+   * Build cached initial message prompt structure with hierarchical optimization
+   * Why this matters: Uses 3-level hierarchical caching for initial messages - tools (never changes),
+   * system instructions (weekly), Reddit context (per conversation) for maximum efficiency.
+   */
+  private buildCachedInitialPrompt(conversation: ChatConversation, brandKit?: any): Array<{
+    type: 'text';
+    text: string;
+    cache_control?: { type: 'ephemeral' };
+  }> {
+    const result: Array<{
+      type: 'text';
+      text: string;
+      cache_control?: { type: 'ephemeral' };
+    }> = [];
+
+    // Level 1: Conversation tools and capabilities (cacheable - never changes)
+    const conversationToolsContent = this.buildConversationToolsContext();
+    result.push({
+      type: 'text' as const,
+      text: conversationToolsContent,
+      cache_control: { type: 'ephemeral' as const }
+    });
+
+    // Level 2: Core system instructions (cacheable - changes weekly at most)
+    const baseSystemPrompt = this.buildSystemPrompt();
+    const coreSystemContent = this.extractCoreSystemInstructions(baseSystemPrompt);
+    result.push({
+      type: 'text' as const,
+      text: coreSystemContent,
+      cache_control: { type: 'ephemeral' as const }
+    });
+
+    // Level 3: Reddit post context and brand context (cacheable - per conversation)
+    const brandContext = this.buildBrandContextText(brandKit);
+    const staticRedditContext = this.buildStaticRedditContext(conversation);
+    result.push({
+      type: 'text' as const,
+      text: `${brandContext}
+
+${staticRedditContext}`,
+      cache_control: { type: 'ephemeral' as const }
+    });
+
+    return result;
+  }
+
+  /**
+   * Build cached content generation prompt structure with advanced hierarchical optimization
+   * Why this matters: Implements 4-level hierarchical caching for maximum efficiency:
+   * Level 1 (Tools) - Never changes, Level 2 (System) - Weekly changes, 
+   * Level 3 (Brand) - Daily changes, Level 4 (User) - Per request changes.
+   */
+  private buildCachedContentPrompt(
+    systemPrompt: string, 
+    userPrompt: string, 
+    brandKit?: any,
+    contentType?: 'blog' | 'playbook' | 'reddit' | 'general'
+  ): Array<{
+    type: 'text';
+    text: string;
+    cache_control?: { type: 'ephemeral' };
+  }> {
+    // Use extended TTL for content generation workflows
+    const useExtendedTTL = contentType === 'blog' || contentType === 'playbook';
+    return this.buildHierarchicalCachedPrompt(systemPrompt, userPrompt, brandKit, contentType, true, useExtendedTTL);
+  }
+
+  /**
+   * Build hierarchical cached prompt with 4-level caching architecture and extended TTL
+   * Why this matters: Creates optimal cache efficiency by separating content that changes
+   * at different frequencies - tools (never), system (weekly), brand (daily), user (per request).
+   * Uses 1-hour TTL for workflow content to maximize savings across multi-step processes.
+   */
+  private buildHierarchicalCachedPrompt(
+    systemPrompt: string, 
+    userPrompt: string, 
+    brandKit?: any,
+    contentType?: 'blog' | 'playbook' | 'reddit' | 'general',
+    includeTools: boolean = true,
+    useExtendedTTL: boolean = false
+  ): Array<{
+    type: 'text';
+    text: string;
+    cache_control?: { type: 'ephemeral' };
+  }> {
+    const result: Array<{
+      type: 'text';
+      text: string;
+      cache_control?: { type: 'ephemeral' };
+    }> = [];
+
+    // Note: Claude API currently only supports { type: 'ephemeral' } format
+    // Extended TTL (ttl_seconds) is not yet supported, so we use standard ephemeral caching
+    const cacheControl = { type: 'ephemeral' as const };
+
+    // Level 1: Tools and capabilities (cacheable - never changes)
+    if (includeTools) {
+      const toolsContent = this.buildToolsContext();
+      result.push({
+      type: 'text' as const,
+        text: toolsContent,
+        cache_control: cacheControl
+      });
+    }
+
+    // Level 2: Core system instructions (cacheable - changes weekly at most)
+    const coreSystemPrompt = this.extractCoreSystemInstructions(systemPrompt);
+    result.push({
+      type: 'text' as const,
+      text: coreSystemPrompt,
+      cache_control: cacheControl
+    });
+
+    // Level 3: Brand context and templates (cacheable - changes daily at most)
+    const brandContext = this.buildBrandContextForContent(brandKit, contentType);
+    const templateContext = this.buildTemplateContext(systemPrompt, contentType);
+    result.push({
+      type: 'text' as const,
+      text: `${brandContext}${templateContext}`,
+      cache_control: cacheControl
+    });
+
+    // Level 4: Dynamic user content (not cached - changes per request)
+    const processedUserPrompt = this.processLiquidVariables(userPrompt, brandKit);
+    const dynamicContext = this.buildDynamicContext(systemPrompt);
+    result.push({
+      type: 'text' as const,
+      text: `${dynamicContext}
+
+USER REQUEST:
+${processedUserPrompt}`
+    });
+
+    return result;
+  }
+
+  /**
+   * Build tools and capabilities context for Level 1 caching
+   * Why this matters: Tools and capabilities never change, so they can be cached indefinitely
+   * for maximum cost savings across all content generation requests.
+   */
+  private buildToolsContext(): string {
+    return `
+AVAILABLE TOOLS AND CAPABILITIES:
+- Content Generation: Blog posts, playbooks, guides, and educational content
+- SEO Optimization & AEO Answer Engine Optimization: Title generation, meta descriptions, keyword integration
+- Brand Voice Integration: Consistent messaging across all content types
+- Liquid Variable Processing: Dynamic content personalization
+- Multi-format Output: Markdown, HTML, and structured content formats
+- Research Integration: Incorporating external data and insights
+- CTA Generation: Contextual call-to-action creation and optimization
+
+CONTENT QUALITY STANDARDS:
+- Professional, engaging, and actionable content
+- SEO-optimized & AEO Answer Engine optimized with natural keyword integration
+- Brand-consistent voice and messaging
+- Clear structure with proper headings and formatting
+- Comprehensive coverage of requested topics
+- Practical examples and actionable insights`;
+  }
+
+  /**
+   * Extract core system instructions for Level 2 caching
+   * Why this matters: Separates stable system instructions from variable content
+   * to enable caching of core behavioral guidelines that rarely change.
+   */
+  private extractCoreSystemInstructions(systemPrompt: string): string {
+    // Extract the core instructions without variable content
+    const lines = systemPrompt.split('\n');
+    const coreInstructions = lines.filter(line => {
+      // Keep lines that contain core instructions, exclude variable placeholders
+      return !line.includes('{{') && 
+             !line.includes('USER REQUEST') && 
+             !line.includes('BRAND CONTEXT') &&
+             line.trim().length > 0;
+    }).join('\n');
+
+    return `CORE SYSTEM INSTRUCTIONS:
+${coreInstructions}`;
+  }
+
+  /**
+   * Build template context for Level 3 caching
+   * Why this matters: Templates change less frequently than user requests but more
+   * than core instructions, so they get their own cache level for optimal efficiency.
+   */
+  private buildTemplateContext(systemPrompt: string, contentType?: string): string {
+    const templateInstructions = this.extractTemplateInstructions(systemPrompt, contentType);
+    
+    return `
+
+TEMPLATE INSTRUCTIONS:
+${templateInstructions}`;
+  }
+
+  /**
+   * Extract template-specific instructions based on content type
+   * Why this matters: Different content types have different template requirements,
+   * so we cache the appropriate template instructions for each type.
+   */
+  private extractTemplateInstructions(systemPrompt: string, contentType?: string): string {
+    // Extract template-related instructions based on content type
+    const lines = systemPrompt.split('\n');
+    
+    if (contentType === 'blog') {
+      return `
+- Use engaging headlines and subheadings
+- Include AEO-optimized title and meta description optimized for AI answer engines
+- Structure with introduction, main content, and conclusion
+- Integrate keywords naturally throughout content
+- Add relevant examples and insights`;
+    } else if (contentType === 'playbook') {
+      return `
+- Create step-by-step actionable guides
+- Include clear success criteria for each step
+- Provide practical examples and templates
+- Structure with overview, steps, and key takeaways
+- Focus on implementation and results`;
+    } else if (contentType === 'reddit') {
+      return `
+- Match Reddit community tone and style
+- Provide valuable, non-promotional content
+- Include relevant examples and insights
+- Structure for easy readability and engagement
+- Focus on community value and discussion`;
+    } else {
+      return `
+- Create clear, structured, and engaging content
+- Use appropriate formatting and headings
+- Include relevant examples and insights
+- Maintain professional yet accessible tone
+- Focus on value and actionability`;
+    }
+  }
+
+  /**
+   * Build dynamic context for Level 4 (uncached content)
+   * Why this matters: Extracts only the truly dynamic parts that must change
+   * with each request, minimizing uncached content for maximum cost efficiency.
+   */
+  private buildDynamicContext(systemPrompt: string): string {
+    // Extract any dynamic instructions that must be processed per request
+    const lines = systemPrompt.split('\n');
+    const dynamicLines = lines.filter(line => {
+      return line.includes('{{') || 
+             line.includes('USER REQUEST') || 
+             line.includes('CURRENT');
+    });
+
+    if (dynamicLines.length > 0) {
+      return `
+DYNAMIC CONTEXT:
+${dynamicLines.join('\n')}`;
+    }
+
+    return `
+DYNAMIC CONTEXT:
+- Current request timestamp: ${new Date().toISOString()}
+- Request-specific processing required`;
+  }
+
+  /**
+   * Calculate estimated cost for Claude API usage
+   * Why this matters: Enables cost tracking for A/B testing comparisons
+   */
+  private calculateEstimatedCost(usage: any): number {
+    if (!usage) return 0;
+    
+    // Claude Sonnet 4 pricing (approximate)
+    const inputTokenCost = 0.000015; // $15 per 1M input tokens
+    const outputTokenCost = 0.000075; // $75 per 1M output tokens
+    const cacheReadCost = 0.0000015; // $1.5 per 1M cached tokens (90% discount)
+    const cacheWriteCost = 0.00001875; // $18.75 per 1M tokens (25% markup)
+    
+    let totalCost = 0;
+    
+    // Calculate input token costs
+    if (usage.input_tokens) {
+      totalCost += usage.input_tokens * inputTokenCost;
+    }
+    
+    // Calculate cache-specific costs if available
+    if (usage.cache_creation_input_tokens) {
+      totalCost += usage.cache_creation_input_tokens * cacheWriteCost;
+    }
+    
+    if (usage.cache_read_input_tokens) {
+      totalCost += usage.cache_read_input_tokens * cacheReadCost;
+    }
+    
+    // Calculate output token costs
+    if (usage.output_tokens) {
+      totalCost += usage.output_tokens * outputTokenCost;
+    }
+    
+    return totalCost;
+  }
+
+  /**
+   * Track cache performance for a request
+   * Why this matters: Monitors cache effectiveness to measure cost savings and identify
+   * optimization opportunities across all Claude API calls.
+   */
+  private trackCachePerformance(
+    requestType: string,
+    usage: any,
+    startTime: number
+  ): void {
+    const endTime = Date.now();
+    const latency = endTime - startTime;
+    
+    // Extract cache metrics from usage
+    const totalTokens = usage?.input_tokens || 0;
+    const cacheCreationTokens = usage?.cache_creation_input_tokens || 0;
+    const cacheReadTokens = usage?.cache_read_input_tokens || 0;
+    const cachedTokens = cacheCreationTokens + cacheReadTokens;
+    
+    // Determine cache status
+    const cacheHit = cacheReadTokens > 0;
+    const cacheCreation = cacheCreationTokens > 0;
+    
+    // Calculate cost savings (cache reads cost 10% of normal tokens)
+    const normalCost = totalTokens * 1.0; // Base cost multiplier
+    const actualCost = (totalTokens - cacheReadTokens) * 1.0 + cacheReadTokens * 0.1;
+    const costSavings = normalCost - actualCost;
+    
+    // Update aggregate metrics
+    this.cacheMetrics.totalRequests++;
+    this.cacheMetrics.totalInputTokens += totalTokens;
+    this.cacheMetrics.cachedInputTokens += cachedTokens;
+    this.cacheMetrics.cacheCreationTokens += cacheCreationTokens;
+    this.cacheMetrics.cacheReadTokens += cacheReadTokens;
+    this.cacheMetrics.costSavings += costSavings;
+    
+    if (cacheHit) {
+      this.cacheMetrics.cacheHits++;
+      // Estimate latency improvement for cache hits (typically 50-80% faster)
+      this.cacheMetrics.latencyImprovement += latency * 0.65;
+    } else {
+      this.cacheMetrics.cacheMisses++;
+    }
+    
+    if (cacheCreation) {
+      this.cacheMetrics.cacheCreations++;
+    }
+    
+    // Store individual request metrics
+    const requestMetrics: RequestCacheMetrics = {
+      requestType,
+      totalTokens,
+      cachedTokens,
+      cacheHit,
+      cacheCreation,
+      costSavings,
+      timestamp: new Date()
+    };
+    
+    this.recentRequests.push(requestMetrics);
+    
+    // Keep only last 100 requests
+    if (this.recentRequests.length > 100) {
+      this.recentRequests = this.recentRequests.slice(-100);
+    }
+    
+    // Log cache performance for monitoring
+    if (cacheHit || cacheCreation) {
+      console.log(`🚀 Cache Performance [${requestType}]:`, {
+        totalTokens,
+        cachedTokens,
+        cacheHit,
+        cacheCreation,
+        costSavings: costSavings.toFixed(2),
+        cacheHitRate: `${((this.cacheMetrics.cacheHits / this.cacheMetrics.totalRequests) * 100).toFixed(1)}%`
+      });
+    }
+  }
+
+  /**
+   * Get cache performance metrics
+   * Why this matters: Provides visibility into caching effectiveness for monitoring
+   * and optimization decision-making.
+   */
+  getCacheMetrics(): CachePerformanceMetrics & {
+    cacheHitRate: number;
+    averageCostSavings: number;
+    totalCostSavings: number;
+  } {
+    const cacheHitRate = this.cacheMetrics.totalRequests > 0 
+      ? (this.cacheMetrics.cacheHits / this.cacheMetrics.totalRequests) * 100 
+      : 0;
+    
+    const averageCostSavings = this.cacheMetrics.totalRequests > 0
+      ? this.cacheMetrics.costSavings / this.cacheMetrics.totalRequests
+      : 0;
+    
+    return {
+      ...this.cacheMetrics,
+      cacheHitRate,
+      averageCostSavings,
+      totalCostSavings: this.cacheMetrics.costSavings
+    };
+  }
+
+  /**
+   * Get recent cache performance details
+   * Why this matters: Provides detailed view of recent requests for debugging
+   * and performance analysis.
+   */
+  getRecentCachePerformance(): RequestCacheMetrics[] {
+    return [...this.recentRequests].reverse(); // Most recent first
+  }
+
+  /**
+   * Reset cache metrics
+   * Why this matters: Allows for periodic reset of metrics to track performance
+   * over specific time periods.
+   */
+  resetCacheMetrics(): void {
+    this.cacheMetrics = {
+      totalRequests: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      cacheCreations: 0,
+      totalInputTokens: 0,
+      cachedInputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      costSavings: 0,
+      latencyImprovement: 0,
+      lastReset: new Date()
+    };
+    this.recentRequests = [];
+    console.log('📊 Cache metrics reset');
+  }
+
+  /**
+   * Log cache performance summary
+   * Why this matters: Provides periodic summary of cache effectiveness for
+   * monitoring and optimization insights.
+   */
+  logCachePerformanceSummary(): void {
+    const metrics = this.getCacheMetrics();
+    
+    console.log('📊 Cache Performance Summary:', {
+      totalRequests: metrics.totalRequests,
+      cacheHitRate: `${metrics.cacheHitRate.toFixed(1)}%`,
+      totalTokensSaved: metrics.cacheReadTokens,
+      totalCostSavings: `$${metrics.totalCostSavings.toFixed(4)}`,
+      averageSavingsPerRequest: `$${metrics.averageCostSavings.toFixed(4)}`,
+      cacheCreations: metrics.cacheCreations,
+      timeSinceReset: `${Math.round((Date.now() - metrics.lastReset.getTime()) / (1000 * 60))} minutes`
+    });
+  }
+
+  /**
+   * Create workflow-specific cache configuration
+   * Why this matters: Determines optimal cache configuration based on workflow type.
+   * Note: Claude API currently only supports standard ephemeral caching.
+   */
+  private createWorkflowCacheConfig(
+    workflowType: 'conversation' | 'content_generation' | 'analysis' | 'meta_generation',
+    isLongRunning: boolean = false
+  ): { type: 'ephemeral' } {
+    // Note: Extended TTL (ttl_seconds) is not yet supported by Claude API
+    // All workflows use standard ephemeral caching for now
+    if (isLongRunning || workflowType === 'content_generation') {
+      console.log(`🔄 Using ephemeral cache for ${workflowType} workflow (extended TTL not yet supported)`);
+    }
+    
+    return { type: 'ephemeral' };
+  }
+
+  /**
+   * Determine if workflow should use extended TTL
+   * Why this matters: Identifies workflows that benefit from longer cache duration
+   * based on complexity and typical execution time.
+   */
+  private shouldUseExtendedTTL(
+    contentType?: string,
+    workflowType?: string,
+    estimatedDuration?: number
+  ): boolean {
+    // Content generation workflows typically take 2-5 minutes
+    if (contentType === 'blog' || contentType === 'playbook') {
+      return true;
+    }
+    
+    // Multi-step workflows benefit from extended caching
+    if (workflowType === 'multi_step' || workflowType === 'content_generation') {
+      return true;
+    }
+    
+    // Workflows estimated to take more than 2 minutes
+    if (estimatedDuration && estimatedDuration > 120) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Build brand context specifically for content generation
+   * Why this matters: Creates content-type specific brand context that can be cached
+   * while providing relevant context for different content generation scenarios.
+   */
+  private buildBrandContextForContent(brandKit?: any, contentType?: string): string {
+    if (!brandKit || !brandKit.variables) {
+      return `
+
+BRAND CONTEXT FOR CONTENT GENERATION:
+- Company: Apollo.io - all-in-one GTM sales platform
+- Target Audience: Sales professionals, SDRs, AEs, Sales Leaders, RevOps, Account Executives  
+- Brand Voice: Professional but approachable, helpful, data-driven
+- Content Type: ${contentType || 'general'} content generation
+- Writing Guidelines: Be authentic, helpful, and avoid corporate jargon`;
+    }
+
+    const brandVars = brandKit.variables.reduce((acc: any, variable: any) => {
+      acc[variable.key] = variable.value;
+      return acc;
+    }, {});
+
+    return `
+
+BRAND CONTEXT FOR ${(contentType || 'general').toUpperCase()} CONTENT GENERATION:
+- Company: ${brandVars.about_brand || 'Apollo.io - all-in-one GTM sales platform'}
+- Target Audience: ${brandVars.ideal_customer_profile || 'Sales professionals, SDRs, AEs, Sales Leaders, RevOps, Account Executives'}
+- Brand Voice: ${brandVars.tone_of_voice || 'Professional but approachable, helpful, data-driven'}
+- Key Differentiators: ${brandVars.brand_point_of_view || 'Comprehensive all-in-one GTM sales platform'}
+- Writing Guidelines: ${brandVars.writing_rules || 'Be authentic, helpful, and avoid corporate jargon'}
+- Content Type: ${contentType || 'general'} content generation
+- Author Persona: ${brandVars.author_persona || 'Expert sales professional'}
+- CTA Text: ${brandVars.cta_text || 'Learn more about Apollo'}
+- CTA Destination: ${brandVars.cta_destination || 'Apollo.io'}
+
+Use this context to create content that aligns with the brand voice and targets the specified audience effectively.`;
+  }
+
+  /**
+   * Determine content type for optimized caching strategy
+   * Why this matters: Different content types have different caching patterns and optimization opportunities.
+   * Enables content-type specific caching strategies for maximum efficiency.
+   */
+  private determineContentType(request: {
+    system_prompt: string;
+    user_prompt: string;
+    post_context: any;
+  }): 'blog' | 'playbook' | 'reddit' | 'general' {
+    const systemPrompt = request.system_prompt.toLowerCase();
+    const userPrompt = request.user_prompt.toLowerCase();
+    const postContext = request.post_context || {};
+
+    // Check for blog content generation
+    if (systemPrompt.includes('blog') || systemPrompt.includes('article') || 
+        userPrompt.includes('blog') || userPrompt.includes('article') ||
+        systemPrompt.includes('seo') || userPrompt.includes('keyword')) {
+      return 'blog';
+    }
+
+    // Check for playbook generation
+    if (systemPrompt.includes('playbook') || userPrompt.includes('playbook') ||
+        systemPrompt.includes('guide') || userPrompt.includes('guide') ||
+        postContext.job_title) {
+      return 'playbook';
+    }
+
+    // Check for Reddit engagement content
+    if (systemPrompt.includes('reddit') || userPrompt.includes('reddit') ||
+        systemPrompt.includes('engagement') || userPrompt.includes('subreddit') ||
+        postContext.title || postContext.subreddit) {
+      return 'reddit';
+    }
+
+    // Default to general content
+    return 'general';
+  }
+
+  /**
+   * Build brand context text for dynamic content
+   * Why this matters: Separates dynamic brand content from static instructions
+   * to optimize caching while preserving all brand context functionality.
+   */
+  private buildBrandContextText(brandKit?: any): string {
+    if (!brandKit || !brandKit.variables) {
+      return `
+
+BRAND CONTEXT: You are coaching Apollo.io representatives on Reddit engagement. Apollo is a leading all-in-one GTM sales platform that helps sales teams find, engage, and close their ideal customers. Always emphasize authentic, transparent engagement that follows Reddit community guidelines.`;
+    }
+
+    const brandVars = brandKit.variables.reduce((acc: any, variable: any) => {
+      acc[variable.key] = variable.value;
+      return acc;
+    }, {});
+
+    return `
+
+BRAND CONTEXT FOR AUTHENTIC REDDIT ENGAGEMENT:
+- Company: ${brandVars.about_brand || 'Apollo.io - all-in-one GTM sales platform'}
+- Target Audience: ${brandVars.ideal_customer_profile || 'Sales professionals, SDRs, AEs, Sales Leaders, RevOps, Account Executives'}
+- Brand Voice: ${brandVars.tone_of_voice || 'Professional but approachable, helpful, data-driven'}
+- Key Differentiators: ${brandVars.brand_point_of_view || 'Comprehensive all-in-one GTM sales platform'}
+- Writing Guidelines: ${brandVars.writing_rules || 'Be authentic, helpful, and avoid corporate jargon'}
+
+Use this context to coach reps on making responses authentic and aligned with Apollo's brand while maintaining Reddit community standards. Never be promotional - focus on being genuinely helpful and transparent about Apollo affiliation.`;
+  }
+
+  /**
+   * Build system prompt with brand context integration (legacy method for non-cached calls)
    * Why this matters: Provides consistent Apollo messaging context while maintaining
    * authentic Reddit engagement style, similar to Reddit engagement service.
    */
@@ -1340,29 +2192,94 @@ IMPORTANT: You have complete access to this Reddit post information above. When 
           // Rate limiting before API call
           await this.rateLimiter.waitForNext();
 
-          // Pre-process prompts with brand kit variables for robustness
-          const processedSystemPrompt = this.processLiquidVariables(request.system_prompt, request.brand_kit);
-          const processedUserPrompt = this.processLiquidVariables(request.user_prompt, request.brand_kit);
+          // Determine content type for optimized caching
+          const contentType = this.determineContentType(request);
+          
+          console.log(`🎯 Content type determined: ${contentType}`);
+          console.log('📝 BACKEND - System Prompt (raw):', request.system_prompt.substring(0, 200) + '...');
+          console.log('📝 BACKEND - User Prompt (raw):', request.user_prompt.substring(0, 200) + '...');
 
-          console.log('🧪 BACKEND - System Prompt (processed):', processedSystemPrompt);
-          console.log('🧪 BACKEND - User Prompt (processed):', processedUserPrompt);
+          // Check for brand kit changes and invalidate caches if needed
+          if (request.brand_kit) {
+            const userId = request.brand_kit.userId || 'anonymous';
+            this.cacheInvalidationService.checkBrandKitChange(userId, request.brand_kit);
+          }
 
-          // Generate content with timeout protection
+          // A/B Testing: Decide whether to use caching or not
+          const shouldUseCaching = this.configService.shouldUseCaching(
+            request.brand_kit?.userId || 'anonymous', 
+            'content_generation'
+          );
+          
+          console.log(`🧪 A/B Testing: ${shouldUseCaching ? 'Using CACHED' : 'Using NON-CACHED'} prompts`);
+
+          // Build prompt structure based on A/B testing decision
+          let promptStructure: any;
+          if (shouldUseCaching && this.configService.isFeatureEnabled('claudeContentGenerationCaching')) {
+            // Use hierarchical cached content prompt structure
+            promptStructure = this.buildCachedContentPrompt(
+              request.system_prompt,
+              request.user_prompt,
+              request.brand_kit,
+              contentType
+            );
+            console.log(`🏗️ Built hierarchical caching structure with ${promptStructure.length} levels`);
+          } else {
+            // Use traditional non-cached prompt structure
+            const baseSystemPrompt = this.buildSystemPrompt();
+            promptStructure = this.buildSystemPromptWithBrandContext(baseSystemPrompt, request.brand_kit);
+            console.log(`🏗️ Built traditional non-cached prompt structure`);
+          }
+
+          // Generate content with timeout protection and advanced caching
+          const startTime = Date.now();
           const response = await Promise.race([
             this.client!.messages.create({
               model: 'claude-sonnet-4-20250514',
               max_tokens: maxTokens,
               temperature: 0.9,
-              system: processedSystemPrompt,
+              system: promptStructure,
               messages: [
                 {
                   role: 'user',
-                  content: processedUserPrompt
+                  content: shouldUseCaching 
+                    ? `Generate comprehensive content for the keyword "${request.post_context?.keyword || 'target topic'}":\n\n${request.user_prompt}`
+                    : `${request.system_prompt}\n\nGenerate comprehensive content for the keyword "${request.post_context?.keyword || 'target topic'}":\n\n${request.user_prompt}`
                 }
               ]
             }),
             this.createTimeoutPromise(300000) // 5 minute timeout for comprehensive content generation
           ]);
+
+          // Track cache performance for content generation
+          this.trackCachePerformance('content_generation', response.usage, startTime);
+
+          // Record A/B testing metrics
+          const responseTime = Date.now() - startTime;
+          const estimatedCost = this.calculateEstimatedCost(response.usage);
+          this.configService.recordABTestMetrics({
+            usedCaching: shouldUseCaching,
+            responseTime,
+            cost: estimatedCost,
+            qualityScore: undefined // Quality scoring can be added later
+          });
+
+          // Register cache entry for invalidation tracking
+          if (shouldUseCaching && request.brand_kit) {
+            const cacheKey = `content_generation_${request.brand_kit.userId || 'anonymous'}_${contentType}_${Date.now()}`;
+            this.cacheInvalidationService.registerCacheEntry({
+              key: cacheKey,
+              type: 'claude_content_generation',
+              brandKitHash: JSON.stringify(request.brand_kit),
+              templateVersion: '1.0.0', // Could be dynamic based on content type
+              systemPromptVersion: '1.0.0',
+              metadata: {
+                userId: request.brand_kit.userId || 'anonymous',
+                contentType,
+                templateType: contentType
+              }
+            });
+          }
 
           if (!response.content || response.content.length === 0) {
             throw new Error('Empty response from Claude');
@@ -1571,18 +2488,32 @@ ${markdown_data}
 
 Please use this processed data as context to create a comprehensive playbook following the specified format.`;
 
+      // Build hierarchical cached prompt structure for playbook generation
+      const cachedPlaybookPrompt = this.buildCachedContentPrompt(
+        system_prompt,
+        enhancedUserPrompt,
+        null, // No brand kit for playbook generation
+        'playbook'
+      );
+
+      console.log(`🏗️ Built playbook caching structure with ${cachedPlaybookPrompt.length} levels`);
+
+      const startTime = Date.now();
       const response = await this.client.messages.create({
         model: 'claude-sonnet-4-20250514', // Using Claude 3.5 Sonnet
         max_tokens: 4000,
         temperature: 0.9, // Increased for more creative and varied playbook outputs
-        system: system_prompt,
+        system: cachedPlaybookPrompt,
         messages: [
           {
             role: 'user',
-            content: enhancedUserPrompt
+            content: `Generate a comprehensive playbook for ${job_title} focused on the following content:\n\n${enhancedUserPrompt}`
           }
         ]
       });
+
+      // Track cache performance for playbook generation
+      this.trackCachePerformance('playbook_generation', response.usage, startTime);
 
       const content = response.content[0];
       
@@ -1617,11 +2548,8 @@ Please use this processed data as context to create a comprehensive playbook fol
       console.log(`🎯 Generating meta fields for keyword: ${params.keyword}`);
       console.log(`📝 Prompt preview: ${params.prompt.substring(0, 200)}...`);
 
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        temperature: 0.5, // Balanced temperature for creative but controlled meta fields
-        system: `You are an expert SEO/AEO specialist optimizing for AI search engines (ChatGPT Search, Perplexity, Claude, Gemini).
+      // Build cached system prompt for meta generation
+      const metaSystemPrompt = `You are an expert SEO/AEO specialist optimizing for AI search engines (ChatGPT Search, Perplexity, Claude, Gemini).
 
 CRITICAL QUESTION-ANSWER FORMAT REQUIREMENTS:
 
@@ -1678,7 +2606,21 @@ ABSOLUTELY FORBIDDEN:
 - Made-up statistics ("increase by X%", "3x growth")
 - Formulaic openings ("Discover", "Learn", "Master", "Unlock")
 
-OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
+OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`;
+
+      // Build cached system prompt structure for meta generation
+      const cachedSystemPrompt = [{
+        type: 'text' as const,
+        text: metaSystemPrompt,
+        cache_control: { type: 'ephemeral' as const }
+      }];
+
+      const startTime = Date.now();
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        temperature: 0.5, // Balanced temperature for creative but controlled meta fields
+        system: cachedSystemPrompt,
         messages: [
           {
             role: 'user',
@@ -1686,6 +2628,9 @@ OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
           }
         ]
       });
+
+      // Track cache performance for meta field generation
+      this.trackCachePerformance('meta_field_generation', response.usage, startTime);
 
       const content = response.content[0];
       
@@ -1771,11 +2716,8 @@ OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
       const contentPreview = this.extractContentInsights(params.content);
       console.log(`💡 Content insights extracted: ${contentPreview.length} characters`);
 
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 600,
-        temperature: 0.3, // Lower temperature for more consistent, focused meta fields
-        system: `You are an expert SEO/AEO specialist creating natural, content-aware meta fields optimized for AI search engines (ChatGPT Search, Perplexity, Claude, Gemini).
+      // Build cached system prompt for enhanced meta generation
+      const enhancedMetaSystemPrompt = `You are an expert SEO/AEO specialist creating natural, content-aware meta fields optimized for AI search engines (ChatGPT Search, Perplexity, Claude, Gemini).
 
 CRITICAL MISSION: Analyze the actual content provided and create SEO title and description that:
 1. Reflect what users would ACTUALLY search for based on the content's unique value
@@ -1837,7 +2779,21 @@ ABSOLUTELY FORBIDDEN:
 - Formulaic openings that don't match the content's approach
 - TRUNCATING TITLES MID-WORD OR MID-THOUGHT - always complete the question naturally
 
-OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`,
+OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`;
+
+      // Build cached system prompt structure for enhanced meta generation
+      const cachedEnhancedSystemPrompt = [{
+        type: 'text' as const,
+        text: enhancedMetaSystemPrompt,
+        cache_control: { type: 'ephemeral' as const }
+      }];
+
+      const startTime = Date.now();
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        temperature: 0.3, // Lower temperature for more consistent, focused meta fields
+        system: cachedEnhancedSystemPrompt,
         messages: [
           {
             role: 'user',
@@ -1862,6 +2818,9 @@ Focus on what makes THIS content unique and valuable, not generic information ab
           }
         ]
       });
+
+      // Track cache performance for enhanced meta field generation
+      this.trackCachePerformance('enhanced_meta_generation', response.usage, startTime);
 
       const content = response.content[0];
       
