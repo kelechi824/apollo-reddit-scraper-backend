@@ -474,6 +474,81 @@ Use this context to make responses authentic and aligned with Apollo's brand whi
   }
 
   /**
+   * Generate multiple variations of Reddit responses for a specific comment
+   * Why this matters: Provides users with 3 different response options to choose from,
+   * allowing them to pick the tone and approach that best fits their style.
+   */
+  async generateCommentVariations(
+    commentContext: {
+      content: string;
+      author: string;
+      brand_sentiment: 'positive' | 'negative' | 'neutral';
+      helpfulness_sentiment: 'positive' | 'negative' | 'neutral';
+      keyword_matches: string[];
+      score?: number;
+      created_utc?: number;
+    },
+    postContext: {
+      title: string;
+      subreddit: string;
+      pain_point: string;
+      audience_summary: string;
+      content?: string;
+    },
+    brandKit?: any
+  ): Promise<CommentVariationsResponse> {
+    try {
+      console.log(`💬 Generating 3 comment variations for u/${commentContext.author} in r/${postContext.subreddit}`);
+
+      // Load and process brand kit
+      const processedBrandKit = await brandkitService.loadBrandKit(brandKit);
+      
+      // Build system prompt for comment variations
+      const systemPrompt = this.buildCommentVariationsSystemPrompt(processedBrandKit);
+      
+      // Build user prompt with comment and post context
+      const userPrompt = this.buildCommentUserPrompt(commentContext, postContext);
+
+      console.log('🤖 Sending request to Claude for comment variations generation...');
+
+      // Generate variations using Claude
+      const claudeResponse = await claudeService.generateContent({
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
+        post_context: {
+          title: postContext.title,
+          content: postContext.content || '',
+          subreddit: postContext.subreddit,
+          pain_point: postContext.pain_point,
+          audience_summary: postContext.audience_summary
+        },
+        brand_kit: brandKit,
+        content_length: 'short' // Comment responses should be concise
+      });
+
+      if (!claudeResponse || !claudeResponse.content) {
+        throw new Error('Failed to generate comment variations from Claude');
+      }
+
+      // Parse the response into structured format
+      const variations = this.parseCommentVariations(claudeResponse.content);
+
+      console.log(`✅ Generated ${variations.length} comment variations successfully`);
+      console.log(`🎯 Brand context applied: ${!!brandKit}`);
+
+      return {
+        success: true,
+        variations,
+        currentVariation: 0 // Default to first variation
+      };
+
+    } catch (error) {
+      console.error('❌ Error generating comment variations:', error);
+      throw new Error(`Comment variations generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Build system prompt specifically for comment responses
    * Why this matters: Creates focused prompts that generate responses to specific comments
    * rather than general post-level engagement.
@@ -508,9 +583,10 @@ RESPONSE STRATEGY:
 
 FORMATTING REQUIREMENTS:
 - Keep response concise but valuable (30-100 words typically)
-- Use proper Reddit formatting:
+- Use plain text formatting only:
   * Use line breaks between paragraphs if needed
-  * Use **bold** sparingly for key emphasis
+  * DO NOT use markdown formatting like **bold** or *italic*
+  * Write in plain text without any special formatting characters
   * Avoid excessive formatting
 - Make it scannable and easy to read
 - Sound like a natural reply in a conversation thread
@@ -680,6 +756,181 @@ Remember: This is a response to their specific comment, not a general post about
       value_provided: 'Shows engagement and invites them to share more insights'
     };
   }
+
+  /**
+   * Build system prompt specifically for comment variations
+   * Why this matters: Creates focused prompts that generate 3 different response styles
+   * to give users options for different tones and approaches.
+   */
+  private buildCommentVariationsSystemPrompt(brandKit: any): string {
+    const brandContext = this.buildBrandContext(brandKit);
+    
+    return `You are a content assistant tasked with generating 3 different Reddit comment response variations for Apollo.io, a B2B sales platform. Your goal is to create authentic, helpful responses to a specific comment while providing different tones and approaches for the user to choose from.
+
+CRITICAL REDDIT ENGAGEMENT RULES:
+1. Follow Reddit Rules and Subreddit Policies: All content must comply with Reddit's site-wide rules (no harassment, spam, or illegal content). Respect each subreddit's posting rules.
+
+2. Always Be Transparent: Include clear disclosure when relevant: "Full disclosure: I work at Apollo" or "Hey, I'm [Name] from Apollo." Never try to hide affiliation - Reddit values honesty above all.
+
+3. Add Value First, Always: Open with context and help, not promotion. Acknowledge their point and provide genuine value before any subtle mention of Apollo if relevant.
+
+4. Sound Human, Not Corporate: Write like a peer in the sales community having a genuine conversation. Avoid corporate jargon. Never sound like a bot or use overly formal language.
+
+5. Respond to Their Specific Point: Address what they actually said, not what you want to talk about. Show you read and understood their comment.
+
+6. Match Their Tone and Sentiment: If they're frustrated, acknowledge it. If they're excited, share that energy. If they're asking for help, be genuinely helpful.
+
+7. Respect Reddit Culture: Avoid emojis, hashtags, or LinkedIn-style language. Use subreddit norms. Never copy-paste corporate responses.
+
+VARIATION STRATEGY:
+Generate exactly 3 different response variations with these approaches:
+1. **Variation 1 - Supportive & Helpful**: Focus on being supportive and providing helpful insights
+2. **Variation 2 - Conversational & Engaging**: Focus on being conversational and asking engaging questions  
+3. **Variation 3 - Direct & Practical**: Focus on being direct and providing practical advice
+
+FORMATTING REQUIREMENTS:
+- Keep each response concise but valuable (30-100 words typically)
+- Use plain text formatting only:
+  * Use line breaks between paragraphs if needed
+  * DO NOT use markdown formatting like **bold** or *italic*
+  * Write in plain text without any special formatting characters
+  * Avoid excessive formatting
+- Make it scannable and easy to read
+- Sound like a natural reply in a conversation thread
+
+CRITICAL MISTAKES TO AVOID:
+- Don't ignore what they actually said
+- Don't turn every response into an Apollo pitch
+- Don't be defensive if they mention competitors or criticisms
+- Don't use corporate speak or marketing language
+- Don't make it about you or Apollo unless directly relevant
+- Don't be overly promotional or salesy
+
+AUTHENTIC ENGAGEMENT PRINCIPLES:
+- Show up like a regular community member first
+- Be genuinely helpful and add value
+- Acknowledge their expertise and experience
+- Build relationships, not just promote products
+- Respect the community culture and norms
+
+${brandContext}
+
+RESPONSE FORMAT:
+Return your response as a JSON object with this exact structure:
+{
+  "variations": [
+    {
+      "id": "variation_1",
+      "content": "[Response content for variation 1]",
+      "engagement_strategy": "[Brief description of the engagement approach]",
+      "tone_match": "[How this matches their sentiment/tone]",
+      "value_provided": "[What value this adds to the conversation]"
+    },
+    {
+      "id": "variation_2", 
+      "content": "[Response content for variation 2]",
+      "engagement_strategy": "[Brief description of the engagement approach]",
+      "tone_match": "[How this matches their sentiment/tone]",
+      "value_provided": "[What value this adds to the conversation]"
+    },
+    {
+      "id": "variation_3",
+      "content": "[Response content for variation 3]", 
+      "engagement_strategy": "[Brief description of the engagement approach]",
+      "tone_match": "[How this matches their sentiment/tone]",
+      "value_provided": "[What value this adds to the conversation]"
+    }
+  ]
+}
+
+Remember: These are responses to their specific comment, not general posts about the topic. Make each variation feel like a natural part of the conversation thread with different approaches.`;
+  }
+
+  /**
+   * Parse Claude's response into structured comment variations
+   * Why this matters: Converts Claude's JSON response into typed response objects
+   * for consistent frontend consumption with multiple options.
+   */
+  private parseCommentVariations(content: string): CommentResponse[] {
+    try {
+      // Clean the content to extract JSON
+      let cleanContent = content.trim();
+      
+      // Remove any markdown code blocks if present
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+
+      const parsed = JSON.parse(cleanContent);
+      
+      if (!parsed.variations || !Array.isArray(parsed.variations)) {
+        throw new Error('Invalid response format: missing variations array');
+      }
+
+      const variations: CommentResponse[] = [];
+      const MAX_COMMENT_LENGTH = 1500;
+
+      parsed.variations.forEach((variation: any, index: number) => {
+        if (!variation.content) {
+          throw new Error(`Invalid variation ${index + 1}: missing content`);
+        }
+
+        // Validate and process response
+        let content_text = variation.content.trim();
+        
+        if (content_text.length > MAX_COMMENT_LENGTH) {
+          console.warn(`Variation ${index + 1} too long (${content_text.length} chars), applying smart truncation`);
+          
+          // Smart truncation: find the last complete sentence within the limit
+          const truncatedAtLimit = content_text.substring(0, MAX_COMMENT_LENGTH - 3);
+          const lastSentenceEnd = Math.max(
+            truncatedAtLimit.lastIndexOf('.'),
+            truncatedAtLimit.lastIndexOf('!'),
+            truncatedAtLimit.lastIndexOf('?')
+          );
+          
+          if (lastSentenceEnd > MAX_COMMENT_LENGTH * 0.7) {
+            content_text = content_text.substring(0, lastSentenceEnd + 1);
+          } else {
+            const lastSpace = truncatedAtLimit.lastIndexOf(' ');
+            content_text = content_text.substring(0, lastSpace) + '...';
+          }
+        }
+
+        variations.push({
+          id: variation.id || `variation_${index + 1}`,
+          content: content_text,
+          engagement_strategy: variation.engagement_strategy || 'Responds authentically to the specific comment',
+          tone_match: variation.tone_match || 'Matches the commenter\'s sentiment appropriately',
+          value_provided: variation.value_provided || 'Provides relevant insight and builds community relationships'
+        });
+      });
+
+      // Ensure we have exactly 3 variations
+      if (variations.length < 3) {
+        console.warn(`Only ${variations.length} variations generated, padding with fallbacks`);
+        while (variations.length < 3) {
+          const fallback = this.getFallbackCommentResponse();
+          fallback.id = `variation_${variations.length + 1}`;
+          variations.push(fallback);
+        }
+      }
+
+      console.log(`✅ Successfully parsed ${variations.length} comment variations`);
+      return variations.slice(0, 3); // Ensure exactly 3 variations
+
+    } catch (error) {
+      console.error('Error parsing comment variations:', error);
+      // Return 3 fallback responses if parsing fails
+      return [
+        { ...this.getFallbackCommentResponse(), id: 'variation_1' },
+        { ...this.getFallbackCommentResponse(), id: 'variation_2' },
+        { ...this.getFallbackCommentResponse(), id: 'variation_3' }
+      ];
+    }
+  }
 }
 
 // Type definitions for Reddit engagement responses
@@ -720,6 +971,12 @@ export interface CommentResponse {
   engagement_strategy: string;
   tone_match: string;
   value_provided: string;
+}
+
+export interface CommentVariationsResponse {
+  success: boolean;
+  variations: CommentResponse[];
+  currentVariation: number;
 }
 
 export interface CommentGenerationResponse {

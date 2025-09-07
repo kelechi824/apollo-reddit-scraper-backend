@@ -704,21 +704,141 @@ class RedditServiceOptimized {
   }
 
   /**
-   * Find keyword matches in text
-   * Why this matters: Identifies which keywords appear in comment content
+   * Find keyword matches in text with enhanced matching for plurals and variations
+   * Why this matters: Identifies keywords and their variations (plurals, "ing" forms, etc.) 
+   * in comment content to provide comprehensive results when users search for terms like "prospect"
    */
   private findKeywordMatches(text: string, searchTerms: string[]): string[] {
-    const matches: string[] = [];
+    const foundKeywords: string[] = [];
     
     for (const term of searchTerms) {
-      // Use word boundaries to match whole words only
-      const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-      if (regex.test(text)) {
-        matches.push(term);
+      const trimmedTerm = term.trim();
+      if (!trimmedTerm) continue;
+      
+      // Method 1: Exact match with word boundaries (most precise)
+      const exactRegex = new RegExp(`\\b${trimmedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (exactRegex.test(text)) {
+        foundKeywords.push(trimmedTerm);
+        continue;
+      }
+      
+      // Method 2: Handle compound terms by checking individual words
+      if (trimmedTerm.includes(' ')) {
+        const words = trimmedTerm.split(' ').filter(w => w.length > 2);
+        const matchedWords = words.filter(word => {
+          const wordRegex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          return wordRegex.test(text);
+        });
+        
+        // If we match any significant word from the compound term, include it
+        if (matchedWords.length > 0) {
+          foundKeywords.push(trimmedTerm);
+          continue;
+        }
+      }
+      
+      // Method 3: Enhanced variation matching for plurals and common forms
+      const variations = this.generateKeywordVariations(trimmedTerm);
+      
+      for (const variation of variations) {
+        const variationRegex = new RegExp(`\\b${variation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        if (variationRegex.test(text)) {
+          foundKeywords.push(trimmedTerm);
+          break;
+        }
       }
     }
     
-    return matches;
+    return [...new Set(foundKeywords)]; // Remove duplicates
+  }
+
+  /**
+   * Generate keyword variations for enhanced matching
+   * Why this matters: Creates common variations of keywords (plurals, "ing" forms, etc.)
+   * to catch more relevant mentions in comments
+   */
+  private generateKeywordVariations(term: string): string[] {
+    const variations: string[] = [];
+    const lowerTerm = term.toLowerCase();
+    
+    // Basic plurals and verb forms
+    variations.push(
+      lowerTerm + 's',           // prospects
+      lowerTerm + 'ing',         // prospecting
+      lowerTerm + 'ed',          // prospected
+      lowerTerm + 'or',          // prospector (agent noun)
+      lowerTerm + 'ors',         // prospectors
+      lowerTerm + 'er',          // prospecter (alternative agent noun)
+      lowerTerm + 'ers'          // prospecters
+    );
+    
+    // Handle words ending in 'y' -> 'ies' (e.g., company -> companies)
+    if (lowerTerm.endsWith('y') && lowerTerm.length > 2) {
+      const stem = lowerTerm.slice(0, -1);
+      variations.push(stem + 'ies');
+    }
+    
+    // Handle words ending in 'e' for 'ing' form (e.g., sale -> selling, but also sales)
+    if (lowerTerm.endsWith('e') && lowerTerm.length > 2) {
+      const stem = lowerTerm.slice(0, -1);
+      variations.push(stem + 'ing');
+    }
+    
+    // Handle consonant doubling for 'ing' (e.g., plan -> planning)
+    if (lowerTerm.length >= 3) {
+      const lastChar = lowerTerm[lowerTerm.length - 1];
+      const secondLastChar = lowerTerm[lowerTerm.length - 2];
+      const thirdLastChar = lowerTerm[lowerTerm.length - 3];
+      
+      // Simple heuristic: if word ends with consonant-vowel-consonant pattern
+      if (this.isConsonant(lastChar) && this.isVowel(secondLastChar) && this.isConsonant(thirdLastChar)) {
+        variations.push(lowerTerm + lastChar + 'ing'); // plan -> planning
+        variations.push(lowerTerm + lastChar + 'ed');  // plan -> planned
+      }
+    }
+    
+    // Handle irregular plurals for common business terms
+    const irregularPlurals: Record<string, string[]> = {
+      'person': ['people'],
+      'child': ['children'],
+      'man': ['men'],
+      'woman': ['women'],
+      'foot': ['feet'],
+      'tooth': ['teeth'],
+      'analysis': ['analyses'],
+      'datum': ['data'],
+      'medium': ['media'],
+      'criterion': ['criteria']
+    };
+    
+    if (irregularPlurals[lowerTerm]) {
+      variations.push(...irregularPlurals[lowerTerm]);
+    }
+    
+    // Also check if the term itself might be a plural of an irregular form
+    for (const [singular, plurals] of Object.entries(irregularPlurals)) {
+      if (plurals.includes(lowerTerm)) {
+        variations.push(singular);
+      }
+    }
+    
+    return variations.filter(v => v !== lowerTerm); // Don't include the original term
+  }
+
+  /**
+   * Helper function to check if a character is a vowel
+   * Why this matters: Used in consonant doubling rules for generating variations
+   */
+  private isVowel(char: string): boolean {
+    return 'aeiou'.includes(char.toLowerCase());
+  }
+
+  /**
+   * Helper function to check if a character is a consonant
+   * Why this matters: Used in consonant doubling rules for generating variations
+   */
+  private isConsonant(char: string): boolean {
+    return /[bcdfghjklmnpqrstvwxyz]/i.test(char);
   }
 
   /**
