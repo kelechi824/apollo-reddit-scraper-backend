@@ -142,6 +142,75 @@ router.post('/generate-comment', async (req: Request, res: Response): Promise<an
 });
 
 /**
+ * POST /api/reddit-engagement/generate-comment-variations
+ * Generate 3 different variations of Reddit comment responses
+ */
+router.post('/generate-comment-variations', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { comment_context, post_context, brand_kit } = req.body;
+
+    // Validate required fields
+    if (!comment_context || !post_context) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Missing required fields: comment_context and post_context are required',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate comment_context fields
+    const requiredCommentFields = ['content', 'author', 'brand_sentiment', 'helpfulness_sentiment', 'keyword_matches'];
+    const missingCommentFields = requiredCommentFields.filter(field => !comment_context[field]);
+    
+    if (missingCommentFields.length > 0) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: `Missing required comment_context fields: ${missingCommentFields.join(', ')}`,
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate post_context fields
+    const requiredPostFields = ['title', 'subreddit', 'pain_point', 'audience_summary'];
+    const missingPostFields = requiredPostFields.filter(field => !post_context[field]);
+    
+    if (missingPostFields.length > 0) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: `Missing required post_context fields: ${missingPostFields.join(', ')}`,
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`💬 Comment variations request for r/${post_context.subreddit}: responding to u/${comment_context.author}`);
+
+    // Generate comment variations
+    const result = await redditEngagementService.generateCommentVariations(
+      comment_context,
+      post_context,
+      brand_kit
+    );
+
+    console.log(`✅ Successfully generated ${result.variations.length} comment variations`);
+
+    return res.status(200).json(result);
+
+  } catch (error) {
+    console.error('❌ Comment variations generation error:', error);
+    
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to generate comment variations',
+      status: 500,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
  * GET /api/reddit-engagement/health
  * Health check endpoint for Reddit engagement service
  */
