@@ -3,6 +3,7 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { HealthCheckResponse, ApiInfoResponse } from '../src/types';
 import redditRoutes from '../src/routes/reddit';
+import redditCommentsRoutes from '../src/routes/redditComments';
 import analysisRoutes from '../src/routes/analysis';
 import sheetsRoutes from '../src/routes/sheets';
 import workflowRoutes from '../src/routes/workflow';
@@ -10,10 +11,10 @@ import chatRoutes from '../src/routes/chat';
 import contentRoutes from '../src/routes/content';
 import playbooksRoutes from '../src/routes/playbooks';
 import blogCreatorRoutes from '../src/routes/blogCreator';
-import croRoutes from '../src/routes/cro';
 import gongRoutes from '../src/routes/gong';
 import gongAnalysisRoutes from '../src/routes/gongAnalysis';
 import gongChatRoutes from '../src/routes/gongChat';
+import croRoutes from '../src/routes/cro';
 import screenshotRoutes from '../src/routes/screenshot';
 import vocExtractionRoutes from '../src/routes/vocExtraction';
 import articleExtractionRoutes from '../src/routes/articleExtraction';
@@ -26,6 +27,8 @@ import sitemapRoutes from '../src/routes/sitemap';
 import sitemapChunkedRoutes from '../src/routes/sitemapChunked';
 import redditEngagementRoutes from '../src/routes/redditEngagement';
 import jokesRoutes from '../src/routes/jokes';
+import abTestingRoutes from '../src/routes/abTesting';
+import cacheInvalidationRoutes from '../src/routes/cacheInvalidation';
 import uncoverRoutes from '../src/routes/uncover';
 
 // Load environment variables
@@ -45,11 +48,12 @@ app.use(cors({
     : 'http://localhost:3002',
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // API Routes
 app.use('/api/reddit', redditRoutes);
+app.use('/api/reddit', redditCommentsRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/sheets', sheetsRoutes);
 app.use('/api/workflow', workflowRoutes);
@@ -57,11 +61,11 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/playbooks', playbooksRoutes);
 app.use('/api/blog-creator', blogCreatorRoutes);
-app.use('/api/cro', croRoutes);
 app.use('/api/gong', gongRoutes);
 app.use('/api/gong-analysis', gongAnalysisRoutes);
 app.use('/api/gong-chat', gongChatRoutes);
-app.use('/api/screenshot', screenshotRoutes);
+app.use('/api/cro', croRoutes);
+app.use('/api', screenshotRoutes);
 app.use('/api/voc-extraction', vocExtractionRoutes);
 app.use('/api/article-extraction', articleExtractionRoutes);
 app.use('/api/content-analysis', contentAnalysisRoutes);
@@ -73,6 +77,8 @@ app.use('/api/sitemap', sitemapRoutes);
 app.use('/api/sitemap-chunked', sitemapChunkedRoutes);
 app.use('/api/reddit-engagement', redditEngagementRoutes);
 app.use('/api/jokes', jokesRoutes);
+app.use('/api/ab-testing', abTestingRoutes);
+app.use('/api/cache-invalidation', cacheInvalidationRoutes);
 app.use('/api/uncover', uncoverRoutes);
 
 // Health check endpoint
@@ -103,6 +109,7 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         playbooks: '/api/playbooks/*',
         blogCreator: '/api/blog-creator/*',
         cro: '/api/cro/*',
+        gong: '/api/gong/*',
         gongAnalysis: '/api/gong-analysis/*',
         gongChat: '/api/gong-chat/*',
         screenshot: '/api/screenshot/*',
@@ -117,6 +124,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         sitemapChunked: '/api/sitemap-chunked/*',
         redditEngagement: '/api/reddit-engagement/*',
         jokes: '/api/jokes/*',
+        abTesting: '/api/ab-testing/*',
+        cacheInvalidation: '/api/cache-invalidation/*',
         uncover: '/api/uncover/*'
       }
     }
