@@ -36,6 +36,7 @@ export interface ApiInfoResponse {
     sitemapChunked: string;
     redditEngagement: string;
     jokes: string;
+    uncover: string;
   };
   };
 }
@@ -679,4 +680,42 @@ export interface RedditEngagementRequest {
     audience_summary: string;
   };
   brand_kit?: any;
+}
+
+// Uncover Feature Types
+export type UncoverCategory = 'solution_request' | 'advice_request' | 'pain_anger' | 'ideas';
+
+export interface UncoverCommunity {
+  id: string;
+  name: string;
+  description: string;
+  subreddits: string[];
+}
+
+export interface UncoverRequest {
+  community: string;
+  category: UncoverCategory;
+  limit?: number;
+  timeframe?: 'recent' | 'older' | 'hour' | 'day' | 'week' | 'month' | 'year';
+}
+
+export interface UncoverResponse {
+  success: boolean;
+  posts: AnalyzedPost[];
+  total_found: number;
+  category_used: UncoverCategory;
+  community_used: string;
+  subreddits_searched: string[];
+  search_patterns_used: string[];
+  workflow_id: string;
+  completed_at: string;
+}
+
+export interface UncoverWorkflowRequest extends UncoverRequest {
+  // Additional fields for workflow processing
+}
+
+export interface UncoverWorkflowResponse extends UncoverResponse {
+  // Additional fields for workflow response
+  pattern_analysis?: any; // PatternAnalysisResult type from pattern analysis service
 } 
