@@ -46,20 +46,66 @@ router.post('/fetch-comments', async (req: Request, res: Response): Promise<any>
 
     console.log(`📡 Fetching from Reddit API: ${redditUrl}`);
 
-    // Try to fetch from Reddit API with retry logic
+    // Try to fetch from Reddit API with retry logic and exponential backoff
     let response;
     let attemptedUrls = [redditUrl];
     
-    try {
-      response = await axios.get(redditUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Apollo Reddit Scraper/1.0)'
-        },
-        timeout: 30000,
-        validateStatus: function (status) {
-          return status < 500; // Accept 4xx errors to handle them gracefully
+    // Helper function for exponential backoff retry
+    const fetchWithRetry = async (url: string, maxRetries: number = 3): Promise<any> => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`🔄 Attempt ${attempt}/${maxRetries} for URL: ${url}`);
+          
+          const result = await axios.get(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'application/json, text/plain, */*',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'Referer': 'https://www.reddit.com/',
+              'Sec-Fetch-Dest': 'empty',
+              'Sec-Fetch-Mode': 'cors',
+              'Sec-Fetch-Site': 'same-origin'
+            },
+            timeout: 30000,
+            validateStatus: function (status) {
+              return status < 500; // Accept 4xx errors to handle them gracefully
+            }
+          });
+          
+          // If we get a successful response or a client error (4xx), return it
+          if (result.status < 400 || result.status >= 500) {
+            return result;
+          }
+          
+          // For 4xx errors, don't retry - they're likely permanent
+          if (result.status >= 400 && result.status < 500) {
+            return result;
+          }
+          
+        } catch (error: any) {
+          console.log(`❌ Attempt ${attempt} failed:`, error.message);
+          
+          // Don't retry on certain errors
+          if (error.response?.status === 404 || error.response?.status === 403) {
+            throw error;
+          }
+          
+          // If this is the last attempt, throw the error
+          if (attempt === maxRetries) {
+            throw error;
+          }
+          
+          // Wait with exponential backoff before retrying
+          const waitTime = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s...
+          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
         }
-      });
+      }
+    };
+    
+    try {
+      response = await fetchWithRetry(redditUrl);
     } catch (error) {
       // If permalink failed and we have post_id and subreddit, try fallback URL
       if (permalink && post_id && subreddit) {
@@ -68,15 +114,7 @@ router.post('/fetch-comments', async (req: Request, res: Response): Promise<any>
         attemptedUrls.push(fallbackUrl);
         
         try {
-          response = await axios.get(fallbackUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (compatible; Apollo Reddit Scraper/1.0)'
-            },
-            timeout: 30000,
-            validateStatus: function (status) {
-              return status < 500;
-            }
-          });
+          response = await fetchWithRetry(fallbackUrl);
         } catch (fallbackError) {
           throw error; // Throw original error if fallback also fails
         }
@@ -86,6 +124,18 @@ router.post('/fetch-comments', async (req: Request, res: Response): Promise<any>
     }
 
     console.log(`📊 Reddit API response status: ${response.status}`);
+    console.log(`📊 Reddit API response headers:`, response.headers);
+    console.log(`📊 Reddit API response data type:`, typeof response.data);
+    
+    // Log more details for debugging production issues
+    if (response.status >= 400) {
+      console.log(`❌ Reddit API error details:`, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        data: response.data
+      });
+    }
     
     if (response.status === 404) {
       console.log('❌ Reddit post not found (404)');
