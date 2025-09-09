@@ -29,28 +29,90 @@ router.post('/fetch-comments', async (req: Request, res: Response): Promise<any>
     }
 
     console.log(`🔍 Fetching comments for post ${post_id} in r/${subreddit}`);
+    console.log(`📊 Request body received:`, { post_id, subreddit, permalink, limit });
 
     // Construct Reddit JSON API URL
     let redditUrl: string;
     if (permalink) {
-      // Use permalink if provided
-      redditUrl = permalink.startsWith('http') 
-        ? `${permalink}.json?limit=${limit}&sort=top`
-        : `https://reddit.com${permalink}.json?limit=${limit}&sort=top`;
+      // Clean up permalink - remove trailing slashes and ensure proper format
+      const cleanPermalink = permalink.replace(/\/$/, '');
+      redditUrl = cleanPermalink.startsWith('http') 
+        ? `${cleanPermalink}.json?limit=${limit}&sort=top`
+        : `https://www.reddit.com${cleanPermalink}.json?limit=${limit}&sort=top`;
     } else {
       // Fallback to constructing URL from post_id and subreddit
-      redditUrl = `https://reddit.com/r/${subreddit}/comments/${post_id}.json?limit=${limit}&sort=top`;
+      redditUrl = `https://www.reddit.com/r/${subreddit}/comments/${post_id}.json?limit=${limit}&sort=top`;
     }
 
     console.log(`📡 Fetching from Reddit API: ${redditUrl}`);
 
-    // Fetch from Reddit API
-    const response = await axios.get(redditUrl, {
-      headers: {
-        'User-Agent': 'Apollo Reddit Scraper 1.0'
-      },
-      timeout: 30000
-    });
+    // Try to fetch from Reddit API with retry logic
+    let response;
+    let attemptedUrls = [redditUrl];
+    
+    try {
+      response = await axios.get(redditUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; Apollo Reddit Scraper/1.0)'
+        },
+        timeout: 30000,
+        validateStatus: function (status) {
+          return status < 500; // Accept 4xx errors to handle them gracefully
+        }
+      });
+    } catch (error) {
+      // If permalink failed and we have post_id and subreddit, try fallback URL
+      if (permalink && post_id && subreddit) {
+        const fallbackUrl = `https://www.reddit.com/r/${subreddit}/comments/${post_id}.json?limit=${limit}&sort=top`;
+        console.log(`🔄 Permalink failed, trying fallback URL: ${fallbackUrl}`);
+        attemptedUrls.push(fallbackUrl);
+        
+        try {
+          response = await axios.get(fallbackUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; Apollo Reddit Scraper/1.0)'
+            },
+            timeout: 30000,
+            validateStatus: function (status) {
+              return status < 500;
+            }
+          });
+        } catch (fallbackError) {
+          throw error; // Throw original error if fallback also fails
+        }
+      } else {
+        throw error;
+      }
+    }
+
+    console.log(`📊 Reddit API response status: ${response.status}`);
+    
+    if (response.status === 404) {
+      console.log('❌ Reddit post not found (404)');
+      return res.json({
+        success: true,
+        comments: [],
+        message: `Post not found on Reddit. Tried URLs: ${attemptedUrls.join(', ')}. The post may have been deleted.`
+      });
+    }
+    
+    if (response.status === 403) {
+      console.log('❌ Reddit API access forbidden (403)');
+      return res.json({
+        success: true,
+        comments: [],
+        message: 'Unable to access Reddit comments. The subreddit may be private or restricted.'
+      });
+    }
+    
+    if (response.status >= 400) {
+      console.log(`❌ Reddit API error: ${response.status} - ${response.statusText}`);
+      return res.json({
+        success: true,
+        comments: [],
+        message: `Reddit API returned error ${response.status}. Comments may not be available.`
+      });
+    }
 
     if (!response.data || !Array.isArray(response.data) || response.data.length < 2) {
       console.log('❌ Invalid Reddit API response structure');
