@@ -107,6 +107,7 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         playbooks: '/api/playbooks/*',
         blogCreator: '/api/blog-creator/*',
         cro: '/api/cro/*',
+        gong: '/api/gong/*',
         gongAnalysis: '/api/gong-analysis/*',
         gongChat: '/api/gong-chat/*',
         screenshot: '/api/screenshot/*',
@@ -121,6 +122,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         sitemapChunked: '/api/sitemap-chunked/*',
         redditEngagement: '/api/reddit-engagement/*',
         jokes: '/api/jokes/*',
+        abTesting: '/api/ab-testing/*',
+        cacheInvalidation: '/api/cache-invalidation/*',
         uncover: '/api/uncover/*'
       }
     }
