@@ -12,32 +12,35 @@ export interface ApiInfoResponse {
   documentation: {
     health: string;
     info: string;
-      endpoints: {
-    reddit: string;
-    analysis: string;
-    sheets: string;
-    workflow: string;
-    chat: string;
-    content: string;
-    playbooks: string;
-    blogCreator: string;
-    cro: string;
-    gongAnalysis: string;
-    gongChat: string;
-    screenshot: string;
-    vocExtraction: string;
-    articleExtraction: string;
-    contentAnalysis: string;
-    personaPainPointMatching: string;
-    enhancedPersonaDetection: string;
-    ctaGeneration: string;
-    competitorConquesting: string;
-    sitemap: string;
-    sitemapChunked: string;
-    redditEngagement: string;
-    jokes: string;
-    uncover: string;
-  };
+    endpoints: {
+      reddit: string;
+      analysis: string;
+      sheets: string;
+      workflow: string;
+      chat: string;
+      content: string;
+      playbooks: string;
+      blogCreator: string;
+      cro: string;
+      gong: string;
+      gongAnalysis: string;
+      gongChat: string;
+      screenshot: string;
+      vocExtraction: string;
+      articleExtraction: string;
+      contentAnalysis: string;
+      personaPainPointMatching: string;
+      enhancedPersonaDetection: string;
+      ctaGeneration: string;
+      competitorConquesting: string;
+      sitemap: string;
+      sitemapChunked: string;
+      redditEngagement: string;
+      jokes: string;
+      abTesting: string;
+      cacheInvalidation: string;
+      uncover: string;
+    };
   };
 }
 
