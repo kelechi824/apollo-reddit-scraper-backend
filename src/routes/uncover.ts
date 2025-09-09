@@ -5,7 +5,7 @@ import uncoverService from '../services/uncoverService';
 
 const router = Router();
 
-// Workflow status tracking - similar to main workflow but for uncover
+// Workflow status tracking - serverless-safe storage
 const uncoverWorkflowStatus = new Map<string, {
   status: 'pending' | 'running' | 'completed' | 'failed';
   progress: number;
@@ -13,6 +13,77 @@ const uncoverWorkflowStatus = new Map<string, {
   error?: string;
   startTime: number;
 }>();
+
+// Serverless-compatible workflow storage using process.env as fallback
+const UNCOVER_WORKFLOW_ENV_PREFIX = 'APOLLO_UNCOVER_';
+
+/**
+ * Store workflow data in both memory and process.env for serverless persistence
+ * Why this matters: Vercel serverless functions are ephemeral - in-memory Maps 
+ * lose data between invocations, causing 404 errors during status polling
+ */
+function storeUncoverWorkflowData(workflowId: string, data: any) {
+  try {
+    // Store in memory for immediate access
+    uncoverWorkflowStatus.set(workflowId, data);
+    
+    // Also store in process.env for serverless persistence (with TTL)
+    const envKey = `${UNCOVER_WORKFLOW_ENV_PREFIX}${workflowId}`;
+    const workflowData = {
+      ...data,
+      stored_at: Date.now()
+    };
+    process.env[envKey] = JSON.stringify(workflowData);
+    console.log(`💾 Stored uncover workflow ${workflowId} in both memory and env`);
+  } catch (error) {
+    console.warn(`⚠️ Failed to store uncover workflow data for ${workflowId}:`, error);
+    // Still store in memory as fallback
+    uncoverWorkflowStatus.set(workflowId, data);
+  }
+}
+
+/**
+ * Get workflow data from memory or process.env fallback
+ * Why this matters: Allows workflow status to persist across serverless function restarts
+ */
+function getUncoverWorkflowData(workflowId: string) {
+  // First try memory
+  let workflow = uncoverWorkflowStatus.get(workflowId);
+  if (workflow) {
+    console.log(`📋 Found uncover workflow ${workflowId} in memory`);
+    return workflow;
+  }
+
+  // Fallback to process.env for serverless environments
+  try {
+    const envKey = `${UNCOVER_WORKFLOW_ENV_PREFIX}${workflowId}`;
+    const envData = process.env[envKey];
+    
+    if (envData) {
+      const workflowData = JSON.parse(envData);
+      
+      // Check if data is not too old (30 minutes max)
+      const maxAge = 30 * 60 * 1000; // 30 minutes
+      if (Date.now() - workflowData.stored_at < maxAge) {
+        console.log(`📋 Found uncover workflow ${workflowId} in env storage`);
+        // Remove stored_at before returning
+        delete workflowData.stored_at;
+        
+        // Restore to memory for future access
+        uncoverWorkflowStatus.set(workflowId, workflowData);
+        return workflowData;
+      } else {
+        console.log(`⏰ Uncover workflow ${workflowId} expired in env storage`);
+        // Clean up expired workflow
+        delete process.env[envKey];
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️ Failed to retrieve uncover workflow data from env for ${workflowId}:`, error);
+  }
+
+  return null;
+}
 
 /**
  * Process uncover workflow asynchronously
@@ -27,7 +98,7 @@ async function processUncoverWorkflowAsync(
     console.log(`🎯 Processing uncover workflow ${workflowId}:`, request);
     
     // Update status to running
-    uncoverWorkflowStatus.set(workflowId, {
+    storeUncoverWorkflowData(workflowId, {
       status: 'running',
       progress: 10,
       startTime: Date.now()
@@ -35,7 +106,7 @@ async function processUncoverWorkflowAsync(
 
     // Step 1: Discover posts (60% of progress)
     console.log(`🔍 Step 1: Discovering posts for category ${request.category}`);
-    uncoverWorkflowStatus.set(workflowId, {
+    storeUncoverWorkflowData(workflowId, {
       status: 'running',
       progress: 30,
       startTime: Date.now()
@@ -43,7 +114,7 @@ async function processUncoverWorkflowAsync(
 
     const uncoverResults = await uncoverService.discoverPosts(request);
     
-    uncoverWorkflowStatus.set(workflowId, {
+    storeUncoverWorkflowData(workflowId, {
       status: 'running',
       progress: 80,
       startTime: Date.now()
@@ -59,7 +130,7 @@ async function processUncoverWorkflowAsync(
     };
 
     // Mark as completed
-    uncoverWorkflowStatus.set(workflowId, {
+    storeUncoverWorkflowData(workflowId, {
       status: 'completed',
       progress: 100,
       result: workflowResponse,
@@ -71,7 +142,7 @@ async function processUncoverWorkflowAsync(
   } catch (error) {
     console.error(`❌ Uncover workflow ${workflowId} failed:`, error);
     
-    uncoverWorkflowStatus.set(workflowId, {
+    storeUncoverWorkflowData(workflowId, {
       status: 'failed',
       progress: 0,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -125,7 +196,7 @@ router.post('/run-analysis', async (req: Request, res: Response): Promise<any> =
   }
 
   // Initialize workflow status
-  uncoverWorkflowStatus.set(workflowId, {
+  storeUncoverWorkflowData(workflowId, {
     status: 'pending',
     progress: 0,
     startTime
@@ -160,7 +231,7 @@ router.get('/status/:workflowId', async (req: Request, res: Response): Promise<a
     });
   }
 
-  const workflow = uncoverWorkflowStatus.get(workflowId);
+  const workflow = getUncoverWorkflowData(workflowId);
   
   if (!workflow) {
     return res.status(404).json({
@@ -176,7 +247,11 @@ router.get('/status/:workflowId', async (req: Request, res: Response): Promise<a
   
   // Clean up completed/failed workflows after 5 minutes
   if ((workflow.status === 'completed' || workflow.status === 'failed') && elapsedTime > 5 * 60 * 1000) {
+    // Clean up from both memory and env storage
     uncoverWorkflowStatus.delete(workflowId);
+    const envKey = `${UNCOVER_WORKFLOW_ENV_PREFIX}${workflowId}`;
+    delete process.env[envKey];
+    
     return res.status(410).json({
       error: 'Workflow Expired',
       message: 'Workflow results have expired. Please start a new analysis.',
