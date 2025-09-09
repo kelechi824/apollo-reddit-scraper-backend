@@ -34,6 +34,8 @@ import uncoverRoutes from '../src/routes/uncover';
 // Load environment variables
 dotenv.config();
 
+// Trigger Vercel redeploy after fixing Uncover 404 routes - 2024-01-XX
+
 const app: Express = express();
 
 // Middleware
