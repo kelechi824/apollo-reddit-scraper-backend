@@ -26,6 +26,7 @@ import sitemapRoutes from '../src/routes/sitemap';
 import sitemapChunkedRoutes from '../src/routes/sitemapChunked';
 import redditEngagementRoutes from '../src/routes/redditEngagement';
 import jokesRoutes from '../src/routes/jokes';
+import uncoverRoutes from '../src/routes/uncover';
 
 // Load environment variables
 dotenv.config();
@@ -72,6 +73,7 @@ app.use('/api/sitemap', sitemapRoutes);
 app.use('/api/sitemap-chunked', sitemapChunkedRoutes);
 app.use('/api/reddit-engagement', redditEngagementRoutes);
 app.use('/api/jokes', jokesRoutes);
+app.use('/api/uncover', uncoverRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -114,7 +116,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         sitemap: '/api/sitemap/*',
         sitemapChunked: '/api/sitemap-chunked/*',
         redditEngagement: '/api/reddit-engagement/*',
-        jokes: '/api/jokes/*'
+        jokes: '/api/jokes/*',
+        uncover: '/api/uncover/*'
       }
     }
   });

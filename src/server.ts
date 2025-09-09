@@ -6,6 +6,7 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { HealthCheckResponse, ApiInfoResponse } from './types';
 import redditRoutes from './routes/reddit';
+import redditCommentsRoutes from './routes/redditComments';
 import analysisRoutes from './routes/analysis';
 import sheetsRoutes from './routes/sheets';
 import workflowRoutes from './routes/workflow';
@@ -31,6 +32,7 @@ import redditEngagementRoutes from './routes/redditEngagement';
 import jokesRoutes from './routes/jokes';
 import abTestingRoutes from './routes/abTesting';
 import cacheInvalidationRoutes from './routes/cacheInvalidation';
+import uncoverRoutes from './routes/uncover';
 
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || '3003', 10);
@@ -49,6 +51,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // API Routes
 app.use('/api/reddit', redditRoutes);
+app.use('/api/reddit', redditCommentsRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/sheets', sheetsRoutes);
 app.use('/api/workflow', workflowRoutes);
@@ -74,6 +77,7 @@ app.use('/api/reddit-engagement', redditEngagementRoutes);
 app.use('/api/jokes', jokesRoutes);
 app.use('/api/ab-testing', abTestingRoutes);
 app.use('/api/cache-invalidation', cacheInvalidationRoutes);
+app.use('/api/uncover', uncoverRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -116,7 +120,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         sitemap: '/api/sitemap/*',
         sitemapChunked: '/api/sitemap-chunked/*',
         redditEngagement: '/api/reddit-engagement/*',
-        jokes: '/api/jokes/*'
+        jokes: '/api/jokes/*',
+        uncover: '/api/uncover/*'
       }
     }
   });
