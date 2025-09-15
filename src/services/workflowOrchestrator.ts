@@ -9,6 +9,8 @@ import { claudeService } from './claudeService';
 import { brandkitService } from './brandkitService';
 import { CLAUDE_BLOG_CONTENT_SYSTEM_PROMPT } from '../prompts/claudeBlogContentPrompt';
 import { WorkflowError, createServiceError } from './errorHandling';
+import MCPService, { ToolSelection } from './mcpService';
+import ContentContextAnalyzer from './contentContextAnalyzer';
 
 interface BlogContentResult {
   keyword: string;
@@ -58,6 +60,24 @@ interface WorkflowRequest {
 
 interface WorkflowProgressCallback {
   onProgress: (stage: string, message: string, progress: number) => void;
+}
+
+// MCP interfaces for legacy methods (backward compatibility)
+interface MCPQueryResult {
+  tool: string;
+  query: string;
+  result: any;
+  success: boolean;
+  error?: string;
+}
+
+interface MCPDataResult {
+  success: boolean;
+  data: any[];
+  queries: string[];
+  toolsUsed: string[];
+  attribution: string[];
+  error?: string;
 }
 
 interface WorkflowState {
@@ -157,7 +177,7 @@ class WorkflowOrchestrator {
     'Extracting competitor content with Firecrawl',
     'Performing comprehensive OpenAI Deep Research',
     'Analyzing gaps with GPT 4.1 nano',
-    'Generating optimized content with Claude Sonnet 4'
+    'Generating optimized content with Claude Sonnet 4 (with Apollo data)'
   ];
 
   // In-memory storage for workflow states (in production, use Redis or database)
@@ -165,9 +185,14 @@ class WorkflowOrchestrator {
   private readonly WORKFLOW_TIMEOUT = 20 * 60 * 1000; // 20 minutes
   private readonly MAX_WORKFLOW_RETRIES = 2;
   private firecrawlService: FirecrawlService;
+  private mcpService: MCPService;
+  private contentContextAnalyzer: ContentContextAnalyzer;
 
   constructor() {
     this.firecrawlService = new FirecrawlService();
+    this.mcpService = new MCPService();
+    this.contentContextAnalyzer = new ContentContextAnalyzer(this.mcpService);
+    
     // Set up automatic cleanup of expired workflows every 5 minutes
     setInterval(() => {
       this.cleanupExpiredWorkflows();
@@ -303,18 +328,18 @@ class WorkflowOrchestrator {
         }
       }
 
-      // Stage 4: Content generation with Claude Sonnet 4
+      // Stage 4: Content generation with Claude Sonnet 4 (with Apollo data)
       let rawContentResult = workflowState.completedStages.content_generation;
       if (!rawContentResult && ['content_generation', 'gap_analysis', 'deep_research', 'firecrawl'].includes(workflowState.currentStage)) {
         try {
           progressCallback?.onProgress(
             'content_generation',
-            '✍️ Generating optimized article with Claude Sonnet 4...',
+            '✍️ Generating optimized article with Claude Sonnet 4 and Apollo data...',
             85
           );
 
-          console.log('✍️ Stage 4: Content generation with Claude Sonnet 4');
-          rawContentResult = await this.generateContentWithClaude(
+          console.log('✍️ Stage 4: Content generation with Claude Sonnet 4 and Apollo data');
+          rawContentResult = await this.generateContentWithClaudeAndMCP(
             keyword,
             gapAnalysisResult!,
             deepResearchResult!,
@@ -1288,6 +1313,390 @@ Create comprehensive AEO-optimized content for ${currentYear} that explicitly ou
 
     // Resume from current stage
     return await this.executeContentPipeline(workflowState.request, progressCallback, jobId);
+  }
+
+  /**
+   * Generate content using Claude Sonnet 4 with MCP data integration
+   * Why this matters: Integrates Apollo's proprietary data directly during content generation
+   * for more contextual and relevant data insertion.
+   */
+  private async generateContentWithClaudeAndMCP(
+    keyword: string,
+    gapAnalysis: GapAnalysisResult,
+    deepResearch: DeepResearchResult,
+    competitorAnalysis: ArticleContent,
+    contentLength: string,
+    brandKit?: any,
+    customSystemPrompt?: string,
+    customUserPrompt?: string,
+    competitor?: string,
+    sitemapData?: Array<{
+      title: string;
+      description: string;
+      url: string;
+    }>
+  ): Promise<{ content: string; title?: string; description?: string; metaSeoTitle?: string; metaDescription?: string }> {
+    
+    // First, analyze if MCP data would enhance this content
+    const analysisResult = await this.contentContextAnalyzer.analyzeContent({
+      keyword,
+      contentType: 'blog',
+      existingContent: `${deepResearch.research_findings.key_insights.join(' ')} ${competitorAnalysis.content}`
+    });
+
+    console.log(`📊 MCP Analysis: ${analysisResult.confidence * 100}% confidence, ${analysisResult.suggestedTools.length} tools suggested`);
+
+    // Gather MCP data if valuable
+    let mcpData: any[] = [];
+    let mcpAttribution: string[] = [];
+    
+    if (analysisResult.shouldUseMCP && analysisResult.suggestedTools.length > 0) {
+      try {
+        console.log('🔍 Gathering Apollo data for content generation...');
+        
+        // Execute MCP queries in parallel
+        const mcpPromises = analysisResult.suggestedTools.map(async (selection: ToolSelection) => {
+          try {
+            const result = await this.mcpService.callTool(selection.tool.name, { query: selection.query });
+            return {
+              tool: selection.tool.name,
+              query: selection.query,
+              data: result,
+              attribution: this.generateAttribution(selection.tool.name, result)
+            };
+          } catch (error) {
+            console.warn(`⚠️ MCP tool ${selection.tool.name} failed:`, error);
+            return null;
+          }
+        });
+
+        const mcpResults = await Promise.all(mcpPromises);
+        const successfulResults = mcpResults.filter(r => r !== null);
+        
+        mcpData = successfulResults.map(r => r!.data);
+        mcpAttribution = successfulResults.map(r => r!.attribution);
+        
+        console.log(`✅ Gathered ${successfulResults.length} Apollo data insights`);
+      } catch (error) {
+        console.warn('⚠️ MCP data gathering failed, continuing without Apollo data:', error);
+      }
+    }
+
+    // Use custom prompts if provided, otherwise use default prompts with context
+    const systemPrompt = customSystemPrompt || this.buildClaudeSystemPrompt(contentLength);
+    
+    // Build orchestration context with MCP data
+    const orchestrationContext = this.buildOrchestrationContextWithMCP(
+      keyword, 
+      gapAnalysis, 
+      deepResearch, 
+      competitorAnalysis, 
+      brandKit,
+      mcpData,
+      mcpAttribution
+    );
+    
+    // For custom prompts, inject research context MORE prominently at the beginning
+    const baseUserPrompt = customUserPrompt 
+      ? `${orchestrationContext}\n\n${'═'.repeat(50)}\n📝 USER INSTRUCTIONS\n${'═'.repeat(50)}\n${customUserPrompt}`
+      : this.buildClaudeUserPrompt(
+      keyword,
+      gapAnalysis,
+      deepResearch,
+      competitorAnalysis,
+      brandKit
+        );
+
+    // Apply frontend-aligned completion requirements ONLY if no custom user prompt
+    let userPrompt: string;
+    if (customUserPrompt) {
+      // Custom user prompt already contains UTM URLs and CTA instructions - use as-is
+      userPrompt = baseUserPrompt;
+      console.log('🔗 [DEBUG-WO] Using custom user prompt (UTM URLs should be preserved)');
+    } else {
+      // Generate our own prompt with UTM URLs
+      const currentYear = new Date().getFullYear();
+      const selectedCTA = getRandomCTAAnchorText();
+      // Use competitor URL for competitor conquesting, otherwise use blog creator URL
+      const apolloSignupURL = competitor 
+        ? generateApolloSignupURL(competitor)
+        : generateBlogCreatorSignupURL(keyword);
+      // Format sitemap data for internal linking if available
+      const internalLinksSection = sitemapData && sitemapData.length > 0 
+        ? `**AVAILABLE INTERNAL LINKS (MANDATORY - MUST USE 3-5 OF THESE):**
+${sitemapData.slice(0, 20).map((url: any) => `• ${url.title}: ${url.description} [${url.url}]`).join('\n')}
+${sitemapData.length > 20 ? `... and ${sitemapData.length - 20} more URLs available for linking` : ''}
+
+🚨 CRITICAL INTERNAL LINKING REQUIREMENTS:
+- You MUST include exactly 3-5 internal links from the above list in your content
+- Each internal link URL must be used ONLY ONCE per article (no duplicate links)
+- MANDATORY: Include at least ONE internal link in the introduction or within the first 2-3 paragraphs after defining the main topic/keyword
+- Distribute the remaining 2-4 internal links naturally throughout the rest of the content
+- Choose the most relevant URLs for your topic and context
+- Articles without internal links will be rejected`
+        : '**Note:** No sitemap data available for internal linking.';
+
+      userPrompt = `${baseUserPrompt}
+
+${internalLinksSection}
+
+**COMPLETION REQUIREMENTS:**
+- Write a comprehensive ${contentLength === 'short' ? '800-1200' : contentLength === 'medium' ? '1500-2000' : '2500-3500'} word article
+- Include proper H1, H2, H3 headings with strategic keyword placement
+- Add exactly ONE call-to-action (CTA) link using "${selectedCTA}" as anchor text linking to: ${apolloSignupURL}
+- Ensure the CTA appears naturally in context (NOT at the very end)
+- Include a compelling meta title (50-60 characters) and meta description (150-160 characters)
+- Current year for any date references: ${currentYear}
+- Write in an authoritative, professional tone suitable for B2B sales professionals
+- Focus on actionable insights and practical advice
+- Include specific examples and use cases where relevant
+${mcpData.length > 0 ? `- IMPORTANT: Incorporate the Apollo data insights naturally with proper attribution using phrases like: ${mcpAttribution.join(', ')}` : ''}
+
+**ARTICLE STRUCTURE:**
+1. Compelling H1 title with primary keyword
+2. Introduction that hooks the reader and defines the topic
+3. 4-6 main sections with H2 headings covering key aspects
+4. Subsections with H3 headings for detailed coverage
+5. Practical examples and actionable advice throughout
+6. Natural integration of internal links and CTA
+7. Conclusion that summarizes key takeaways
+
+Write the complete article now:`;
+    }
+
+    console.log('🎯 Calling Claude Sonnet 4 for content generation with MCP data...');
+
+    try {
+      const response = await claudeService.generateContent({
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
+        post_context: { keyword, contentLength },
+        brand_kit: brandKit,
+        content_length: contentLength as 'short' | 'medium' | 'long',
+        sitemap_data: sitemapData
+      });
+
+      console.log('✅ Claude content generation completed successfully');
+      return {
+        content: response.content,
+        title: response.title,
+        description: response.description,
+        metaSeoTitle: response.metaSeoTitle,
+        metaDescription: response.metaDescription
+      };
+
+    } catch (error) {
+      console.error('❌ Claude content generation failed:', error);
+      throw createServiceError(error as any, 'Claude Sonnet 4', `Content generation for keyword: ${keyword}`);
+    }
+  }
+
+  /**
+   * Build orchestration context with MCP data integration
+   * Why this matters: Provides Claude with all available context including Apollo's proprietary data
+   */
+  private buildOrchestrationContextWithMCP(
+    keyword: string,
+    gapAnalysis: GapAnalysisResult,
+    deepResearch: DeepResearchResult,
+    competitorAnalysis: ArticleContent,
+    brandKit?: any,
+    mcpData?: any[],
+    mcpAttribution?: string[]
+  ): string {
+    // Get the base context
+    const baseContext = this.buildOrchestrationContext(keyword, gapAnalysis, deepResearch, competitorAnalysis, brandKit);
+    
+    // Add MCP data section if available
+    if (mcpData && mcpData.length > 0) {
+      const mcpSection = `
+
+${'═'.repeat(50)}
+🔍 APOLLO PROPRIETARY DATA INSIGHTS
+${'═'.repeat(50)}
+
+The following proprietary data from Apollo should be integrated naturally into your content with proper attribution:
+
+${mcpData.map((data, index) => `
+**Data Insight ${index + 1}:**
+${JSON.stringify(data, null, 2)}
+
+**Attribution:** ${mcpAttribution?.[index] || "According to Apollo's internal data"}
+`).join('\n')}
+
+🚨 CRITICAL: You MUST incorporate these Apollo data insights naturally throughout your content using the provided attribution phrases. This proprietary data gives us a competitive advantage and should be highlighted appropriately.
+`;
+      
+      return baseContext + mcpSection;
+    }
+    
+    return baseContext;
+  }
+
+  /**
+   * Legacy method - kept for backward compatibility
+   * Why this matters: Ensures existing code continues to work while we transition to MCP integration
+   */
+  private async gatherProprietaryData(
+    keyword: string,
+    deepResearchResult: DeepResearchResult,
+    firecrawlResult: ArticleContent
+  ): Promise<MCPDataResult> {
+    try {
+      console.log('🔍 Starting MCP data gathering for keyword:', keyword);
+
+      // Analyze content context to determine if MCP data would be valuable
+      const contentContext = {
+        keyword,
+        deepResearchResult,
+        firecrawlResult,
+        entities: this.extractEntitiesFromContext(keyword, deepResearchResult, firecrawlResult)
+      };
+
+      // Analyze content to determine if MCP data would be valuable
+      const analysisResult = await this.contentContextAnalyzer.analyzeContent({
+        keyword,
+        contentType: 'blog',
+        existingContent: `${deepResearchResult.research_findings.key_insights.join(' ')} ${firecrawlResult.content}`
+      });
+
+      console.log(`📊 Content analysis result: ${analysisResult.confidence * 100}% confidence, ${analysisResult.suggestedTools.length} tools suggested`);
+
+      // Only proceed with MCP queries if analysis suggests it would be valuable
+      if (!analysisResult.shouldUseMCP) {
+        console.log('⏭️ Skipping MCP data gathering - content analysis suggests no value:', analysisResult.reasoning);
+        return {
+          success: true,
+          data: [],
+          queries: [],
+          toolsUsed: [],
+          attribution: [],
+          error: undefined
+        };
+      }
+
+      // Get tool selections from analysis result
+      const toolSelections = analysisResult.suggestedTools;
+
+      if (toolSelections.length === 0) {
+        console.log('⏭️ No relevant MCP tools found for this content');
+        return {
+          success: true,
+          data: [],
+          queries: [],
+          toolsUsed: [],
+          attribution: [],
+          error: undefined
+        };
+      }
+
+      console.log(`🛠️ Selected ${toolSelections.length} MCP tools:`, toolSelections.map((t: ToolSelection) => t.tool.name));
+
+      // Execute MCP queries in parallel for performance
+      const mcpPromises = toolSelections.map(async (selection: ToolSelection): Promise<MCPQueryResult> => {
+        try {
+          console.log(`🔍 Executing MCP query: ${selection.query}`);
+          const result = await this.mcpService.callTool(selection.tool.name, { query: selection.query });
+          return {
+            tool: selection.tool.name,
+            query: selection.query,
+            result,
+            success: true
+          };
+        } catch (error) {
+          console.warn(`⚠️ MCP tool ${selection.tool.name} failed:`, error);
+          return {
+            tool: selection.tool.name,
+            query: selection.query,
+            result: null,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          };
+        }
+      });
+
+      const mcpResults = await Promise.all(mcpPromises);
+      const successfulResults = mcpResults.filter((r: MCPQueryResult) => r.success);
+      const failedResults = mcpResults.filter((r: MCPQueryResult) => !r.success);
+
+      if (failedResults.length > 0) {
+        console.warn(`⚠️ ${failedResults.length} MCP queries failed, continuing with ${successfulResults.length} successful results`);
+      }
+
+      // Process and structure the results
+      const processedData = successfulResults.map((result: MCPQueryResult) => ({
+        tool: result.tool,
+        query: result.query,
+        data: result.result,
+        attribution: this.generateAttribution(result.tool, result.result)
+      }));
+
+      const mcpDataResult: MCPDataResult = {
+        success: true,
+        data: processedData,
+        queries: toolSelections.map((t: ToolSelection) => t.query),
+        toolsUsed: successfulResults.map((r: MCPQueryResult) => r.tool),
+        attribution: processedData.map((d: any) => d.attribution),
+        error: failedResults.length > 0 ? `${failedResults.length} queries failed` : undefined
+      };
+
+      console.log(`✅ MCP data gathering complete: ${successfulResults.length} successful queries`);
+      return mcpDataResult;
+
+    } catch (error) {
+      console.error('❌ MCP data gathering failed:', error);
+      return {
+        success: false,
+        data: [],
+        queries: [],
+        toolsUsed: [],
+        attribution: [],
+        error: error instanceof Error ? error.message : 'Unknown MCP error'
+      };
+    }
+  }
+
+  /**
+   * Extract entities (companies, job titles, etc.) from content context
+   * Why this matters: Helps determine which MCP tools and queries would be most relevant
+   */
+  private extractEntitiesFromContext(
+    keyword: string,
+    deepResearchResult: DeepResearchResult,
+    firecrawlResult: ArticleContent
+  ): { companies: string[]; jobTitles: string[]; emailTerms: string[] } {
+    const text = `${keyword} ${deepResearchResult.research_findings.key_insights.join(' ')} ${firecrawlResult.content}`.toLowerCase();
+    
+    // Common company patterns
+    const companies = ['amazon', 'google', 'microsoft', 'salesforce', 'hubspot', 'linkedin']
+      .filter(company => text.includes(company));
+    
+    // Common job title patterns
+    const jobTitles = ['ceo', 'cto', 'vp', 'director', 'manager', 'executive', 'founder']
+      .filter(title => text.includes(title));
+    
+    // Email-related terms
+    const emailTerms = ['email', 'outreach', 'prospecting', 'cold', 'template', 'campaign']
+      .filter(term => text.includes(term));
+
+    return { companies, jobTitles, emailTerms };
+  }
+
+  /**
+   * Generate proper attribution for MCP data
+   * Why this matters: Ensures all proprietary data is properly attributed to Apollo
+   */
+  private generateAttribution(tool: string, data: any): string {
+    const attributionPhrases = [
+      "According to Apollo's internal data",
+      "Apollo's email performance data shows",
+      "Based on Apollo's proprietary insights",
+      "Apollo's customer data reveals",
+      "Internal Apollo metrics indicate"
+    ];
+    
+    const randomPhrase = attributionPhrases[Math.floor(Math.random() * attributionPhrases.length)];
+    return randomPhrase;
   }
 
   /**

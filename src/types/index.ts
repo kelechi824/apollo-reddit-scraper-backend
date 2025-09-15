@@ -40,6 +40,7 @@ export interface ApiInfoResponse {
       abTesting: string;
       cacheInvalidation: string;
       uncover: string;
+      emailNewsletter: string;
     };
   };
 }
