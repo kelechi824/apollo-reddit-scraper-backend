@@ -30,6 +30,7 @@ const router = Router();
 router.post('/generate', async (req: Request, res: Response): Promise<any> => {
   try {
     console.log('📧 Email Newsletter Generation Request:', {
+      targetAudience: req.body.targetAudience,
       jobTitle: req.body.jobTitle,
       timestamp: new Date().toISOString(),
       userAgent: req.get('User-Agent'),
@@ -37,12 +38,26 @@ router.post('/generate', async (req: Request, res: Response): Promise<any> => {
     });
 
     // Validate request
-    const { jobTitle, options } = req.body;
+    const { targetAudience, jobTitle, options } = req.body;
     
+    if (!targetAudience || typeof targetAudience !== 'string') {
+      return res.status(400).json({
+        error: 'Target audience is required and must be a string',
+        code: 'INVALID_TARGET_AUDIENCE'
+      });
+    }
+
     if (!jobTitle || typeof jobTitle !== 'string') {
       return res.status(400).json({
         error: 'Job title is required and must be a string',
         code: 'INVALID_JOB_TITLE'
+      });
+    }
+
+    if (targetAudience.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Target audience cannot be empty',
+        code: 'EMPTY_TARGET_AUDIENCE'
       });
     }
 
@@ -59,6 +74,7 @@ router.post('/generate', async (req: Request, res: Response): Promise<any> => {
     // Generate newsletters
     const startTime = Date.now();
     const result = await emailNewsletterService.generateNewsletters({
+      targetAudience: targetAudience.trim(),
       jobTitle: jobTitle.trim(),
       count: options?.count || 5,
       ctaPreference: options?.ctaPreference || []
@@ -73,11 +89,13 @@ router.post('/generate', async (req: Request, res: Response): Promise<any> => {
         ...result.metadata,
         processingTime,
         requestTimestamp: new Date().toISOString(),
+        targetAudience: targetAudience.trim(),
         jobTitle: jobTitle.trim()
       }
     };
 
     console.log('✅ Email Newsletter Generation Successful:', {
+      targetAudience: targetAudience.trim(),
       jobTitle: jobTitle.trim(),
       newslettersGenerated: result.newsletters.length,
       mcpUsed: result.metadata.mcpUsed,

@@ -19,6 +19,7 @@ import { createServiceError } from './errorHandling';
 
 // Interface definitions
 interface NewsletterGenerationOptions {
+  targetAudience: string;
   jobTitle: string;
   count?: number;
   ctaPreference?: string[];
@@ -98,6 +99,82 @@ export class EmailNewsletterService {
     'Get Leads Now'
   ];
 
+  // Target audience-specific pain points and messaging
+  private readonly AUDIENCE_PAIN_POINTS: Record<string, {
+    painPoints: string[];
+    apolloValue: string[];
+    tone: string;
+  }> = {
+    'Sales Leaders': {
+      painPoints: [
+        'Team underperformance and missed quotas',
+        'Lack of pipeline visibility',
+        'Inefficient sales processes',
+        'Poor data quality in CRM',
+        'Difficulty tracking team activities'
+      ],
+      apolloValue: [
+        'Complete pipeline visibility across entire team',
+        'AI-powered coaching insights',
+        'Automated team performance tracking',
+        'Real-time data enrichment',
+        'Unified sales platform'
+      ],
+      tone: 'strategic and results-focused'
+    },
+    'SDRs (Sales Development Representatives)': {
+      painPoints: [
+        'Low connect rates on cold calls',
+        'Finding accurate contact information',
+        'Time wasted on manual research',
+        'Generic outreach that gets ignored',
+        'Difficulty hitting meeting quotas'
+      ],
+      apolloValue: [
+        'Verified mobile numbers with 36% connect rates',
+        '270+ million accurate contacts',
+        'AI-powered email personalization',
+        'Automated multi-channel sequences',
+        'Instant lead scoring and prioritization'
+      ],
+      tone: 'practical and efficiency-focused'
+    },
+    'BDRs (Business Development Representatives)': {
+      painPoints: [
+        'Identifying high-intent accounts',
+        'Breaking into target accounts',
+        'Finding the right decision makers',
+        'Account research takes too long',
+        'Losing deals to competitors'
+      ],
+      apolloValue: [
+        'Buying intent signals from Bombora',
+        'Complete org charts for account mapping',
+        'Website visitor identification',
+        'Automated account enrichment',
+        'Competitive intelligence alerts'
+      ],
+      tone: 'strategic account-focused'
+    },
+    'AEs (Account Executives)': {
+      painPoints: [
+        'Deals stalling in pipeline',
+        'Lack of executive access',
+        'Poor handoff from SDRs',
+        'Manual CRM updates',
+        'Missing key stakeholders in deals'
+      ],
+      apolloValue: [
+        'AI meeting insights and coaching',
+        'Executive contact enrichment',
+        'Seamless SDR-AE handoff tracking',
+        'Automated CRM sync',
+        'Complete buying committee mapping'
+      ],
+      tone: 'deal acceleration focused'
+    }
+  };
+
   constructor() {
     this.mcpService = new MCPService();
   }
@@ -160,8 +237,9 @@ export class EmailNewsletterService {
 
       // Step 2: Generate newsletters using AI with Apollo data context
       processingSteps.push('Generating newsletters with AI');
-      
+
       const newsletters = await this.generateNewslettersWithAI(
+        options.targetAudience,
         options.jobTitle,
         mcpData,
         options.ctaPreference || []
@@ -227,8 +305,9 @@ export class EmailNewsletterService {
         }
       }
 
-      // Generate improved newsletter
+      // Generate improved newsletter (use a default target audience for regeneration)
       const newsletter = await this.generateSingleNewsletterWithAI(
+        'Sales Leaders', // Default target audience for regeneration
         options.jobTitle,
         mcpData,
         theme,
@@ -452,18 +531,19 @@ export class EmailNewsletterService {
    * Generate newsletters using AI with Apollo data context
    */
   private async generateNewslettersWithAI(
+    targetAudience: string,
     jobTitle: string,
     mcpData: EmailPerformanceData,
     ctaPreference: string[]
   ): Promise<string[]> {
     const newsletters: string[] = [];
-    
+
     for (let i = 0; i < this.NEWSLETTER_THEMES.length; i++) {
       const theme = this.NEWSLETTER_THEMES[i];
-      const newsletter = await this.generateSingleNewsletterWithAI(jobTitle, mcpData, theme);
+      const newsletter = await this.generateSingleNewsletterWithAI(targetAudience, jobTitle, mcpData, theme);
       newsletters.push(newsletter);
     }
-    
+
     return newsletters;
   }
 
@@ -471,6 +551,7 @@ export class EmailNewsletterService {
    * Generate a single newsletter with AI
    */
   private async generateSingleNewsletterWithAI(
+    targetAudience: string,
     jobTitle: string,
     mcpData: EmailPerformanceData,
     theme: string,
@@ -481,7 +562,7 @@ export class EmailNewsletterService {
 
     // Marketing email generation prompt
     const prompt = `
-Create a compelling marketing email for sales reps targeting ${jobTitle} contacts.
+Create a compelling marketing email for ${targetAudience} targeting ${jobTitle} contacts.
 
 Theme: ${theme}
 ${currentNewsletter ? `\nImprove upon this existing email:\n${currentNewsletter}\n` : ''}
@@ -515,18 +596,19 @@ Email Body:
 - Professional sign-off with name placeholder
 - P.S. with compelling data point or case study
 
-Make it highly actionable for sales reps targeting ${jobTitle} contacts.
+Make it highly actionable for ${targetAudience} targeting ${jobTitle} contacts.
 `;
 
     // For now, return a well-structured newsletter template
     // In production, this would call OpenAI/Claude API
-    return this.generateNewsletterTemplate(jobTitle, mcpData, theme, selectedCta);
+    return this.generateNewsletterTemplate(targetAudience, jobTitle, mcpData, theme, selectedCta);
   }
 
   /**
    * Generate marketing email template (proper cold email format)
    */
   private generateNewsletterTemplate(
+    targetAudience: string,
     jobTitle: string,
     mcpData: EmailPerformanceData,
     theme: string,
@@ -535,14 +617,15 @@ Make it highly actionable for sales reps targeting ${jobTitle} contacts.
     const openRate = (mcpData.openingRate * 100).toFixed(1);
     const replyRate = (mcpData.replyRate * 100).toFixed(1);
     const totalEmails = mcpData.totalDelivered.toLocaleString();
-    
-    return this.generateMarketingEmail(jobTitle, mcpData, theme, cta, openRate, replyRate, totalEmails);
+
+    return this.generateMarketingEmail(targetAudience, jobTitle, mcpData, theme, cta, openRate, replyRate, totalEmails);
   }
 
   /**
    * Generate proper marketing email with subject line and body
    */
   private generateMarketingEmail(
+    targetAudience: string,
     jobTitle: string,
     mcpData: EmailPerformanceData,
     theme: string,
@@ -551,9 +634,9 @@ Make it highly actionable for sales reps targeting ${jobTitle} contacts.
     replyRate: string,
     totalEmails: string
   ): string {
-    const subjectLines = this.getSubjectLineForTheme(theme, jobTitle, openRate, replyRate, totalEmails);
-    const emailBody = this.getEmailBodyForTheme(theme, jobTitle, mcpData, cta, openRate, replyRate, totalEmails);
-    
+    const subjectLines = this.getSubjectLineForTheme(theme, jobTitle, openRate, replyRate, totalEmails, targetAudience);
+    const emailBody = this.getEmailBodyForTheme(theme, jobTitle, mcpData, cta, openRate, replyRate, totalEmails, targetAudience);
+
     return `Subject Line:
 
 ${subjectLines}
@@ -566,7 +649,7 @@ ${emailBody}`;
   /**
    * Generate compelling subject lines based on theme
    */
-  private getSubjectLineForTheme(theme: string, jobTitle: string, openRate: string, replyRate: string, totalEmails: string): string {
+  private getSubjectLineForTheme(theme: string, jobTitle: string, openRate: string, replyRate: string, totalEmails: string, targetAudience: string): string {
     switch (theme) {
       case 'Data-Driven Outreach Strategies':
         return `${totalEmails} ${jobTitle} emails reveal the #1 mistake sales reps make`;
@@ -589,58 +672,82 @@ ${emailBody}`;
   }
 
   /**
-   * Generate email body content based on theme
+   * Get audience-specific content
+   */
+  private getAudienceContext(targetAudience: string) {
+    // Extract the key from the full audience name (e.g., "SDRs (Sales Development Representatives)" -> "SDRs (Sales Development Representatives)")
+    const audienceKey = Object.keys(this.AUDIENCE_PAIN_POINTS).find(key =>
+      targetAudience.includes(key.split(' (')[0])
+    );
+
+    // Return the context or default to Sales Leaders
+    const defaultKey = 'Sales Leaders' as keyof typeof this.AUDIENCE_PAIN_POINTS;
+    return this.AUDIENCE_PAIN_POINTS[audienceKey as keyof typeof this.AUDIENCE_PAIN_POINTS] || this.AUDIENCE_PAIN_POINTS[defaultKey];
+  }
+
+  /**
+   * Generate email body content based on theme and target audience
    */
   private getEmailBodyForTheme(
-    theme: string, 
-    jobTitle: string, 
-    mcpData: EmailPerformanceData, 
+    theme: string,
+    jobTitle: string,
+    mcpData: EmailPerformanceData,
     cta: string,
     openRate: string,
     replyRate: string,
-    totalEmails: string
+    totalEmails: string,
+    targetAudience: string
   ): string {
     const replyRatio = Math.round(100/parseFloat(replyRate));
+    const audienceContext = this.getAudienceContext(targetAudience);
     
     switch (theme) {
       case 'Data-Driven Outreach Strategies':
+        const painPoint1 = audienceContext.painPoints[0];
+        const value1 = audienceContext.apolloValue[0];
+
         return `Hey [First Name],
 
 What if I told you that 1 out of every ${Math.round(100/parseFloat(openRate))} ${jobTitle}s actually opens cold emails?
 
-Most sales reps think reaching ${jobTitle}s is impossible. They're wrong.
+${targetAudience.includes('SDR') || targetAudience.includes('BDR') ?
+  `I know what you're thinking: "${painPoint1}." Every rep faces this.` :
+  `As someone leading a sales team, you know the frustration: ${painPoint1}.`}
 
-Here's the proof: We just analyzed ${totalEmails} emails sent to ${jobTitle}s. The results will surprise you:
+Here's the proof: We just analyzed ${totalEmails} emails sent to ${jobTitle}s across our platform:
 
 📊 The ${jobTitle} Reality Check:
 
 • ${openRate}% open rate (that's ${Math.round(parseFloat(openRate) * mcpData.totalDelivered / 100).toLocaleString()} ${jobTitle}s who actually read emails)
 • ${replyRate}% reply rate (${Math.round(parseFloat(replyRate) * mcpData.totalDelivered / 100).toLocaleString()} ${jobTitle}s who responded)
-• ${totalEmails}+ emails delivered to executive contacts
+• ${totalEmails}+ emails delivered with verified contact data
 
-The #1 mistake? Most reps give up after 2-3 attempts because they think ${jobTitle}s don't engage with cold outreach.
+The #1 mistake? Most ${targetAudience.includes('SDR') || targetAudience.includes('BDR') ? 'reps' : 'teams'} give up after 2-3 attempts because they think ${jobTitle}s don't engage.
 
-But here's what the data actually shows: ${jobTitle}s DO respond to cold emails – when they're done right.
+But Apollo users know better. They leverage ${value1.toLowerCase()} to break through.
 
-The difference isn't luck. It's having the right contact data, timing, and message.
+${jobTitle}s DO respond – when you have the right data, timing, and approach.
 
-Ready to reach ${jobTitle}s who actually respond?
+Ready to ${targetAudience.includes('AE') ? 'accelerate your deals' : targetAudience.includes('Sales Leader') ? 'transform your team\'s performance' : 'book more meetings'}?
 
 **${cta} →**
-
-Stop guessing. Start reaching ${jobTitle}s who reply.
 
 Best,
 [Your Name]
 
-P.S. That ${replyRate}% reply rate? It means for every 100 ${jobTitle}s you contact through Apollo, ${Math.round(parseFloat(replyRate))} will respond. When's the last time your current tool delivered those results?`;
+P.S. That ${replyRate}% reply rate? It means for every 100 ${jobTitle}s you contact through Apollo, ${Math.round(parseFloat(replyRate))} will respond. ${targetAudience.includes('Sales Leader') ? 'Imagine your entire team hitting those numbers.' : 'When\'s the last time you saw results like that?'}`;
 
       case 'Executive Engagement Best Practices':
+        const painPoint2 = audienceContext.painPoints[1];
+        const value2 = audienceContext.apolloValue[1];
+
         return `Hey [First Name],
 
 Everyone says ${jobTitle}s don't respond to cold emails.
 
-The data tells a different story.
+${targetAudience.includes('AE') ?
+  `But you know the real challenge: ${painPoint2}. It's killing your close rates.` :
+  `The data tells a different story – especially when you solve for ${painPoint2}.`}
 
 We analyzed ${totalEmails} emails sent to ${jobTitle}s and discovered something fascinating:
 
