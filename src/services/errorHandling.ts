@@ -286,6 +286,13 @@ export const DEFAULT_RETRY_CONFIGS: Record<string, RetryConfig> = {
     maxDelayMs: 20000,
     backoffMultiplier: 2,
     jitterMs: 1000
+  },
+  mcp: {
+    maxRetries: 3, // MCP queries should be fast, allow more retries
+    baseDelayMs: 1000,
+    maxDelayMs: 15000,
+    backoffMultiplier: 2,
+    jitterMs: 500
   }
 };
 
@@ -308,6 +315,11 @@ export const DEFAULT_CIRCUIT_BREAKER_CONFIGS: Record<string, CircuitBreakerConfi
     failureThreshold: 4,
     resetTimeoutMs: 90000, // 1.5 minutes
     monitorWindowMs: 450000 // 7.5 minutes
+  },
+  mcp: {
+    failureThreshold: 3, // Open circuit after 3 failures
+    resetTimeoutMs: 60000, // 1 minute - MCP should recover quickly
+    monitorWindowMs: 300000 // 5 minutes
   }
 };
 
@@ -321,7 +333,8 @@ export const DEFAULT_RATE_LIMITS: Record<string, number> = {
   openai_deep_research: 15000, // 15 seconds (4 RPM - testing threshold)
   openai_gap_analysis: 15000, // 15 seconds (4 RPM - testing threshold)
   openai_general: 15000, // 15 seconds for other OpenAI requests
-  claude: 1500 // 1.5 seconds for Claude requests
+  claude: 1500, // 1.5 seconds for Claude requests
+  mcp: 1000 // 1 second between MCP requests - conservative rate limiting
 }; 
 
 /**

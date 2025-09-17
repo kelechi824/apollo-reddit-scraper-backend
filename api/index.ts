@@ -128,6 +128,7 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         jokes: '/api/jokes/*',
         abTesting: '/api/ab-testing/*',
         cacheInvalidation: '/api/cache-invalidation/*',
+        emailNewsletter: '/api/email-newsletter/*',
         uncover: '/api/uncover/*'
       }
     }
