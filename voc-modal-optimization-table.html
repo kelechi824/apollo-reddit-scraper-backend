@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoC Modal Optimization: Before vs After</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 40px;
+            background-color: #f8fafc;
+            color: #1e293b;
+            line-height: 1.6;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            border-radius: 12px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .optimization-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 40px;
+        }
+
+        .optimization-table th {
+            background: linear-gradient(135deg, #1e293b, #374151);
+            color: white;
+            padding: 20px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 1.1rem;
+            border-bottom: 3px solid #3b82f6;
+        }
+
+        .optimization-table td {
+            padding: 20px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+
+        .optimization-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .optimization-table tr:hover {
+            background-color: #f1f5f9;
+        }
+
+        .before-column {
+            background-color: #fef2f2;
+            border-left: 4px solid #ef4444;
+            width: 30%;
+        }
+
+        .after-column {
+            background-color: #f0fdf4;
+            border-left: 4px solid #22c55e;
+            width: 30%;
+        }
+
+        .reason-column {
+            background-color: #fefce8;
+            border-left: 4px solid #eab308;
+            width: 40%;
+        }
+
+        .element-type {
+            font-weight: 600;
+            color: #3b82f6;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .content-text {
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+
+        .pain-point {
+            background: #dbeafe;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #1e40af;
+            margin-top: 10px;
+        }
+
+        .customer-quote {
+            background: #f3f4f6;
+            border-left: 3px solid #6b7280;
+            padding: 10px 15px;
+            margin: 10px 0;
+            font-style: italic;
+            font-size: 0.9rem;
+            color: #4b5563;
+        }
+
+        .new-features {
+            margin-top: 40px;
+        }
+
+        .new-features h2 {
+            color: #1e293b;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .feature-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border-left: 4px solid #8b5cf6;
+        }
+
+        .feature-title {
+            font-weight: 600;
+            color: #7c3aed;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .implementation {
+            background: #f8fafc;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 VoC Modal Optimization</h1>
+        <p>Before vs After Analysis Based on Customer Pain Points from Gong Calls</p>
+    </div>
+
+    <table class="optimization-table">
+        <thead>
+            <tr>
+                <th>📄 Before (Current)</th>
+                <th>✨ After (Optimized)</th>
+                <th>🎯 Reason (Voice of Customer Insights)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="before-column">
+                    <div class="element-type">Modal Title</div>
+                    <div class="content-text">"Apollo AI Page Optimizer"</div>
+                </td>
+                <td class="after-column">
+                    <div class="element-type">Modal Title</div>
+                    <div class="content-text">"Streamline Your Prospecting with Apollo AI"</div>
+                </td>
+                <td class="reason-column">
+                    <div class="pain-point">🎯 Addresses: Manual Prospecting and Lead Research Time Waste</div>
+                    <div class="customer-quote">"We spend hours manually researching prospects instead of selling"</div>
+                    <p>The generic title doesn't immediately convey value. The new title directly addresses the customer pain point about wasted time on manual prospecting, using language that resonates with their frustration.</p>
+                </td>
+            </tr>
+
+            <tr>
+                <td class="before-column">
+                    <div class="element-type">Primary Button</div>
+                    <div class="content-text">"Analyze Sitemap"</div>
+                </td>
+                <td class="after-column">
+                    <div class="element-type">Primary Button</div>
+                    <div class="content-text">"Improve Data Accuracy"</div>
+                </td>
+                <td class="reason-column">
+                    <div class="pain-point">🎯 Addresses: Data Quality and Accuracy Issues in Contact Data</div>
+                    <div class="customer-quote">"Half our contact data is outdated and bounces"</div>
+                    <p>Technical jargon like "Analyze Sitemap" doesn't connect to user benefits. The new copy directly addresses their data quality concerns and positions the tool as a solution to their bounce rate problems.</p>
+                </td>
+            </tr>
+
+            <tr>
+                <td class="before-column">
+                    <div class="element-type">Progress Step</div>
+                    <div class="content-text">"Fetching sitemap XML from Apollo"</div>
+                </td>
+                <td class="after-column">
+                    <div class="element-type">Progress Step</div>
+                    <div class="content-text">"Gathering Reliable Data for Better Forecasting"</div>
+                </td>
+                <td class="reason-column">
+                    <div class="pain-point">🎯 Addresses: Pipeline Visibility and Forecasting Gaps</div>
+                    <div class="customer-quote">"We have no clear visibility into our pipeline"</div>
+                    <p>Technical progress steps confuse users. The new messaging connects the background process to a key customer outcome: improved forecasting accuracy, directly addressing their visibility concerns.</p>
+                </td>
+            </tr>
+
+            <tr>
+                <td class="before-column">
+                    <div class="element-type">Sitemap Selection</div>
+                    <div class="content-text">"Which Apollo sitemap should I analyze?"</div>
+                </td>
+                <td class="after-column">
+                    <div class="element-type">Sitemap Selection</div>
+                    <div class="content-text">"Which system integration should we optimize first?"</div>
+                </td>
+                <td class="reason-column">
+                    <div class="pain-point">🎯 Addresses: CRM Integration and Data Sync Challenges</div>
+                    <div class="customer-quote">"Our tools don't talk to each other"</div>
+                    <p>The word "sitemap" is meaningless to sales professionals. Reframing as "system integration" speaks to their frustration with disconnected tools and positions the feature as solving workflow disruption.</p>
+                </td>
+            </tr>
+
+            <tr>
+                <td class="before-column">
+                    <div class="element-type">URL Input Placeholder</div>
+                    <div class="content-text">"https://www.apollo.io/your-page-here"</div>
+                </td>
+                <td class="after-column">
+                    <div class="element-type">URL Input Placeholder</div>
+                    <div class="content-text">"Paste any page URL to identify high-quality prospects"</div>
+                </td>
+                <td class="reason-column">
+                    <div class="pain-point">🎯 Addresses: Lead Qualification and Scoring Inefficiencies</div>
+                    <div class="customer-quote">"Can't tell good leads from bad ones quickly"</div>
+                    <p>Generic placeholder text misses an opportunity to guide users. The new placeholder immediately clarifies the value proposition and addresses their struggle with lead qualification, turning confusion into clarity.</p>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="new-features">
+        <h2>🆕 Recommended New Features</h2>
+
+        <div class="feature-card">
+            <div class="feature-title">Quick Tips Section</div>
+            <p>Provide immediate, actionable insights on how the tool can solve specific pain points.</p>
+            <div class="implementation">
+                <strong>Implementation:</strong> Add a sidebar or modal footer with tips like "Use this tool to reduce manual data entry and improve lead quality."
+            </div>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-title">Real-time Feedback Panel</div>
+            <p>Allow users to provide quick feedback on the tool's effectiveness, fostering trust and continuous improvement.</p>
+            <div class="implementation">
+                <strong>Implementation:</strong> Small feedback widget that captures user sentiment about the optimization process and builds confidence through social proof.
+            </div>
+        </div>
+    </div>
+</body>
+</html>
