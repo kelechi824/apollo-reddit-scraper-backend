@@ -96,10 +96,12 @@ class FirecrawlService {
       // Use Firecrawl to scrape the article with retry logic
       const scrapeResult = await this.scrapeWithRetry(url, {
         formats: ['markdown', 'html'],
-        onlyMainContent: true,
-        includeTags: ['title', 'meta', 'article', 'main', 'section'],
-        excludeTags: ['nav', 'footer', 'aside', 'script', 'style'],
-        waitFor: 5000 // Wait 5 seconds for dynamic content
+        onlyMainContent: true, // Focus on main content but include all structural elements
+        includeTags: ['title', 'meta', 'article', 'main', 'section', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'ul', 'li', 'ol', 'button', 'form'],
+        excludeTags: ['nav', 'footer', 'header', 'script', 'style', 'noscript'], // Be more selective about what to exclude
+        waitFor: 8000, // Wait longer for dynamic content to load
+        timeout: 30000, // Increase timeout for complex pages
+        removeBase64Images: true // Clean up images for better text extraction
       });
 
       if (!scrapeResult.success || !scrapeResult.metadata) {
@@ -121,6 +123,9 @@ class FirecrawlService {
       const structure = this.analyzeArticleStructure(rawMarkdown || rawHtml);
       const ctaInsertionPoints = this.calculateCTAInsertionPoints(structure);
 
+      // Enhanced structure analysis to identify visual headers
+      const enhancedStructure = this.enhanceStructureWithVisualHeaders(structure, rawHtml || '');
+
       // Build structured article content
       const articleContent: ArticleContent = {
         url: url,
@@ -134,7 +139,7 @@ class FirecrawlService {
           publishDate: data.publishedTime,
           tags: data.keywords ? data.keywords.split(',').map((k: string) => k.trim()) : []
         },
-        structure,
+        structure: enhancedStructure,
         rawHtml,
         rawMarkdown,
         ctaInsertionPoints
@@ -449,6 +454,108 @@ class FirecrawlService {
     
     // Everything else is body content
     return 'body';
+  }
+
+  /**
+   * Enhance structure by identifying paragraphs that function as visual headers
+   * Why this matters: Many modern websites use styled paragraphs as section headers instead of proper H tags
+   */
+  private enhanceStructureWithVisualHeaders(structure: ArticleStructure, rawHtml: string): ArticleStructure {
+    if (!rawHtml) return structure;
+
+    // Patterns that indicate a paragraph is functioning as a section header
+    const headerIndicators = [
+      'Staff Contacts',
+      'Connect Staff',
+      'Unlock Staff Outreach Opportunities',
+      'Keep Staff Data Current',
+      'Find Staff Contact Details Fast'
+    ];
+
+    // Look for paragraphs with header-like styling classes
+    const headerStyleClasses = [
+      'font-founders-grotesk', // Apollo's heading font
+      'text-xl', 'text-2xl', 'text-3xl', // Large text sizes
+      'font-bold', 'font-semibold', 'font-medium', // Bold weights
+      'leading-tight', 'leading-none' // Tight line height typical of headers
+    ];
+
+    const enhancedHeadings = [...structure.headings];
+    const enhancedParagraphs = [...structure.paragraphs];
+
+    // Find paragraphs that should be headers
+    const pTagMatches = rawHtml.match(/<p[^>]*class="[^"]*"[^>]*>(.*?)<\/p>/gi) || [];
+
+    pTagMatches.forEach((pTag, index) => {
+      const classMatch = pTag.match(/class="([^"]*)"/);
+      const content = pTag.replace(/<[^>]*>/g, '').trim();
+
+      if (!classMatch || !content) return;
+
+      const classes = classMatch[1];
+      const isHeaderContent = headerIndicators.some(indicator =>
+        content.toLowerCase().includes(indicator.toLowerCase())
+      );
+      const hasHeaderStyling = headerStyleClasses.some(styleClass =>
+        classes.includes(styleClass)
+      );
+
+      // If this paragraph looks like a header, convert it
+      if (isHeaderContent || (hasHeaderStyling && content.length < 100)) {
+        const headerLevel = this.determineHeaderLevel(content, classes);
+
+        // Add as heading
+        enhancedHeadings.push({
+          id: `visual-header-${enhancedHeadings.length}`,
+          level: headerLevel,
+          text: content,
+          position: structure.paragraphs.length + index
+        });
+
+        // Update the paragraph to indicate it's a visual header
+        const paragraphIndex = enhancedParagraphs.findIndex(p =>
+          p.content.toLowerCase().includes(content.toLowerCase())
+        );
+
+        if (paragraphIndex >= 0) {
+          enhancedParagraphs[paragraphIndex] = {
+            ...enhancedParagraphs[paragraphIndex],
+            type: 'heading'
+          };
+        }
+      }
+    });
+
+    return {
+      ...structure,
+      headings: enhancedHeadings.sort((a, b) => a.position - b.position),
+      paragraphs: enhancedParagraphs
+    };
+  }
+
+  /**
+   * Determine appropriate header level for visual headers
+   * Why this matters: Assigns semantic hierarchy to styled paragraphs
+   */
+  private determineHeaderLevel(content: string, classes: string): number {
+    // Major section headers
+    if (content.includes('Staff Contacts') || content.includes('Connect Staff')) {
+      return 2; // H2 level
+    }
+
+    // Sub-section headers
+    if (content.includes('Find Staff Contact Details Fast') ||
+        content.includes('Unlock Staff Outreach Opportunities')) {
+      return 3; // H3 level
+    }
+
+    // Feature/benefit headers
+    if (content.length < 50) {
+      return 4; // H4 level
+    }
+
+    // Default for styled paragraphs
+    return 5; // H5 level
   }
 
   /**

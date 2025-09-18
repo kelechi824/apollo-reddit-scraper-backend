@@ -33,7 +33,7 @@ import jokesRoutes from './routes/jokes';
 import abTestingRoutes from './routes/abTesting';
 import cacheInvalidationRoutes from './routes/cacheInvalidation';
 import uncoverRoutes from './routes/uncover';
-
+import vocAgentRoutes from './routes/vocAgent';
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || '3003', 10);
 
@@ -78,7 +78,7 @@ app.use('/api/jokes', jokesRoutes);
 app.use('/api/ab-testing', abTestingRoutes);
 app.use('/api/cache-invalidation', cacheInvalidationRoutes);
 app.use('/api/uncover', uncoverRoutes);
-
+app.use('/api/voc-agent', vocAgentRoutes);
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
   res.json({ 
