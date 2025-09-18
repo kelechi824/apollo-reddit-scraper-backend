@@ -15,6 +15,7 @@ interface VoCPainPoint {
     modelUsed: string;
     callsAnalyzed: number;
     processingTime: number;
+    enhancementType?: string;
   };
   sourceExcerpts?: Array<{
     quote: string;
@@ -23,6 +24,16 @@ interface VoCPainPoint {
     excerpt: string;
     callId: string;
   }>;
+  // Enhanced VoC Agent fields
+  detailedAnalysis?: string;
+  apolloRelevance?: string;
+  productMapping?: string[];
+  recommendations?: string;
+  impactPotential?: 'high' | 'medium' | 'low';
+  urgencyIndicators?: string[];
+  customerStruggles?: string[];
+  apolloSolution?: string;
+  enhancementTimestamp?: string;
 }
 
 interface VoCAnalysisResult {
@@ -853,6 +864,212 @@ ${this.generateAnalysisPrompt(chunk)}`
   }
 
   /**
+   * Enhanced thematic analysis with Apollo product mapping and customer struggle insights
+   * Why this matters: Provides detailed AI-powered analysis of customer pain points with
+   * specific Apollo product relevance and recommendations using GPT-5-nano.
+   */
+  async analyzeThemesEnhanced(
+    daysBack: number = 90,
+    maxCalls: number = 300,
+    options: {
+      includeApolloMapping?: boolean;
+      includeCustomerStruggles?: boolean;
+      apolloProductContext?: any;
+    } = {}
+  ): Promise<{
+    variables: Record<string, string>;
+    painPoints: VoCPainPoint[];
+    metadata: {
+      totalPainPoints: number;
+      callsAnalyzed: number;
+      analysisDate: string;
+      enhancementType: string;
+      apolloMappingIncluded: boolean;
+    };
+  }> {
+    const startTime = Date.now();
+
+    try {
+      console.log(`🧠 Starting enhanced VoC analysis (${daysBack} days, ${maxCalls} calls)`);
+
+      // First get the base analysis
+      const baseResult = await this.analyzeThemesLightweight(daysBack, maxCalls);
+
+      if (baseResult.painPoints.length === 0) {
+        return {
+          variables: {},
+          painPoints: [],
+          metadata: {
+            totalPainPoints: 0,
+            callsAnalyzed: 0,
+            analysisDate: new Date().toISOString(),
+            enhancementType: 'enhanced-voc-agent',
+            apolloMappingIncluded: options.includeApolloMapping || false
+          }
+        };
+      }
+
+      console.log(`🎯 Enhancing ${baseResult.painPoints.length} pain points with AI insights (parallel processing)`);
+
+      // Enhanced analysis with Apollo context using parallel processing
+      const enhancementPromises = baseResult.painPoints.map(async (painPoint) => {
+        try {
+          return await this.enhancePainPointWithAI(painPoint, options);
+        } catch (error) {
+          console.error(`⚠️ Failed to enhance pain point ${painPoint.id}:`, error);
+          // Use original pain point as fallback
+          return painPoint;
+        }
+      });
+
+      const enhancedPainPoints = await Promise.all(enhancementPromises);
+
+      // Generate liquid variables
+      const variables: Record<string, string> = {};
+      enhancedPainPoints.forEach(point => {
+        variables[point.liquidVariable] = `{{ pain_points.${point.liquidVariable} }}`;
+      });
+
+      const processingTime = Date.now() - startTime;
+      console.log(`✅ Enhanced VoC analysis completed in ${processingTime}ms`);
+      console.log(`📊 Generated ${enhancedPainPoints.length} enhanced pain points`);
+
+      return {
+        variables,
+        painPoints: enhancedPainPoints,
+        metadata: {
+          totalPainPoints: enhancedPainPoints.length,
+          callsAnalyzed: baseResult.totalCallsAnalyzed,
+          analysisDate: new Date().toISOString(),
+          enhancementType: 'enhanced-voc-agent',
+          apolloMappingIncluded: options.includeApolloMapping || false
+        }
+      };
+
+    } catch (error: any) {
+      console.error('❌ Enhanced VoC analysis failed:', error.message);
+      throw new Error(`Enhanced VoC analysis failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Enhance individual pain point with AI insights and Apollo context
+   * Why this matters: Uses GPT-5-nano to provide detailed customer struggle analysis
+   * and maps pain points to specific Apollo product capabilities.
+   */
+  private async enhancePainPointWithAI(
+    painPoint: VoCPainPoint,
+    options: any
+  ): Promise<VoCPainPoint> {
+    try {
+      const prompt = `Analyze this customer pain point and provide enhanced insights with Apollo product mapping.
+
+PAIN POINT TO ANALYZE:
+Theme: ${painPoint.theme}
+Description: ${painPoint.description}
+Customer Quotes: ${painPoint.customerQuotes?.join('; ') || 'None available'}
+Frequency: ${painPoint.frequency || 1}
+Severity: ${painPoint.severity || 'medium'}
+
+APOLLO BRAND CONTEXT:
+Apollo is the end-to-end go-to-market (GTM) platform that combines #1-ranked B2B data with best-in-class execution.
+
+Key Capabilities:
+1. Living Data Network: 210M+ contacts, 91% email accuracy, 2M+ contributors validating data
+2. GTM Execution: Prospecting, engagement, workflows, conversation intelligence, deal management
+3. Actionable Intelligence: 65+ attributes, 15K+ buying-intent topics, AI scores & signals
+4. Easy Implementation: PLG-first, simple setup, unified workflows
+
+Core Problems Apollo Solves:
+- Stale/bad data quality issues
+- Scattered tools and workflow inefficiency
+- Messages that don't break through to prospects
+- Difficulty identifying best customers and decision makers
+- Challenges determining if prospects are in-market
+- Uncertainty about what to say next in sales conversations
+
+Specific Features:
+- Contact & Account Data: Largest B2B dataset with 65+ filters
+- Email Sequences: Dynamic variables, AI writing, deliverability guardrails
+- Dialer: 91% phone connect rate, local presence, coaching
+- AI Research Assistant: Web insights, custom fields, one-click personalization
+- Conversation Intelligence: Record/transcribe/analyze objections and pain points
+- Integrations: Native Salesforce/HubSpot, LinkedIn, Zapier, webhooks
+
+ANALYSIS REQUIREMENTS:
+Provide a JSON response with these fields:
+
+1. detailedAnalysis: Deep analysis of what customers are truly struggling with based on quotes and theme (2-3 sentences)
+
+2. apolloRelevance: Specific explanation of which Apollo capabilities address this pain point (2-3 sentences)
+
+3. productMapping: Array of specific Apollo features that solve this problem
+
+4. recommendations: Actionable advice for addressing this pain point with Apollo (2-3 sentences)
+
+5. impactPotential: Rate potential impact Apollo could have (high/medium/low) with brief reason
+
+6. urgencyIndicators: Customer words/phrases indicating urgency or pain level
+
+7. customerStruggles: Specific business challenges customers face due to this pain point
+
+8. apolloSolution: How Apollo's "Right Company × Right Person × Right Time × Right Message = Opportunity" formula applies
+
+Respond with valid JSON only. Be specific and reference actual Apollo capabilities.`;
+
+      const completion = await this.openai.responses.create({
+        model: 'gpt-5-nano',
+        input: prompt
+      });
+
+      const analysis = JSON.parse(completion.output_text);
+
+      // Enhanced pain point with AI insights
+      return {
+        ...painPoint,
+        detailedAnalysis: analysis.detailedAnalysis,
+        apolloRelevance: analysis.apolloRelevance,
+        productMapping: analysis.productMapping || ['Contact & Account Data'],
+        recommendations: analysis.recommendations,
+        impactPotential: analysis.impactPotential || 'medium',
+        urgencyIndicators: analysis.urgencyIndicators || [],
+        customerStruggles: analysis.customerStruggles || [],
+        apolloSolution: analysis.apolloSolution || 'Apollo\'s integrated platform addresses this through comprehensive data and automation.',
+        enhancementTimestamp: new Date().toISOString(),
+        analysisMetadata: {
+          modelUsed: 'gpt-5-nano-enhanced',
+          callsAnalyzed: painPoint.analysisMetadata?.callsAnalyzed || 0,
+          processingTime: painPoint.analysisMetadata?.processingTime || 0,
+          enhancementType: 'apollo-context-mapping'
+        }
+      };
+
+    } catch (error: any) {
+      console.error(`❌ AI enhancement failed for pain point ${painPoint.id}:`, error);
+
+      // Fallback enhancement with basic Apollo context
+      return {
+        ...painPoint,
+        detailedAnalysis: `Customers experience significant challenges with ${painPoint.theme.toLowerCase()}, indicating underlying inefficiencies in their current go-to-market processes and data management systems.`,
+        apolloRelevance: 'Apollo\'s comprehensive GTM platform directly addresses these challenges through its Living Data Network (210M+ contacts with 91% accuracy), AI-powered workflows, and integrated sales execution tools.',
+        productMapping: ['Contact & Account Data', 'AI Research Assistant', 'Email Sequences', 'Conversation Intelligence'],
+        recommendations: 'Implement Apollo\'s end-to-end platform to eliminate manual processes, improve data accuracy, and enable scalable prospecting that targets the right company, right person, at the right time.',
+        impactPotential: 'high',
+        urgencyIndicators: ['challenges', 'struggling', 'difficult', 'time-consuming', 'inefficient'],
+        customerStruggles: [`Manual processes causing inefficiency in ${painPoint.theme.toLowerCase()}`, 'Data quality issues impacting results', 'Workflow fragmentation across multiple tools'],
+        apolloSolution: 'Apollo\'s "Right Company × Right Person × Right Time × Right Message = Opportunity" formula directly applies by providing accurate data, timing insights, and personalized messaging capabilities.',
+        enhancementTimestamp: new Date().toISOString(),
+        analysisMetadata: {
+          modelUsed: 'fallback-enhancement',
+          callsAnalyzed: painPoint.analysisMetadata?.callsAnalyzed || 0,
+          processingTime: painPoint.analysisMetadata?.processingTime || 0,
+          enhancementType: 'apollo-context-mapping'
+        }
+      };
+    }
+  }
+
+  /**
    * Quick test analysis
    * Why this matters: Fast testing with minimal data.
    */
@@ -864,11 +1081,11 @@ ${this.generateAnalysisPrompt(chunk)}`
     error?: string;
   }> {
     const startTime = Date.now();
-    
+
     try {
       const result = await this.analyzeThemes(7, 3);
       const sampleThemes = result.painPoints.slice(0, 3).map(p => p.theme);
-      
+
       return {
         success: true,
         painPointCount: result.painPoints.length,
