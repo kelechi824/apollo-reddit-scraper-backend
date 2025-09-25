@@ -1,7 +1,5 @@
 {
   "version": 2,
-  "public": true,
-  "alias": ["apollo-reddit-scraper-backend.vercel.app"],
   "functions": {
     "api/index.ts": {
       "maxDuration": 60

@@ -30,29 +30,25 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
 
     const vocAnalyzer = new VoCThematicAnalyzer();
 
-    // Set response timeout to prevent client-side timeout
-    res.setTimeout(25000); // 25 second timeout for client
+    // Set response timeout to prevent client-side timeout - increased for production
+    res.setTimeout(45000); // 45 second timeout for client
 
-    // Add timeout wrapper with longer limit for full analysis
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Analysis timeout - processing took longer than expected')), 20000); // 20 second timeout
-    });
-
-    // Try lightweight analysis first with error handling
+    // Try multiple approaches with increasing timeouts
     console.log('📊 Starting lightweight analysis for immediate response...');
-    
+
     try {
+      // First attempt: Quick lightweight analysis with 10s timeout
       const lightweightResult = await Promise.race([
-        vocAnalyzer.analyzeThemesLightweight(daysBack, maxCalls),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Lightweight analysis timeout')), 15000)
+        vocAnalyzer.analyzeThemesLightweight(daysBack, Math.min(maxCalls, 150)), // Reduce calls for speed
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Lightweight analysis timeout')), 10000)
         )
       ]) as any;
-      
-      // If we have basic results, return them immediately with enhancement flag
+
+      // If we have basic results, return them immediately
       if (lightweightResult && lightweightResult.painPoints && lightweightResult.painPoints.length > 0) {
         console.log(`✅ Lightweight analysis complete: ${lightweightResult.painPoints.length} pain points found`);
-        
+
         // Return lightweight results immediately
         const quickResponse = {
           success: true,
@@ -75,22 +71,55 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
         return res.json(quickResponse);
       }
     } catch (lightweightError: any) {
-      console.warn('⚠️ Lightweight analysis failed, falling back to enhanced:', lightweightError?.message || lightweightError);
+      console.warn('⚠️ Lightweight analysis failed, trying optimized approach:', lightweightError?.message || lightweightError);
     }
 
-    // Fallback to enhanced analysis if lightweight didn't work
-    console.log('🔄 Falling back to enhanced analysis...');
-    const analysisPromise = vocAnalyzer.analyzeThemesEnhanced(
-      daysBack,
-      maxCalls,
-      {
-        includeApolloMapping,
-        includeCustomerStruggles,
-        apolloProductContext: getApolloProductContext()
-      }
-    );
+    // Second attempt: Try optimized analysis with medium timeout
+    try {
+      console.log('🔄 Trying optimized analysis approach...');
+      const optimizedResult = await Promise.race([
+        vocAnalyzer.analyzeThemesOptimized(daysBack, Math.min(maxCalls, 200)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Optimized analysis timeout')), 20000)
+        )
+      ]) as any;
 
-    const analysisResult = await Promise.race([analysisPromise, timeoutPromise]) as any;
+      if (optimizedResult && optimizedResult.painPoints && optimizedResult.painPoints.length > 0) {
+        console.log(`✅ Optimized analysis complete: ${optimizedResult.painPoints.length} pain points found`);
+
+        const optimizedResponse = {
+          success: true,
+          data: {
+            painPoints: optimizedResult.painPoints,
+            metadata: {
+              totalPainPoints: optimizedResult.painPoints.length,
+              callsAnalyzed: optimizedResult.totalCallsAnalyzed || 0,
+              analysisDate: optimizedResult.analysisTimestamp || new Date().toISOString(),
+              enhancementType: 'optimized_parallel',
+              apolloMappingIncluded: false,
+              processingTime: optimizedResult.processingTimeMs || 0
+            }
+          },
+          message: `Optimized analysis completed: ${optimizedResult.painPoints.length} pain points identified`,
+          timestamp: new Date().toISOString(),
+          enhancementAvailable: true
+        };
+
+        return res.json(optimizedResponse);
+      }
+    } catch (optimizedError: any) {
+      console.warn('⚠️ Optimized analysis failed, falling back to chunked analysis:', optimizedError?.message || optimizedError);
+    }
+
+    // Third attempt: Chunked analysis as final fallback with extended timeout
+    console.log('🔄 Falling back to chunked analysis (final attempt)...');
+    const chunkedPromise = vocAnalyzer.analyzeThemesChunk(daysBack, 0, Math.min(maxCalls, 100));
+    const analysisResult = await Promise.race([
+      chunkedPromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('All analysis methods timed out - processing took longer than expected')), 30000)
+      )
+    ]) as any;
 
     res.json({
       success: true,
