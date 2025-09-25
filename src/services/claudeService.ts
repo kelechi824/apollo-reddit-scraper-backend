@@ -424,7 +424,8 @@ ${this.buildConversationContext(conversation)}`;
         temperature: 0.7,
         system: cachedConversationPrompt,
         messages: messages,
-        stream: true
+        stream: true,
+        service_tier: 'standard_only'
       });
 
       for await (const chunk of stream) {
@@ -557,11 +558,12 @@ FORMATTING REQUIREMENT: When quoting any Reddit content (post text, comments, ti
       const cachedInitialPrompt = this.buildCachedInitialPrompt(conversation, null);
 
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
+        model: "claude-sonnet-4-20250514", // Using Claude 4 Sonnet
         max_tokens: 2000, // Increased from 300 to allow comprehensive socratic learning responses
         temperature: 0.7,
         system: cachedInitialPrompt,
-        messages: [{ role: "user", content: initialPrompt }]
+        messages: [{ role: "user", content: initialPrompt }],
+        service_tier: 'standard_only'
       });
 
       const content = completion.content[0];
@@ -716,7 +718,8 @@ FORMATTING REQUIREMENT: When quoting any Reddit content (post text, comments, ti
         temperature: 0.7,
         system: cachedInitialPrompt,
         messages: [{ role: "user", content: initialPrompt }],
-        stream: true
+        stream: true,
+        service_tier: 'standard_only'
       });
 
       let fullContent = '';
@@ -797,11 +800,12 @@ What angle feels most natural for your approach?`;
       const cachedConversationPrompt = this.buildCachedConversationPrompt(conversation, null);
 
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
+        model: "claude-sonnet-4-20250514", // Using Claude 4 Sonnet
         max_tokens: 2000, // Increased from 400 to allow comprehensive socratic learning responses
         temperature: 0.7,
         system: cachedConversationPrompt,
-        messages: messages
+        messages: messages,
+        service_tier: 'standard_only'
       });
 
       const content = completion.content[0];
@@ -2109,7 +2113,8 @@ IMPORTANT: You have complete access to this Reddit post information above. When 
                 role: 'user',
                 content: prompt
               }
-            ]
+            ],
+            service_tier: 'standard_only'
           });
         },
         DEFAULT_RETRY_CONFIGS.claude,
@@ -2246,7 +2251,8 @@ IMPORTANT: You have complete access to this Reddit post information above. When 
                     ? `Generate comprehensive content for the keyword "${request.post_context?.keyword || 'target topic'}":\n\n${request.user_prompt}`
                     : `${request.system_prompt}\n\nGenerate comprehensive content for the keyword "${request.post_context?.keyword || 'target topic'}":\n\n${request.user_prompt}`
                 }
-              ]
+              ],
+              service_tier: 'standard_only'
             }),
             this.createTimeoutPromise(300000) // 5 minute timeout for comprehensive content generation
           ]);
@@ -2425,9 +2431,10 @@ IMPORTANT: You have complete access to this Reddit post information above. When 
         async () => {
           const completion = await Promise.race([
             this.client!.messages.create({
-              model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
+              model: "claude-sonnet-4-20250514", // Using Claude 4 Sonnet
               max_tokens: 50,
-              messages: [{ role: "user", content: "Hello, this is a connection test." }]
+              messages: [{ role: "user", content: "Hello, this is a connection test." }],
+              service_tier: 'standard_only'
             }),
             this.createTimeoutPromise(15000) // 15 second timeout for test
           ]);
@@ -2500,7 +2507,7 @@ Please use this processed data as context to create a comprehensive playbook fol
 
       const startTime = Date.now();
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514', // Using Claude 3.5 Sonnet
+        model: 'claude-sonnet-4-20250514', // Using Claude 4 Sonnet
         max_tokens: 4000,
         temperature: 0.9, // Increased for more creative and varied playbook outputs
         system: cachedPlaybookPrompt,
@@ -2509,7 +2516,8 @@ Please use this processed data as context to create a comprehensive playbook fol
             role: 'user',
             content: `Generate a comprehensive playbook for ${job_title} focused on the following content:\n\n${enhancedUserPrompt}`
           }
-        ]
+        ],
+        service_tier: 'standard_only'
       });
 
       // Track cache performance for playbook generation
@@ -2626,7 +2634,8 @@ OUTPUT: Return ONLY valid JSON with metaSeoTitle and metaDescription fields.`;
             role: 'user',
             content: params.prompt
           }
-        ]
+        ],
+        service_tier: 'standard_only'
       });
 
       // Track cache performance for meta field generation
@@ -2816,7 +2825,8 @@ INSTRUCTIONS:
 
 Focus on what makes THIS content unique and valuable, not generic information about the keyword. Prioritize natural completeness over strict character limits.`
           }
-        ]
+        ],
+        service_tier: 'standard_only'
       });
 
       // Track cache performance for enhanced meta field generation
@@ -3106,11 +3116,12 @@ Generate a practical, CRO-focused opening that identifies specific conversion op
 
     try {
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
+        model: "claude-sonnet-4-20250514", // Using Claude 4 Sonnet
         max_tokens: 400,
         temperature: 0.7,
         system: systemPrompt,
-        messages: [{ role: "user", content: initialPrompt }]
+        messages: [{ role: "user", content: initialPrompt }],
+        service_tier: 'standard_only'
       });
 
       const content = completion.content[0];
@@ -3173,11 +3184,12 @@ What's your biggest conversion challenge right now, or would you like me to dive
       });
 
       const completion = await this.client!.messages.create({
-        model: "claude-sonnet-4-20250514", // Using Claude 3.5 Sonnet
+        model: "claude-sonnet-4-20250514", // Using Claude 4 Sonnet
         max_tokens: 500,
         temperature: 0.7,
         system: systemPrompt + "\n\n" + conversationHistory,
-        messages: messages
+        messages: messages,
+        service_tier: 'standard_only'
       });
 
       const content = completion.content[0];
