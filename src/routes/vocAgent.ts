@@ -38,34 +38,44 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
       setTimeout(() => reject(new Error('Analysis timeout - processing took longer than expected')), 20000); // 20 second timeout
     });
 
-    // Use lightweight analysis first, then enhance asynchronously if needed
+    // Try lightweight analysis first with error handling
     console.log('📊 Starting lightweight analysis for immediate response...');
-    const lightweightResult = await vocAnalyzer.analyzeThemesLightweight(daysBack, maxCalls);
     
-    // If we have basic results, return them immediately with enhancement flag
-    if (lightweightResult.painPoints.length > 0) {
-      console.log(`✅ Lightweight analysis complete: ${lightweightResult.painPoints.length} pain points found`);
+    try {
+      const lightweightResult = await Promise.race([
+        vocAnalyzer.analyzeThemesLightweight(daysBack, maxCalls),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Lightweight analysis timeout')), 15000)
+        )
+      ]) as any;
       
-      // Return lightweight results immediately
-      const quickResponse = {
-        success: true,
-        data: {
-          painPoints: lightweightResult.painPoints,
-          metadata: {
-            totalPainPoints: lightweightResult.painPoints.length,
-            callsAnalyzed: lightweightResult.totalCallsAnalyzed,
-            analysisDate: lightweightResult.analysisTimestamp,
-            enhancementType: 'lightweight_fast',
-            apolloMappingIncluded: false,
-            processingTime: lightweightResult.processingTimeMs
-          }
-        },
-        message: `Fast analysis completed: ${lightweightResult.painPoints.length} pain points identified`,
-        timestamp: new Date().toISOString(),
-        enhancementAvailable: true
-      };
+      // If we have basic results, return them immediately with enhancement flag
+      if (lightweightResult && lightweightResult.painPoints && lightweightResult.painPoints.length > 0) {
+        console.log(`✅ Lightweight analysis complete: ${lightweightResult.painPoints.length} pain points found`);
+        
+        // Return lightweight results immediately
+        const quickResponse = {
+          success: true,
+          data: {
+            painPoints: lightweightResult.painPoints,
+            metadata: {
+              totalPainPoints: lightweightResult.painPoints.length,
+              callsAnalyzed: lightweightResult.totalCallsAnalyzed || 0,
+              analysisDate: lightweightResult.analysisTimestamp || new Date().toISOString(),
+              enhancementType: 'lightweight_fast',
+              apolloMappingIncluded: false,
+              processingTime: lightweightResult.processingTimeMs || 0
+            }
+          },
+          message: `Fast analysis completed: ${lightweightResult.painPoints.length} pain points identified`,
+          timestamp: new Date().toISOString(),
+          enhancementAvailable: true
+        };
 
-      return res.json(quickResponse);
+        return res.json(quickResponse);
+      }
+    } catch (lightweightError: any) {
+      console.warn('⚠️ Lightweight analysis failed, falling back to enhanced:', lightweightError?.message || lightweightError);
     }
 
     // Fallback to enhanced analysis if lightweight didn't work
