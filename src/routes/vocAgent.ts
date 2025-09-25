@@ -52,19 +52,30 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
       if (lightweightResult && lightweightResult.painPoints && lightweightResult.painPoints.length > 0) {
         console.log(`✅ Lightweight analysis complete: ${lightweightResult.painPoints.length} pain points found`);
 
-        // Return lightweight results immediately
+        // Format as liquid variables (following working VoCExtraction pattern)
+        const variables: Record<string, string> = {};
+        lightweightResult.painPoints.forEach((point: any) => {
+          if (point.liquidVariable) {
+            variables[point.liquidVariable] = `{{ pain_points.${point.liquidVariable} }}`;
+          }
+        });
+
+        // Return structure matching working VoCExtraction endpoint
+        const liquidResult = {
+          variables,
+          painPoints: lightweightResult.painPoints,
+          metadata: {
+            totalPainPoints: lightweightResult.painPoints.length,
+            callsAnalyzed: lightweightResult.totalCallsAnalyzed || 0,
+            analysisDate: lightweightResult.analysisTimestamp || new Date().toISOString()
+          }
+        };
+
         const quickResponse = {
           success: true,
           data: {
-            painPoints: lightweightResult.painPoints,
-            metadata: {
-              totalPainPoints: lightweightResult.painPoints.length,
-              callsAnalyzed: lightweightResult.totalCallsAnalyzed || 0,
-              analysisDate: lightweightResult.analysisTimestamp || new Date().toISOString(),
-              enhancementType: 'lightweight_fast',
-              apolloMappingIncluded: false,
-              processingTime: lightweightResult.processingTimeMs || 0
-            }
+            success: true,
+            data: liquidResult
           },
           message: `Fast analysis completed: ${lightweightResult.painPoints.length} pain points identified`,
           timestamp: new Date().toISOString(),
@@ -90,18 +101,30 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
       if (optimizedResult && optimizedResult.painPoints && optimizedResult.painPoints.length > 0) {
         console.log(`✅ Optimized analysis complete: ${optimizedResult.painPoints.length} pain points found`);
 
+        // Format as liquid variables (following working VoCExtraction pattern)
+        const variables: Record<string, string> = {};
+        optimizedResult.painPoints.forEach((point: any) => {
+          if (point.liquidVariable) {
+            variables[point.liquidVariable] = `{{ pain_points.${point.liquidVariable} }}`;
+          }
+        });
+
+        // Return structure matching working VoCExtraction endpoint
+        const liquidResult = {
+          variables,
+          painPoints: optimizedResult.painPoints,
+          metadata: {
+            totalPainPoints: optimizedResult.painPoints.length,
+            callsAnalyzed: optimizedResult.totalCallsAnalyzed || 0,
+            analysisDate: optimizedResult.analysisTimestamp || new Date().toISOString()
+          }
+        };
+
         const optimizedResponse = {
           success: true,
           data: {
-            painPoints: optimizedResult.painPoints,
-            metadata: {
-              totalPainPoints: optimizedResult.painPoints.length,
-              callsAnalyzed: optimizedResult.totalCallsAnalyzed || 0,
-              analysisDate: optimizedResult.analysisTimestamp || new Date().toISOString(),
-              enhancementType: 'optimized_parallel',
-              apolloMappingIncluded: false,
-              processingTime: optimizedResult.processingTimeMs || 0
-            }
+            success: true,
+            data: liquidResult
           },
           message: `Optimized analysis completed: ${optimizedResult.painPoints.length} pain points identified`,
           timestamp: new Date().toISOString(),
@@ -124,10 +147,33 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
       )
     ]) as any;
 
+    // Format final result to match expected structure
+    const variables: Record<string, string> = {};
+    if (analysisResult.painPoints) {
+      analysisResult.painPoints.forEach((point: any) => {
+        if (point.liquidVariable) {
+          variables[point.liquidVariable] = `{{ pain_points.${point.liquidVariable} }}`;
+        }
+      });
+    }
+
+    const liquidResult = {
+      variables,
+      painPoints: analysisResult.painPoints || [],
+      metadata: {
+        totalPainPoints: analysisResult.painPoints?.length || 0,
+        callsAnalyzed: analysisResult.totalCallsAnalyzed || 0,
+        analysisDate: analysisResult.analysisTimestamp || new Date().toISOString()
+      }
+    };
+
     res.json({
       success: true,
-      data: analysisResult,
-      message: `Enhanced analysis completed: ${analysisResult.metadata.totalPainPoints} pain points with AI insights`,
+      data: {
+        success: true,
+        data: liquidResult
+      },
+      message: `Chunked analysis completed: ${liquidResult.metadata.totalPainPoints} pain points identified`,
       timestamp: new Date().toISOString()
     });
 
