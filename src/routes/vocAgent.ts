@@ -41,23 +41,26 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
       // Quick connectivity test - just return mock data for now to verify deployment
       console.log('🔧 Returning test data to verify deployment...');
 
+      const testPainPoints = [
+        {
+          id: 'test-1',
+          theme: 'Test Pain Point',
+          liquidVariable: 'test_pain_point',
+          description: 'This is a test pain point to verify the timeout fix is deployed',
+          frequency: 5,
+          severity: 'high' as const,
+          customerQuotes: ['This is a test quote'],
+          emotionalTriggers: ['frustration'],
+          extractionTimestamp: new Date().toISOString()
+        }
+      ];
+
       const testResponse = {
         success: true,
         data: {
-          painPoints: [
-            {
-              id: 'test-1',
-              theme: 'Test Pain Point',
-              description: 'This is a test pain point to verify the timeout fix is deployed',
-              frequency: 5,
-              severity: 'high' as const,
-              customerQuotes: ['This is a test quote'],
-              emotionalTriggers: ['frustration'],
-              extractionTimestamp: new Date().toISOString()
-            }
-          ],
+          painPoints: testPainPoints,
           metadata: {
-            totalPainPoints: 1,
+            totalPainPoints: testPainPoints.length,
             callsAnalyzed: 0,
             analysisDate: new Date().toISOString(),
             enhancementType: 'test_deployment',
