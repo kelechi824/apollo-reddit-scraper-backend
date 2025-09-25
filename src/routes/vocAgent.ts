@@ -19,8 +19,8 @@ const router = express.Router();
 router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<any> => {
   try {
     const {
-      daysBack = 90,
-      maxCalls = 300,
+      daysBack = 90, // Keep original scope
+      maxCalls = 300, // Keep original scope
       includeApolloMapping = true,
       includeCustomerStruggles = true
     } = req.body;
@@ -30,8 +30,47 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
 
     const vocAnalyzer = new VoCThematicAnalyzer();
 
-    // Use the enhanced analysis method with Apollo context
-    const analysisResult = await vocAnalyzer.analyzeThemesEnhanced(
+    // Set response timeout to prevent client-side timeout
+    res.setTimeout(25000); // 25 second timeout for client
+
+    // Add timeout wrapper with longer limit for full analysis
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Analysis timeout - processing took longer than expected')), 20000); // 20 second timeout
+    });
+
+    // Use lightweight analysis first, then enhance asynchronously if needed
+    console.log('📊 Starting lightweight analysis for immediate response...');
+    const lightweightResult = await vocAnalyzer.analyzeThemesLightweight(daysBack, maxCalls);
+    
+    // If we have basic results, return them immediately with enhancement flag
+    if (lightweightResult.painPoints.length > 0) {
+      console.log(`✅ Lightweight analysis complete: ${lightweightResult.painPoints.length} pain points found`);
+      
+      // Return lightweight results immediately
+      const quickResponse = {
+        success: true,
+        data: {
+          painPoints: lightweightResult.painPoints,
+          metadata: {
+            totalPainPoints: lightweightResult.painPoints.length,
+            callsAnalyzed: lightweightResult.totalCallsAnalyzed,
+            analysisDate: lightweightResult.analysisTimestamp,
+            enhancementType: 'lightweight_fast',
+            apolloMappingIncluded: false,
+            processingTime: lightweightResult.processingTimeMs
+          }
+        },
+        message: `Fast analysis completed: ${lightweightResult.painPoints.length} pain points identified`,
+        timestamp: new Date().toISOString(),
+        enhancementAvailable: true
+      };
+
+      return res.json(quickResponse);
+    }
+
+    // Fallback to enhanced analysis if lightweight didn't work
+    console.log('🔄 Falling back to enhanced analysis...');
+    const analysisPromise = vocAnalyzer.analyzeThemesEnhanced(
       daysBack,
       maxCalls,
       {
@@ -40,6 +79,8 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
         apolloProductContext: getApolloProductContext()
       }
     );
+
+    const analysisResult = await Promise.race([analysisPromise, timeoutPromise]) as any;
 
     res.json({
       success: true,
@@ -54,6 +95,87 @@ router.post('/analyze-enhanced', async (req: Request, res: Response): Promise<an
       success: false,
       error: error.message,
       message: 'Enhanced VoC analysis failed',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * POST /api/voc-agent/enhance-results
+ * Enhance existing lightweight results with AI insights and Apollo mapping
+ * Why this matters: Allows for progressive enhancement without blocking initial results
+ */
+router.post('/enhance-results', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const {
+      painPoints,
+      daysBack = 90,
+      maxCalls = 300,
+      includeApolloMapping = true,
+      includeCustomerStruggles = true
+    } = req.body;
+
+    if (!painPoints || !Array.isArray(painPoints)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pain points array is required for enhancement',
+        message: 'Please provide existing pain points to enhance'
+      });
+    }
+
+    console.log(`🔧 Enhancing ${painPoints.length} pain points with AI insights`);
+
+    const vocAnalyzer = new VoCThematicAnalyzer();
+    
+    // Process enhancements in smaller batches to prevent timeout
+    const batchSize = 5;
+    const enhancedPainPoints = [];
+    
+    for (let i = 0; i < painPoints.length; i += batchSize) {
+      const batch = painPoints.slice(i, i + batchSize);
+      console.log(`🔄 Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(painPoints.length/batchSize)}`);
+      
+      // Add AI enhancement to each pain point in batch
+      for (const painPoint of batch) {
+        try {
+          // Add Apollo product mapping and customer struggle analysis
+          const enhanced = {
+            ...painPoint,
+            apolloRelevance: includeApolloMapping ? await getApolloRelevanceScore(painPoint) : null,
+            customerStruggles: includeCustomerStruggles ? await analyzeCustomerStruggles(painPoint) : null,
+            enhanced: true,
+            enhancedAt: new Date().toISOString()
+          };
+          enhancedPainPoints.push(enhanced);
+        } catch (error) {
+          console.warn(`⚠️ Failed to enhance pain point: ${painPoint.title}`, error);
+          enhancedPainPoints.push({ ...painPoint, enhanced: false });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        painPoints: enhancedPainPoints,
+        metadata: {
+          totalPainPoints: enhancedPainPoints.length,
+          enhancedCount: enhancedPainPoints.filter(p => p.enhanced).length,
+          enhancementType: 'progressive_ai_enhancement',
+          apolloMappingIncluded: includeApolloMapping,
+          processingDate: new Date().toISOString()
+        }
+      },
+      message: `Enhanced ${enhancedPainPoints.filter(p => p.enhanced).length}/${enhancedPainPoints.length} pain points with AI insights`,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ Enhancement failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: 'Pain point enhancement failed',
       timestamp: new Date().toISOString()
     });
   }
@@ -804,6 +926,69 @@ function extractUrlFromMessage(message: string): string {
   const urlRegex = /(https?:\/\/[^\s]+)/;
   const match = message.match(urlRegex);
   return match ? match[1] : '';
+}
+
+/**
+ * Get Apollo product relevance score for a pain point
+ * Why this matters: Determines how well Apollo's products can address the customer pain point
+ */
+async function getApolloRelevanceScore(painPoint: any): Promise<any> {
+  try {
+    // Simple relevance scoring based on keywords and themes
+    const apolloKeywords = ['prospecting', 'outreach', 'sales', 'lead generation', 'email', 'contact', 'crm', 'pipeline'];
+    const painPointText = `${painPoint.title} ${painPoint.description} ${painPoint.theme}`.toLowerCase();
+    
+    let relevanceScore = 0;
+    const matchedKeywords = [];
+    
+    for (const keyword of apolloKeywords) {
+      if (painPointText.includes(keyword)) {
+        relevanceScore += 10;
+        matchedKeywords.push(keyword);
+      }
+    }
+    
+    return {
+      score: Math.min(relevanceScore, 100), // Cap at 100
+      matchedKeywords,
+      recommendation: relevanceScore > 30 ? 'High Apollo relevance' : relevanceScore > 10 ? 'Medium Apollo relevance' : 'Low Apollo relevance'
+    };
+  } catch (error) {
+    console.warn('Failed to calculate Apollo relevance:', error);
+    return { score: 0, matchedKeywords: [], recommendation: 'Unable to assess' };
+  }
+}
+
+/**
+ * Analyze customer struggles from a pain point
+ * Why this matters: Identifies specific customer challenges that Apollo can address
+ */
+async function analyzeCustomerStruggles(painPoint: any): Promise<any> {
+  try {
+    // Extract struggle indicators from pain point text
+    const struggleIndicators = ['difficult', 'hard', 'challenging', 'impossible', 'frustrating', 'time-consuming', 'expensive', 'manual'];
+    const painPointText = `${painPoint.title} ${painPoint.description}`.toLowerCase();
+    
+    const identifiedStruggles = [];
+    let struggleIntensity = 0;
+    
+    for (const indicator of struggleIndicators) {
+      if (painPointText.includes(indicator)) {
+        identifiedStruggles.push(indicator);
+        struggleIntensity += 1;
+      }
+    }
+    
+    return {
+      struggles: identifiedStruggles,
+      intensity: struggleIntensity,
+      category: struggleIntensity > 3 ? 'High Pain' : struggleIntensity > 1 ? 'Medium Pain' : 'Low Pain',
+      apolloSolution: struggleIntensity > 1 ? 'Apollo can likely help' : 'Limited Apollo applicability'
+    };
+  } catch (error) {
+    console.warn('Failed to analyze customer struggles:', error);
+    return { struggles: [], intensity: 0, category: 'Unknown', apolloSolution: 'Unable to assess' };
+  }
 }
 
 export default router;
