@@ -124,7 +124,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         jokes: '/api/jokes/*',
         abTesting: '/api/ab-testing/*',
         cacheInvalidation: '/api/cache-invalidation/*',
-        uncover: '/api/uncover/*'
+        uncover: '/api/uncover/*',
+        vocAgent: '/api/voc-agent/*'
       }
     }
   });
