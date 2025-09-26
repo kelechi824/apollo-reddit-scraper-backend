@@ -443,14 +443,22 @@ ${prompt}`;
     
     // Add randomization for variety in regeneration
     const randomSeed = Math.floor(Math.random() * 1000);
+    const timestamp = Date.now();
     const variationPrompts = [
       "Create a fresh, unique approach that stands out from typical sales copy.",
       "Generate an innovative angle that competitors wouldn't think of.",
       "Develop a creative hook that breaks through the noise.",
       "Craft an unexpected perspective that captures attention immediately.",
-      "Design a bold approach that differentiates from standard messaging."
+      "Design a bold approach that differentiates from standard messaging.",
+      "Build an authentic message using real customer pain points.",
+      "Craft compelling copy that transforms customer frustrations into action.",
+      "Create urgency around the specific problems customers actually face."
     ];
     const randomVariation = variationPrompts[randomSeed % variationPrompts.length];
+    
+    // Add uniqueness context from previous generations
+    const previousCTAs = this.generatedCTAs.map(cta => `${cta.headline}: ${cta.description}`).join(' | ');
+    const uniquenessContext = previousCTAs ? `AVOID REPEATING THESE PATTERNS: ${previousCTAs}` : 'First CTA generation - create original content';
     
     // Extract top pain points and customer quotes
     const topPainPoints = personaPainPointMatch.matched_pain_points.slice(0, 3);
@@ -466,11 +474,12 @@ ${prompt}`;
     // Get position-specific strategy guidance
     const strategyGuidance = this.getStrategyGuidance(position, strategy);
     
-    // Add randomized category header options for variety
+    // Generate dynamic category header options based on pain points for variety
+    const painPointThemes = topPainPoints.map(pp => pp.pain_point.theme.toUpperCase());
     const categoryOptions = {
-      beginning: ["VERIFIED DATA", "DATA ACCURACY", "CLEAN CONTACTS", "QUALITY LEADS"],
-      middle: ["BUYER INTENT", "PERFECT TIMING", "PROSPECT INTELLIGENCE", "SALES SIGNALS"],
-      end: ["SMARTER GTM", "PIPELINE VISIBILITY", "BEST-IN-CLASS GTM", "GTM EXECUTION", "SCALE BREAKTHROUGH"]
+      beginning: [...painPointThemes, "DATA QUALITY", "CONTACT ACCURACY", "LEAD VERIFICATION", "PROSPECT DATA"],
+      middle: [...painPointThemes, "PROSPECT TIMING", "SALES INTELLIGENCE", "BUYER SIGNALS", "MARKET INSIGHTS"],
+      end: [...painPointThemes, "REVENUE GROWTH", "SALES EFFICIENCY", "TEAM PERFORMANCE", "QUOTA ACHIEVEMENT"]
     };
     
     const shuffledCategories = categoryOptions[position].sort(() => Math.random() - 0.5);
@@ -481,10 +490,21 @@ Create a high-converting CTA that stops scrolling and drives immediate action. T
 
 🎯 CREATIVITY INSTRUCTION: ${randomVariation}
 
+🚨 UNIQUENESS CONTEXT: ${uniquenessContext}
+
 🚨🚨🚨 CRITICAL GRAMMAR RULE - FOLLOW THIS OR GENERATION WILL FAIL 🚨🚨🚨
-SENTENCES STARTING WITH "Tired of", "Sick of", "Fed up with", "Struggling with" ARE QUESTIONS!
-THEY MUST END WITH A QUESTION MARK "?" - NO EXCEPTIONS!
-Example: "Tired of bad data killing your outreach?" ✅ NOT "Tired of bad data killing your outreach." ❌
+ANY SENTENCE STARTING WITH THESE WORDS IS A QUESTION AND MUST END WITH "?":
+- "Tired of..." → ALWAYS ends with "?" (e.g., "Tired of bad data?" ✅)
+- "Sick of..." → ALWAYS ends with "?" (e.g., "Sick of manual work?" ✅)  
+- "Fed up with..." → ALWAYS ends with "?" (e.g., "Fed up with poor leads?" ✅)
+- "Struggling with..." → ALWAYS ends with "?" (e.g., "Struggling with accuracy?" ✅)
+- "Done with..." → ALWAYS ends with "?" (e.g., "Done with wasted time?" ✅)
+- "Ready to stop..." → ALWAYS ends with "?" (e.g., "Ready to stop guessing?" ✅)
+
+❌ WRONG: "Tired of spending 4+ hours daily hunting for contact info."
+✅ CORRECT: "Tired of spending 4+ hours daily hunting for contact info?"
+
+THIS IS BASIC ENGLISH GRAMMAR - QUESTIONS ALWAYS END WITH QUESTION MARKS!
 
 MISSION: Write ad copy that makes sales professionals think "I NEED this right now" and click immediately.
 
@@ -513,16 +533,16 @@ ${idx + 1}. PAIN THEME: ${pp.pain_point.theme}
 `).join('')}
 
 CUSTOMER INSIGHTS FOR INSPIRATION (Transform into natural marketing copy):
-${customerQuotes.map((quote, idx) => `${idx + 1}. "${quote}"`).join('\n')}
+${customerQuotes.length > 0 ? customerQuotes.map((quote, idx) => `${idx + 1}. "${quote}"`).join('\n') : 'No customer quotes available - use pain point themes instead'}
 
 VOC INTEGRATION INSTRUCTIONS:
-- Use customer insights as INSPIRATION ONLY - never copy language directly
-- Transform specific customer situations into universal pain points that resonate broadly
-- Extract the EMOTION and FRUSTRATION behind customer quotes, not the literal words
-- Create natural marketing copy that feels authentic but not like a direct quote
-- Focus on the underlying business challenge, not the specific customer's exact situation
-- Make CTAs sound like compelling marketing copy, not customer testimonials
-- Replace specific details with broader, more relatable scenarios
+- MANDATORY: Use the pain point themes and customer language as the PRIMARY source for CTA copy
+- Transform customer frustrations into compelling hooks: "${customerQuotes[0] || 'customer pain point'}" → "Tired of [transformed pain]?"
+- Extract the CORE BUSINESS IMPACT from pain points: ${topPainPoints.map(pp => pp.pain_point.description).join(' | ')}
+- Create urgency around the SPECIFIC problems customers face, not generic sales challenges
+- Use the liquid variables to inject authentic customer language: ${liquidVariables.join(', ')}
+- Focus on the MEASURABLE IMPACT customers experience from these pain points
+- Make CTAs address the EXACT frustrations customers expressed in their own words (transformed)
 
 LIQUID VARIABLE INTEGRATION:
 ${liquidVariables.length > 0 ? liquidVariables.map((variable, idx) => `${idx + 1}. {{ pain_points.${variable} }} - Injects: "${topPainPoints[idx]?.pain_point.theme || 'customer pain point'}"`).join('\n') : 'No VoC variables available for this match'}
@@ -561,22 +581,25 @@ CONTENT CONTEXT:
 STRATEGY GUIDANCE:
 ${strategyGuidance}
 
-🚨 CRITICAL GRAMMAR RULE - READ CAREFULLY 🚨
-ANY SENTENCE STARTING WITH THESE WORDS IS A QUESTION AND MUST END WITH "?":
-- "Tired of..." → "Tired of bounced emails killing your outreach?" ✅
-- "Sick of..." → "Sick of chasing dead leads?" ✅  
-- "Fed up with..." → "Fed up with manual prospecting?" ✅
-- "Struggling with..." → "Struggling with bad data?" ✅
-- "Ready to..." → "Ready to stop wasting time?" ✅
+🚨 CRITICAL APOLLO MESSAGING RULES 🚨
 
-EXAMPLES OF CORRECT QUESTION FORMATTING:
-❌ WRONG: "Tired of bounced emails and disconnected numbers killing your outreach."
-✅ CORRECT: "Tired of bounced emails and disconnected numbers killing your outreach?"
+1. APOLLO POSITIONING: Apollo must be the HERO that SAVES you FROM problems, not part of the problem!
+   ❌ NEVER: "Stop Wasting Hours On Research With Apollo" (sounds like Apollo wastes time)
+   ✅ ALWAYS: "Skip Manual Research - Apollo Finds Contacts Instantly" (Apollo saves time)
+   
+   ❌ NEVER: "Fix Your Pipeline With Apollo" (implies Apollo broke it)
+   ✅ ALWAYS: "Apollo Builds Your Pipeline Automatically" (Apollo creates value)
 
-❌ WRONG: "Struggling with manual prospecting eating up your day."
-✅ CORRECT: "Struggling with manual prospecting eating up your day?"
+2. QUESTION MARK RULE: These sentence starters are QUESTIONS and MUST end with "?":
+   - "Tired of..." → "Tired of manual prospecting?" ✅ NOT "Tired of manual prospecting." ❌
+   - "Sick of..." → "Sick of bad leads?" ✅ NOT "Sick of bad leads." ❌  
+   - "Fed up with..." → "Fed up with wasted time?" ✅ NOT "Fed up with wasted time." ❌
+   - "Struggling with..." → "Struggling with data quality?" ✅ NOT "Struggling with data quality." ❌
+   - "Done with..." → "Done with manual work?" ✅ NOT "Done with manual work." ❌
 
-THIS IS BASIC ENGLISH GRAMMAR - QUESTIONS END WITH QUESTION MARKS!
+REAL EXAMPLES FROM YOUR OUTPUT:
+❌ WRONG: "Stop Wasting Hours On Research With Apollo" + "Tired of spending 4+ hours daily hunting for contact info."
+✅ CORRECT: "Apollo Eliminates 4+ Hours Of Daily Research" + "Tired of spending 4+ hours daily hunting for contact info?"
 
 🎯 CRITICAL POSITION-SPECIFIC VARIETY REQUIREMENT 🎯
 EACH POSITION MUST USE COMPLETELY DIFFERENT MESSAGING APPROACHES:
@@ -621,19 +644,21 @@ Create a 4-part high-converting CTA that follows proven direct response principl
 
 2. HEADLINE: Compelling promise using proven formulas. Lead with transformation, not features. USE TITLE CASE. MAXIMUM 50 CHARACTERS. 
 
-   🚨 CRITICAL: Include Apollo branding naturally - position Apollo as the SOLUTION, not part of the problem!
+   🚨 CRITICAL APOLLO POSITIONING: Apollo must ALWAYS be positioned as the SOLUTION that ELIMINATES problems, NEVER as part of the problem!
    
-   ✅ GOOD Examples (Apollo as Solution):
-   - "Turn Dead Leads Into Live Conversations With Apollo" (Apollo enables transformation)
-   - "3x Your Pipeline With Apollo's Verified Data" (Apollo provides data)
-   - "Find Ready-To-Buy Prospects With Apollo" (Apollo helps find prospects)
-   - "Hit Quota Faster With Apollo's Intelligence" (Apollo provides intelligence)
-   - "Scale Your Outreach With Apollo's Automation" (Apollo provides automation)
+   ✅ CORRECT Apollo Positioning (Apollo solves problems):
+   - "Transform [Problem] Into [Benefit] With Apollo" → Apollo enables transformation
+   - "Get [Benefit] With Apollo's [Capability]" → Apollo provides the capability
+   - "[Benefit] Made Easy With Apollo" → Apollo makes things easier
+   - "Apollo Eliminates [Problem] For [Outcome]" → Apollo removes the problem
+   - "Skip [Problem] - Apollo Delivers [Solution]" → Apollo bypasses the problem
    
-   ❌ BAD Examples (Apollo sounds like the problem):
-   - "Stop Chasing Dead Leads With Apollo" (implies Apollo gives dead leads)
-   - "Stop Wasting Time With Apollo" (implies Apollo wastes time)
-   - "Fix Your Broken Pipeline With Apollo" (implies Apollo broke it)
+   ❌ NEVER USE These Patterns (Apollo sounds like the problem):
+   - "Stop [Problem] With Apollo" → Implies Apollo causes the problem
+   - "Fix [Problem] With Apollo" → Implies Apollo created the problem  
+   - "Avoid [Problem] With Apollo" → Implies Apollo is associated with the problem
+   - "End [Problem] With Apollo" → Implies Apollo was part of the problem
+   - "Solve [Problem] With Apollo" → Implies Apollo might have caused it
    
    ❌ BAD Examples (Generic Endings):
    - "Modern Revenue Teams Rely On One Platform" 
@@ -654,25 +679,22 @@ Create a 4-part high-converting CTA that follows proven direct response principl
    POSITION-SPECIFIC STRUCTURES (MUST BE COMPLETELY DIFFERENT):
 
    BEGINNING (Data Quality - Focus on ACCURACY):
-   CATEGORY HEADER: "VERIFIED DATA"
-   HEADLINE: "Turn Dead Leads Into Qualified Conversations With Apollo" 
-   1. DATA PAIN HOOK: "Tired of bounced emails and disconnected numbers killing your outreach?" 
-   2. ACCURACY SOLUTION: "Apollo's verified contact database delivers 91% email accuracy and real mobile numbers."
-   3. CONNECT PROOF: "Sales teams report 3x more connections after switching to Apollo."
+   - CATEGORY: Data accuracy/verification themes
+   - HEADLINE: Transform data problems into connection opportunities with Apollo
+   - STRUCTURE: Pain hook about data quality → Apollo's data solution → Connection improvement proof
+   - AVOID: Using the exact phrases from these examples
 
    MIDDLE (Prospect Intelligence - Focus on TIMING):
-   CATEGORY HEADER: "BUYER INTENT"
-   HEADLINE: "Find Ready-To-Buy Prospects With Apollo's Intelligence"
-   1. TIMING PAIN HOOK: "Tired of calling prospects who aren't ready to buy while your competitors close the hot leads?"
-   2. INTELLIGENCE SOLUTION: "Apollo identifies website visitors and tracks buying intent so you reach prospects at the perfect moment."
-   3. WIN RATE PROOF: "Revenue teams see +10% win rates by targeting high-intent prospects with Apollo."
+   - CATEGORY: Buyer intent/timing themes  
+   - HEADLINE: Help find prospects at the right moment with Apollo
+   - STRUCTURE: Pain hook about timing/readiness → Apollo's intelligence solution → Win rate improvement proof
+   - AVOID: Using the exact phrases from these examples
 
    END (Scale/Efficiency - Focus on PRODUCTIVITY):
-   CATEGORY HEADER: "SMARTER GTM"
-   HEADLINE: "Send 10x More Emails With Apollo's Automation"
-   1. SCALE PAIN HOOK: "Tired of choosing between quality outreach and hitting volume targets?"
-   2. AUTOMATION SOLUTION: "Apollo's AI personalizes outreach at scale so your team can send 10x more personalized emails."
-   3. EFFICIENCY PROOF: "Top sales teams hit their quota with Apollo's unified prospecting, outreach, and analytics GTM platform."
+   - CATEGORY: GTM efficiency/scale themes
+   - HEADLINE: Scale outreach capabilities with Apollo
+   - STRUCTURE: Pain hook about scale/efficiency → Apollo's automation solution → Team performance proof
+   - AVOID: Using the exact phrases from these examples
 
    🚨 CRITICAL: Each position must use DIFFERENT metrics, social proof, and value propositions!
 
@@ -759,7 +781,26 @@ HIGH-CONVERTING OPENING HOOKS (vary across positions):
 🚨 FINAL GRAMMAR CHECK BEFORE JSON OUTPUT 🚨
 REMEMBER: "Tired of...", "Sick of...", "Fed up with...", "Struggling with..." = QUESTIONS = MUST END WITH "?"
 
-🎲 UNIQUENESS REQUIREMENT: Make this CTA completely different from typical Apollo messaging. Variation seed: ${randomSeed}
+🎲 CRITICAL REQUIREMENTS CHECKLIST:
+
+1. APOLLO POSITIONING: Apollo must be the HERO, not the problem!
+   ❌ NEVER: "Stop [Problem] With Apollo" → Sounds like Apollo causes the problem
+   ✅ ALWAYS: "Apollo Eliminates [Problem]" or "Get [Benefit] With Apollo"
+
+2. QUESTION MARKS: Questions MUST end with "?"
+   ❌ NEVER: "Tired of manual work." → Missing question mark
+   ✅ ALWAYS: "Tired of manual work?" → Proper question format
+
+3. UNIQUENESS: Create original copy, never repeat these phrases:
+   - "Turn Dead Leads Into Live Conversations", "Find Ready-To-Buy Prospects"
+   - "Stop Wasting Hours On Research With Apollo" (positioning issue!)
+   - "Tired of bounced emails and disconnected numbers" (without question mark!)
+
+4. USE VoC DATA: Base copy on actual pain points: ${topPainPoints.map(pp => pp.pain_point.theme).join(', ')}
+
+5. CUSTOMER LANGUAGE: Transform quotes into hooks: ${customerQuotes.slice(0, 2).join(' | ')}
+
+Variation seed: ${randomSeed}
 
 RESPONSE FORMAT:
 Respond with valid JSON containing these exact fields:
@@ -1026,48 +1067,60 @@ NEVER WRITE DESCRIPTIONS - WRITE ADS THAT CONVERT.`;
       throw new Error(`CTA contains malformed liquid variables with }} - this indicates broken variable processing`);
     }
 
-    // Check for actual questions without question marks (more precise detection)
-    const questionPatterns = [
-      /\b(are you|do you|can you|will you|would you|have you|did you)\b/i,
-      /\b(why|what|when|where|which|who|how)\b.*\?/i,
-      /\b(ready to|want to|need to|looking for)\b.*\?/i,
-      // Implied questions that should end with question marks
-      /^(tired of|sick of|fed up with|struggling with|done with|ready to stop)\b/i,
-      /\b(tired of|sick of|fed up with|struggling with|done with)\b.*\bwhile\b/i,
-      /\b(tired of|sick of|fed up with|struggling with)\b.*\b(killing|ruining|destroying|hurting|limiting)\b/i,
-      /\b(tired of|sick of|fed up with|struggling with)\b.*\b(your|the)\b.*outreach/i
-    ];
-    
+    // Enhanced validation for question marks and Apollo positioning
     const headlineText = cta.headline;
     const descriptionText = cta.description;
     const fullText = `${headlineText} ${descriptionText}`;
     
-    // Only flag if it looks like a question structure but missing question mark
-    const looksLikeQuestion = questionPatterns.some(pattern => pattern.test(fullText));
-    const hasQuestionMark = fullText.includes('?');
+    // Check for Apollo positioning issues
+    const apolloPositioningIssues = [
+      /stop\s+.+\s+with\s+apollo/i,
+      /fix\s+.+\s+with\s+apollo/i,
+      /avoid\s+.+\s+with\s+apollo/i,
+      /end\s+.+\s+with\s+apollo/i,
+      /solve\s+.+\s+with\s+apollo/i
+    ];
     
-    if (looksLikeQuestion && !hasQuestionMark) {
-      console.log(`🔧 Applying minimal grammar fix for ${position} position`);
-      console.log(`Before: "${cta.description}"`);
-      
-      // Simple fix: if description starts with "Tired of" and doesn't end with "?", add it
-      if (cta.description.match(/^(Tired of|Sick of|Fed up with|Struggling with)/i) && !cta.description.includes('?')) {
-        // Find the first sentence and add question mark
-        const firstSentenceEnd = cta.description.indexOf('.');
-        if (firstSentenceEnd > 0) {
-          cta.description = cta.description.substring(0, firstSentenceEnd) + '?' + cta.description.substring(firstSentenceEnd + 1);
-        } else {
-          // If no period found, just add question mark to the end of first sentence
-          const sentences = cta.description.split(/(?<=[.!])\s+/);
-          if (sentences.length > 0) {
-            sentences[0] = sentences[0].replace(/\.$/, '?');
-            cta.description = sentences.join(' ');
-          }
-        }
+    const hasPositioningIssue = apolloPositioningIssues.some(pattern => pattern.test(headlineText));
+    if (hasPositioningIssue) {
+      console.error(`❌ CRITICAL: Apollo positioning issue in ${position} headline: "${headlineText}"`);
+      console.error(`❌ This makes Apollo sound like part of the problem, not the solution`);
+      throw new Error(`Apollo positioning error: "${headlineText}" makes Apollo sound like the problem. Use patterns like "Apollo Eliminates [Problem]" or "Get [Benefit] With Apollo" instead.`);
+    }
+    
+    // Enhanced question mark detection and fixing
+    let fixedDescription = descriptionText;
+    let hasQuestionIssue = false;
+    
+    // Pattern to match question starters that should end with question marks
+    const questionPatterns = [
+      /\b(tired of\b[^?]*?)\.(?!\?)/gi,
+      /\b(sick of\b[^?]*?)\.(?!\?)/gi,
+      /\b(fed up with\b[^?]*?)\.(?!\?)/gi,
+      /\b(struggling with\b[^?]*?)\.(?!\?)/gi,
+      /\b(done with\b[^?]*?)\.(?!\?)/gi,
+      /\b(ready to stop\b[^?]*?)\.(?!\?)/gi
+    ];
+    
+    // Fix each pattern
+    questionPatterns.forEach(pattern => {
+      const matches = fixedDescription.match(pattern);
+      if (matches) {
+        matches.forEach(match => {
+          const fixed = match.replace(/\.$/, '?');
+          console.log(`🔧 Fixing question mark for ${position} position:`);
+          console.log(`Before: "${match}"`);
+          console.log(`After: "${fixed}"`);
+          
+          fixedDescription = fixedDescription.replace(match, fixed);
+          hasQuestionIssue = true;
+        });
       }
-      
-      console.log(`After: "${cta.description}"`);
-      console.log(`✅ Grammar fix applied for ${position} position`);
+    });
+    
+    if (hasQuestionIssue) {
+      cta.description = fixedDescription;
+      console.log(`✅ Question mark fixes applied for ${position} position`);
     }
 
     // Check for generic headline endings (avoid overly generic terms)
