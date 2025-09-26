@@ -12,6 +12,32 @@ import {
   DEFAULT_RATE_LIMITS
 } from './errorHandling';
 
+/**
+ * Permanent Circuit Breaker for SaaS applications requiring always-on connections
+ * Why this matters: Unlike standard circuit breakers that open on failures,
+ * this implementation always stays CLOSED to maintain permanent MCP connections
+ */
+class PermanentCircuitBreaker extends CircuitBreaker {
+  constructor(serviceName: string) {
+    // Use dummy config since we override all behavior
+    super({ failureThreshold: 999999, resetTimeoutMs: 0, monitorWindowMs: 0 }, serviceName);
+  }
+
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    // Always execute - never open the circuit for permanent connections
+    // Why this matters: SaaS applications need reliable, always-on MCP access
+    return await operation();
+  }
+
+  getState(): { state: string; failures: number; lastFailureTime: number } {
+    return {
+      state: 'PERMANENTLY_CLOSED',
+      failures: 0,
+      lastFailureTime: 0
+    };
+  }
+}
+
 // JSON-RPC 2.0 Protocol Interfaces
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -131,9 +157,14 @@ class MCPService {
   // Configuration
   private readonly baseUrl: string;
   private readonly clientName = 'Apollo-Content-Generator';
-  private readonly timeout = 30000; // 30 seconds
+  private readonly timeout = 0; // Infinite timeout for permanent connection
   private readonly maxReconnectAttempts = 5;
   private reconnectAttempts = 0;
+  
+  // Permanent connection management
+  private keepaliveInterval: NodeJS.Timeout | null = null;
+  private readonly keepaliveIntervalMs = 30000; // 30 seconds
+  private isShuttingDown = false;
   
   constructor() {
     // Load MCP server URL from environment variables for security
@@ -158,10 +189,10 @@ class MCPService {
     // rate limiter respects API quotas, and retry logic handles transient network issues
     this.retryConfig = DEFAULT_RETRY_CONFIGS.mcp;
     
-    this.circuitBreaker = new CircuitBreaker(
-      DEFAULT_CIRCUIT_BREAKER_CONFIGS.mcp,
-      'MCP'
-    );
+    // Create a permanent circuit breaker that never opens
+    // Why this matters: For SaaS applications requiring permanent MCP connection,
+    // we need to prevent automatic disconnections from circuit breaker logic
+    this.circuitBreaker = new PermanentCircuitBreaker('MCP');
     
     this.rateLimiter = new RateLimiter(
       DEFAULT_RATE_LIMITS.mcp,
@@ -169,6 +200,7 @@ class MCPService {
     );
     
     console.log(`🔧 MCP Service initialized for SSE server: ${this.baseUrl}`);
+    console.log(`🔍 MCP Server URL source: ${process.env.MCP_SERVER_URL ? 'Environment Variable (.env)' : 'Default (10.60.0.115)'}`);
   }
   
   /**
@@ -226,6 +258,9 @@ class MCPService {
       this.connectionState.lastError = undefined;
       this.reconnectAttempts = 0;
       
+      // Start keepalive mechanism for permanent connection
+      this.startKeepalive();
+      
       console.log(`✅ MCP SSE initialization complete:`);
       console.log(`   🔗 Session ID: ${this.sessionId}`);
       console.log(`   📋 Tools discovered: ${this.availableTools.length}`);
@@ -237,6 +272,14 @@ class MCPService {
       this.connectionState.status = 'failed';
       this.connectionState.lastError = error.message;
       console.error('❌ MCP SSE initialization failed:', error.message);
+      console.error(`🔍 Attempted connection to: ${this.baseUrl}`);
+      console.error('💡 Troubleshooting tips:');
+      console.error(`   1. Check if MCP server is running at ${this.baseUrl}`);
+      console.error('   2. Verify MCP server is accessible from backend');
+      console.error('   3. Check network connectivity and firewall settings');
+      console.error('   4. Ensure MCP server supports the /mcp endpoint');
+      console.error('   5. Try accessing the MCP server directly in browser');
+      console.error('   6. Check if MCP_SERVER_URL in .env matches your server');
       
       // Clean up on failure
       this.cleanup();
@@ -277,7 +320,7 @@ class MCPService {
           'Accept': 'application/json, text/event-stream',
           'User-Agent': `${this.clientName}/1.0.0`
         },
-        timeout: this.timeout,
+        timeout: 0, // No timeout for permanent connection
         responseType: 'text'
       });
       
@@ -319,7 +362,7 @@ class MCPService {
         const pendingRequest = this.pendingRequests.get(response.id);
         
         if (pendingRequest) {
-          clearTimeout(pendingRequest.timeout);
+          // No timeout to clear in permanent connection mode
           this.pendingRequests.delete(response.id);
           
           if (response.error) {
@@ -416,14 +459,14 @@ class MCPService {
     };
     
     return new Promise((resolve, reject) => {
-      // Set up timeout
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(requestId);
-        reject(new Error(`JSON-RPC request timeout: ${method}`));
-      }, this.timeout);
-      
-      // Store pending request
-      this.pendingRequests.set(requestId, { resolve, reject, timeout });
+      // Store pending request without timeout for permanent connection
+      // Why this matters: Removing timeouts prevents artificial disconnections
+      // and allows long-running operations to complete naturally
+      this.pendingRequests.set(requestId, { 
+        resolve, 
+        reject, 
+        timeout: null as any // No timeout for permanent connection
+      });
       
       // Send request via HTTP POST
       this.sendJsonRpcViaPost(request).catch(reject);
@@ -445,7 +488,7 @@ class MCPService {
           'User-Agent': `${this.clientName}/1.0.0`,
           ...(this.sessionId && { 'mcp-session-id': this.sessionId })
         },
-        timeout: this.timeout,
+        timeout: 0, // No timeout for permanent connection
         responseType: 'text' // Get raw text to parse SSE format
       });
       
@@ -477,7 +520,7 @@ class MCPService {
       // Clean up pending request on send failure
       const pendingRequest = this.pendingRequests.get(request.id);
       if (pendingRequest) {
-        clearTimeout(pendingRequest.timeout);
+        // No timeout to clear in permanent connection mode
         this.pendingRequests.delete(request.id);
         pendingRequest.reject(error);
       }
@@ -806,21 +849,71 @@ class MCPService {
   }
   
   /**
+   * Start keepalive mechanism to maintain permanent connection
+   * Why this matters: Prevents server-side timeouts and maintains session state
+   */
+  private startKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+    }
+    
+    console.log(`🔄 Starting MCP keepalive (${this.keepaliveIntervalMs}ms intervals)`);
+    
+    this.keepaliveInterval = setInterval(async () => {
+      if (this.isShuttingDown) return;
+      
+      try {
+        // Send a lightweight ping to maintain connection
+        // Using tools/list as it's a simple, low-impact operation
+        await this.sendJsonRpcRequest('tools/list');
+        console.log('💓 MCP keepalive ping successful');
+      } catch (error) {
+        console.warn('⚠️ MCP keepalive ping failed:', (error as Error).message);
+        
+        // Attempt automatic reconnection on keepalive failure
+        if (this.connectionState.status === 'ready') {
+          console.log('🔄 Attempting automatic MCP reconnection...');
+          try {
+            await this.reconnect();
+            console.log('✅ Automatic MCP reconnection successful');
+          } catch (reconnectError) {
+            console.error('❌ Automatic MCP reconnection failed:', (reconnectError as Error).message);
+          }
+        }
+      }
+    }, this.keepaliveIntervalMs);
+  }
+
+  /**
+   * Stop keepalive mechanism
+   * Why this matters: Clean shutdown prevents resource leaks
+   */
+  private stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
+      console.log('🛑 MCP keepalive stopped');
+    }
+  }
+
+  /**
    * Clean up MCP service and pending requests
    * Why this matters: Properly clears timeouts and resets state to prevent memory leaks
    */
   private cleanup(): void {
     console.log('🧹 Cleaning up MCP service...');
     
+    this.isShuttingDown = true;
+    this.stopKeepalive();
+    
     // Clear all pending requests
     Array.from(this.pendingRequests.entries()).forEach(([id, request]) => {
-      clearTimeout(request.timeout);
+      // No timeout to clear in permanent connection mode
       request.reject(new Error('MCP service cleanup - request cancelled'));
     });
     this.pendingRequests.clear();
     
-    // Reset session
-    this.sessionId = null;
+    // Don't reset session in permanent connection mode unless explicitly reconnecting
     this.reconnectAttempts = 0;
     
     console.log('✅ MCP service cleanup complete');
@@ -880,24 +973,31 @@ class MCPService {
   }
   
   /**
-   * Force reconnection to MCP server
-   * Why this matters: Allows manual recovery from connection issues and re-discovery
-   * of new tools that may have been added to the MCP server.
+   * Force reconnection to MCP server with session preservation
+   * Why this matters: Allows manual recovery from connection issues while maintaining
+   * permanent connection state for SaaS applications.
    */
   async reconnect(): Promise<void> {
     console.log('🔄 Forcing MCP SSE reconnection...');
     
-    // Clean up existing connection
-    this.cleanup();
+    // Stop keepalive during reconnection
+    this.stopKeepalive();
+    this.isShuttingDown = false;
     
-    // Reset state
+    // Clear pending requests but preserve session for permanent connection
+    Array.from(this.pendingRequests.entries()).forEach(([id, request]) => {
+      request.reject(new Error('MCP service reconnection - request cancelled'));
+    });
+    this.pendingRequests.clear();
+    
+    // Reset discovery state but preserve session
     this.connectionState.status = 'discovering';
     this.availableTools = [];
     this.availableResources = [];
     this.availablePrompts = [];
     this.toolCapabilities.clear();
     
-    // Reinitialize with SSE
+    // Reinitialize with SSE (will restart keepalive automatically)
     await this.initialize();
   }
 }

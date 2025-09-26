@@ -1,5 +1,6 @@
 import MCPService from './mcpService';
 import { createServiceError } from './errorHandling';
+import GlobalMcpServiceManager from './globalMcpService';
 
 /**
  * EmailNewsletterService
@@ -80,7 +81,17 @@ interface NewsletterValidationResult {
 }
 
 export class EmailNewsletterService {
-  private mcpService: MCPService;
+  // Singleton MCP service instance for reliable connections
+  private static sharedMcpService: MCPService | null = null;
+  private static mcpInitializationPromise: Promise<MCPService> | null = null;
+  
+  // Circuit breaker pattern for enterprise reliability
+  private static circuitBreakerState: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
+  private static failureCount = 0;
+  private static lastFailureTime = 0;
+  private static readonly FAILURE_THRESHOLD = 5; // Increased threshold
+  private static readonly RECOVERY_TIMEOUT = 60000; // 60 seconds
+  
   private readonly NEWSLETTER_THEMES = [
     'Data-Driven Outreach Strategies',
     'Executive Engagement Best Practices',
@@ -99,7 +110,218 @@ export class EmailNewsletterService {
   ];
 
   constructor() {
-    this.mcpService = new MCPService();
+    // Use shared MCP service instance to avoid repeated initialization
+  }
+
+  /**
+   * Get global MCP service that persists across requests and page refreshes
+   * Why this matters: Uses server-level MCP connection that survives frontend navigation
+   */
+  private async getMcpService(): Promise<MCPService> {
+    // Use global MCP service that persists at server level
+    // Why this matters: Connection survives page refreshes and navigation
+    return await GlobalMcpServiceManager.getInstance();
+  }
+
+  /**
+   * Initialize MCP service with proper error handling and retries
+   * Why this matters: Ensures robust initialization like MCP Inspector
+   */
+  private async initializeMcpService(): Promise<MCPService> {
+    const mcpService = new MCPService();
+    
+    // Initialize with timeout and retry logic
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 MCP initialization attempt ${attempt}/${maxRetries}`);
+        
+        const initPromise = mcpService.initialize();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('MCP initialization timeout after 15 seconds')), 15000);
+        });
+        
+        await Promise.race([initPromise, timeoutPromise]);
+        
+        // Verify connection is ready
+        const connectionState = (mcpService as any).connectionState;
+        if (connectionState?.status !== 'ready') {
+          throw new Error(`MCP service not ready after initialization. Status: ${connectionState?.status}`);
+        }
+        
+        console.log('✅ MCP service initialization successful');
+        return mcpService;
+        
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown initialization error');
+        console.warn(`⚠️ MCP initialization attempt ${attempt} failed:`, lastError.message);
+        
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+          console.log(`⏳ Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw new Error(`MCP initialization failed after ${maxRetries} attempts. Last error: ${lastError?.message}`);
+  }
+
+  /**
+   * Check circuit breaker state for enterprise reliability
+   * Why this matters: Prevents cascading failures and provides fast-fail for better UX
+   */
+  private static checkCircuitBreaker(): boolean {
+    const now = Date.now();
+    
+    switch (EmailNewsletterService.circuitBreakerState) {
+      case 'OPEN':
+        if (now - EmailNewsletterService.lastFailureTime > EmailNewsletterService.RECOVERY_TIMEOUT) {
+          console.log('🔄 Circuit breaker transitioning to HALF_OPEN');
+          EmailNewsletterService.circuitBreakerState = 'HALF_OPEN';
+          return true;
+        }
+        console.log('⚡ Circuit breaker OPEN - fast failing to prevent cascading failures');
+        return false;
+      
+      case 'HALF_OPEN':
+      case 'CLOSED':
+        return true;
+      
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * Record MCP success for circuit breaker
+   */
+  private static recordMcpSuccess(): void {
+    EmailNewsletterService.failureCount = 0;
+    if (EmailNewsletterService.circuitBreakerState === 'HALF_OPEN') {
+      console.log('✅ Circuit breaker transitioning to CLOSED');
+      EmailNewsletterService.circuitBreakerState = 'CLOSED';
+    }
+  }
+
+  /**
+   * Record MCP failure for circuit breaker
+   */
+  private static recordMcpFailure(): void {
+    EmailNewsletterService.failureCount++;
+    EmailNewsletterService.lastFailureTime = Date.now();
+    
+    if (EmailNewsletterService.failureCount >= EmailNewsletterService.FAILURE_THRESHOLD) {
+      console.log('🚨 Circuit breaker transitioning to OPEN due to repeated failures');
+      EmailNewsletterService.circuitBreakerState = 'OPEN';
+    }
+  }
+
+  /**
+   * Check MCP service health and reconnect if needed
+   * Why this matters: Ensures connection is healthy before making tool calls
+   */
+  private async ensureMcpServiceHealth(mcpService: MCPService): Promise<MCPService> {
+    try {
+      const connectionState = (mcpService as any).connectionState;
+      
+      // Check if service is ready
+      if (connectionState?.status === 'ready') {
+        // Verify tools are available (like MCP Inspector does)
+        const availableTools = (mcpService as any).availableTools || [];
+        const hasAnalyzeEmailsTool = availableTools.some((tool: any) => tool.name === 'analyze_emails');
+        
+        if (hasAnalyzeEmailsTool) {
+          console.log('✅ MCP service health check passed');
+          return mcpService;
+        } else {
+          console.warn('⚠️ analyze_emails tool not found, reinitializing...');
+        }
+      } else {
+        console.warn(`⚠️ MCP service not ready (status: ${connectionState?.status}), reinitializing...`);
+      }
+      
+      // Reset and reinitialize if health check failed
+      EmailNewsletterService.sharedMcpService = null;
+      EmailNewsletterService.mcpInitializationPromise = null;
+      return await this.getMcpService();
+      
+    } catch (error) {
+      console.error('❌ MCP health check failed:', error);
+      // Reset and reinitialize
+      EmailNewsletterService.sharedMcpService = null;
+      EmailNewsletterService.mcpInitializationPromise = null;
+      return await this.getMcpService();
+    }
+  }
+
+  /**
+   * Call MCP tool with health checks and aggressive timeouts
+   * Why this matters: Ensures reliable data fetching with fast-fail for better UX
+   */
+  private async callMcpToolWithRetry(
+    mcpService: MCPService, 
+    toolName: string, 
+    params: any, 
+    maxRetries: number = 2 // Two attempts for reliability
+  ): Promise<any> {
+    // Check circuit breaker first
+    if (!EmailNewsletterService.checkCircuitBreaker()) {
+      throw new Error('Circuit breaker OPEN - MCP service temporarily unavailable');
+    }
+
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 MCP call attempt ${attempt}/${maxRetries}`);
+        
+        // Ensure MCP service is healthy before making the call
+        mcpService = await this.ensureMcpServiceHealth(mcpService);
+        
+        // Enterprise timeout (30 seconds max for complex queries)
+        const toolCallPromise = mcpService.callTool(toolName, params);
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`MCP timeout after 30s (attempt ${attempt})`)), 30000);
+        });
+        
+        const result = await Promise.race([toolCallPromise, timeoutPromise]);
+        
+        // Record success
+        EmailNewsletterService.recordMcpSuccess();
+        console.log(`✅ Isolated MCP call succeeded on attempt ${attempt}`);
+        return result;
+        
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown MCP error');
+        console.warn(`⚠️ Isolated MCP attempt ${attempt} failed:`, lastError.message);
+        
+        if (attempt < maxRetries) {
+          console.log(`⏳ Retrying with shared MCP service in 2s...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Reset shared MCP service for retry if connection seems broken
+          try {
+            const connectionState = (mcpService as any).connectionState;
+            if (connectionState?.status !== 'ready') {
+              console.log('🔄 Resetting MCP service due to connection issues');
+              EmailNewsletterService.sharedMcpService = null;
+              EmailNewsletterService.mcpInitializationPromise = null;
+              mcpService = await this.getMcpService();
+              console.log('🔄 Fresh MCP service created for retry');
+            }
+          } catch (error) {
+            console.error('❌ Failed to reset MCP service for retry:', error);
+          }
+        }
+      }
+    }
+    
+    // Record failure for circuit breaker
+    EmailNewsletterService.recordMcpFailure();
+    throw new Error(`Isolated MCP failed after ${maxRetries} attempts. Last error: ${lastError?.message}`);
   }
 
   /**
@@ -119,7 +341,8 @@ export class EmailNewsletterService {
       processingSteps.push('Initializing MCP connection');
       
       try {
-        await this.mcpService.initialize();
+        // Get shared MCP service (already initialized or will initialize once)
+        const mcpService = await this.getMcpService();
         processingSteps.push('MCP connection established');
 
         // Query Apollo email performance data with improved specificity
@@ -135,9 +358,10 @@ export class EmailNewsletterService {
         console.log(`🔍 MCP Query for job title "${options.jobTitle}": ${mcpQuery}`);
         processingSteps.push(`Querying Apollo data: ${mcpQuery}`);
 
-        const mcpResult = await this.mcpService.callTool('analyze_emails', {
-          query: mcpQuery,
-          context: 'Email newsletter generation for sales team outreach'
+        // Enterprise-grade MCP tool call with retry logic and exponential backoff
+        console.log('🔧 Starting enterprise MCP tool call...');
+        const mcpResult = await this.callMcpToolWithRetry(mcpService, 'analyze_emails', {
+          query: mcpQuery
         });
 
         console.log('✅ MCP Response received:', JSON.stringify(mcpResult, null, 2));
@@ -206,6 +430,9 @@ export class EmailNewsletterService {
       let mcpData = options.mcpData;
       if (!mcpData) {
         try {
+          // Get shared MCP service
+          const mcpService = await this.getMcpService();
+          
           // Use the same improved query logic as the main generation method
           let mcpQuery: string;
           const jobTitleLower = options.jobTitle.toLowerCase();
@@ -216,7 +443,7 @@ export class EmailNewsletterService {
             mcpQuery = `Please provide me opening and reply rates for emails sent to those contacts whose primary_title contains ${options.jobTitle}`;
           }
           
-          const mcpResult = await this.mcpService.callTool('analyze_emails', {
+          const mcpResult = await this.callMcpToolWithRetry(mcpService, 'analyze_emails', {
             query: mcpQuery
           });
           mcpData = this.parseMCPResponse(mcpResult);
@@ -348,40 +575,112 @@ export class EmailNewsletterService {
   }
 
   /**
+   * Reset MCP service connection (for debugging/recovery)
+   * Why this matters: Provides manual reset capability like MCP Inspector
+   */
+  static resetMcpConnection(): void {
+    console.log('🔄 Manually resetting MCP connection...');
+    EmailNewsletterService.sharedMcpService = null;
+    EmailNewsletterService.mcpInitializationPromise = null;
+    EmailNewsletterService.circuitBreakerState = 'CLOSED';
+    EmailNewsletterService.failureCount = 0;
+    console.log('✅ MCP connection reset complete');
+  }
+
+  /**
+   * Get MCP service status for debugging
+   * Why this matters: Provides visibility into connection state like MCP Inspector
+   */
+  static getMcpStatus(): {
+    hasService: boolean;
+    connectionStatus: string;
+    circuitBreakerState: string;
+    failureCount: number;
+  } {
+    const connectionState = EmailNewsletterService.sharedMcpService 
+      ? (EmailNewsletterService.sharedMcpService as any).connectionState 
+      : null;
+    
+    return {
+      hasService: !!EmailNewsletterService.sharedMcpService,
+      connectionStatus: connectionState?.status || 'not_initialized',
+      circuitBreakerState: EmailNewsletterService.circuitBreakerState,
+      failureCount: EmailNewsletterService.failureCount
+    };
+  }
+
+  /**
    * Parse MCP response to extract email performance metrics
    */
   private parseMCPResponse(mcpResult: any): EmailPerformanceData {
     try {
-      // Extract data from MCP structured response
-      const content = mcpResult?.content?.[0]?.text;
-      if (!content) {
-        throw new Error('No content in MCP response');
-      }
+      console.log('🔍 Full MCP Result Structure:', JSON.stringify(mcpResult, null, 2));
+      
+      // Try to use structuredContent first (preferred format)
+      let analysis = mcpResult?.structuredContent?.analysis;
+      
+      if (!analysis) {
+        // Fallback to parsing content[0].text
+        const content = mcpResult?.content?.[0]?.text;
+        console.log('🔍 MCP Content:', content);
+        
+        if (!content) {
+          console.error('❌ No content found in MCP response');
+          console.log('🔍 MCP Result Keys:', Object.keys(mcpResult || {}));
+          console.log('🔍 MCP Content Array:', mcpResult?.content);
+          throw new Error('No content in MCP response');
+        }
 
-      const parsedData = JSON.parse(content);
-      const analysis = parsedData.analysis;
+        const parsedData = JSON.parse(content);
+        analysis = parsedData.analysis;
+      }
+      
+      console.log('🔍 Analysis object:', JSON.stringify(analysis, null, 2));
 
       if (analysis?.data_results?.[0]?.data?.[0]) {
         const data = analysis.data_results[0].data[0];
         const columns = analysis.data_results[0].columns;
         console.log('🔍 Raw MCP data array:', data);
         console.log('🔍 MCP columns:', columns);
+        console.log('🔍 Data length:', data.length, 'Columns length:', columns.length);
 
-        // Check if we have 5 columns (no TOTAL_EMAILS) or 6 columns (with TOTAL_EMAILS)
-        if (columns?.length === 5 && columns[0] === 'TOTAL_DELIVERED') {
-          // New structure: [TOTAL_DELIVERED, TOTAL_OPENED, TOTAL_REPLIED, OPENING_RATE, REPLY_RATE]
+        // Check if we have 6 columns with the new structure
+        if (columns?.length === 6 && columns.includes('TOTAL_DELIVERED') && columns.includes('BAYESIAN_ADJUSTED_REPLY_RATE')) {
+          console.log('🔍 Using 6-column MCP structure with BAYESIAN_ADJUSTED_REPLY_RATE');
+          // MCP structure: [TOTAL_DELIVERED, TOTAL_OPENED, TOTAL_REPLIED, OPENING_RATE, REPLY_RATE, BAYESIAN_ADJUSTED_REPLY_RATE]
+          const result = {
+            totalEmails: data[0] || 0,       // TOTAL_DELIVERED (use as totalEmails)
+            totalDelivered: data[0] || 0,    // TOTAL_DELIVERED: 11050565
+            totalOpened: data[1] || 0,       // TOTAL_OPENED: 1285996
+            totalReplied: data[2] || 0,      // TOTAL_REPLIED: 54977
+            openingRate: data[3] || 0,       // OPENING_RATE: 0.11637377817333322 (11.64%)
+            replyRate: data[4] || 0          // REPLY_RATE: 0.04275052177456228 (4.28%)
+          };
+
+          console.log('🔍 Parsed MCP result (6 columns with Bayesian):', result);
+          return result;
+        } else if (columns?.length === 5 && columns[0] === 'TOTAL_DELIVERED') {
+          console.log('🔍 Using 5-column parsing structure');
+          // 5-column structure: [TOTAL_DELIVERED, TOTAL_OPENED, TOTAL_REPLIED, OPENING_RATE, REPLY_RATE]
           const result = {
             totalEmails: data[0] || 0,       // Use TOTAL_DELIVERED as totalEmails
-            totalDelivered: data[0] || 0,    // TOTAL_DELIVERED: 3470508
-            totalOpened: data[1] || 0,       // TOTAL_OPENED: 468376
-            totalReplied: data[2] || 0,      // TOTAL_REPLIED: 28416
-            openingRate: data[3] || 0,       // OPENING_RATE: 0.134959 (13.50%)
-            replyRate: data[4] || 0          // REPLY_RATE: 0.060669 (6.07%)
+            totalDelivered: data[0] || 0,    // TOTAL_DELIVERED: 11050565
+            totalOpened: data[1] || 0,       // TOTAL_OPENED: 1285996
+            totalReplied: data[2] || 0,      // TOTAL_REPLIED: 54977
+            openingRate: data[3] || 0,       // OPENING_RATE: 0.116374 (11.64%)
+            replyRate: data[4] || 0          // REPLY_RATE: 0.004975 (0.50%)
           };
 
           console.log('🔍 Parsed MCP result (5 columns):', result);
+          console.log('🔍 Expected mapping:');
+          console.log(`   Total Delivered: ${data[0]} -> ${result.totalDelivered}`);
+          console.log(`   Total Opened: ${data[1]} -> ${result.totalOpened}`);
+          console.log(`   Total Replied: ${data[2]} -> ${result.totalReplied}`);
+          console.log(`   Opening Rate: ${data[3]} -> ${result.openingRate} (${(result.openingRate * 100).toFixed(2)}%)`);
+          console.log(`   Reply Rate: ${data[4]} -> ${result.replyRate} (${(result.replyRate * 100).toFixed(2)}%)`);
           return result;
         } else {
+          console.log('🔍 Using fallback parsing structure (assuming 6-column with TOTAL_EMAILS)');
           // Original structure: [TOTAL_EMAILS, TOTAL_DELIVERED, TOTAL_OPENED, TOTAL_REPLIED, OPENING_RATE, REPLY_RATE]
           const result = {
             totalEmails: data[0] || 0,       // TOTAL_EMAILS
@@ -399,7 +698,11 @@ export class EmailNewsletterService {
 
       throw new Error('Invalid data structure in MCP response');
     } catch (error) {
-      console.warn('Failed to parse MCP response, using estimated data:', error);
+      console.error('❌ Failed to parse MCP response:', error);
+      console.error('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('❌ MCP Result type:', typeof mcpResult);
+      console.error('❌ MCP Result:', mcpResult);
+      console.warn('⚠️ Using fallback data due to parsing failure');
       return this.getFallbackEmailData('generic');
     }
   }
