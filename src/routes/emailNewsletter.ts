@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { EmailNewsletterService } from '../services/emailNewsletterService';
+import GlobalMcpServiceManager from '../services/globalMcpService';
 
 const router = Router();
 
@@ -324,6 +325,154 @@ router.post('/validate', async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({
       error: 'Failed to validate newsletter',
       code: 'VALIDATION_ERROR'
+    });
+  }
+});
+
+/**
+ * GET /api/email-newsletter/mcp-status
+ * 
+ * Get global MCP service connection status.
+ * Shows server-level MCP connection that persists across page refreshes.
+ */
+router.get('/mcp-status', async (req: Request, res: Response): Promise<any> => {
+  try {
+    // Get status from global MCP service
+    const mcpService = await GlobalMcpServiceManager.getInstance();
+    const healthStatus = await mcpService.getHealthStatus();
+    
+    const status = {
+      hasService: GlobalMcpServiceManager.isInitialized(),
+      connectionStatus: healthStatus.connected ? 'ready' : 'failed',
+      circuitBreakerState: healthStatus.circuitBreakerState,
+      failureCount: 0, // Permanent connection doesn't track failures
+      lastConnected: healthStatus.lastConnected,
+      toolsAvailable: healthStatus.toolsAvailable,
+      resourcesAvailable: healthStatus.resourcesAvailable,
+      isPermanent: true // Indicate this is a permanent connection
+    };
+    
+    return res.json({
+      success: true,
+      status,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ MCP Status Error:', error);
+    
+    return res.status(500).json({
+      error: 'Failed to get MCP status',
+      code: 'MCP_STATUS_ERROR'
+    });
+  }
+});
+
+/**
+ * POST /api/email-newsletter/mcp-reset
+ * 
+ * Reset global MCP service connection for debugging/recovery.
+ * Resets server-level connection that persists across page refreshes.
+ */
+router.post('/mcp-reset', async (req: Request, res: Response): Promise<any> => {
+  try {
+    await GlobalMcpServiceManager.reset();
+    
+    return res.json({
+      success: true,
+      message: 'Global MCP connection reset successfully',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ MCP Reset Error:', error);
+    
+    return res.status(500).json({
+      error: 'Failed to reset MCP connection',
+      code: 'MCP_RESET_ERROR'
+    });
+  }
+});
+
+/**
+ * GET /api/email-newsletter/mcp-test
+ * 
+ * Test MCP data parsing for debugging alignment issues.
+ */
+router.get('/mcp-test', async (req: Request, res: Response): Promise<any> => {
+  try {
+    console.log('🧪 MCP Test endpoint called');
+    
+    // Create a new service instance to test MCP data parsing
+    const emailService = new EmailNewsletterService();
+    
+    // Try to generate a test newsletter for Director of Marketing
+    const testResult = await emailService.generateNewsletters({
+      jobTitle: 'Director of Marketing',
+      count: 1,
+      ctaPreference: ['Try Apollo Free']
+    });
+    
+    return res.json({
+      success: true,
+      message: 'MCP test completed',
+      mcpData: testResult.mcpData,
+      metadata: testResult.metadata,
+      rawDataStructure: {
+        totalEmails: testResult.mcpData?.totalEmails,
+        totalDelivered: testResult.mcpData?.totalDelivered,
+        totalOpened: testResult.mcpData?.totalOpened,
+        totalReplied: testResult.mcpData?.totalReplied,
+        openingRate: testResult.mcpData?.openingRate,
+        replyRate: testResult.mcpData?.replyRate,
+        openingRatePercent: testResult.mcpData ? (testResult.mcpData.openingRate * 100).toFixed(2) + '%' : 'N/A',
+        replyRatePercent: testResult.mcpData ? (testResult.mcpData.replyRate * 100).toFixed(2) + '%' : 'N/A'
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ MCP Test Error:', error);
+    
+    return res.status(500).json({
+      error: 'Failed to test MCP data parsing',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      code: 'MCP_TEST_ERROR'
+    });
+  }
+});
+
+/**
+ * POST /api/email-newsletter/mcp-connect
+ * 
+ * Get or initialize global MCP connection.
+ * Shows that connection is managed at server level, not frontend level.
+ */
+router.post('/mcp-connect', async (req: Request, res: Response): Promise<any> => {
+  try {
+    console.log('🔗 MCP connection status requested');
+    
+    // Get global MCP service (will initialize if not already done)
+    const mcpService = await GlobalMcpServiceManager.getInstance();
+    const healthStatus = await mcpService.getHealthStatus();
+    
+    return res.json({
+      success: true,
+      message: 'Global MCP connection is active (server-level)',
+      connectionStatus: healthStatus.connected ? 'ready' : 'failed',
+      toolsAvailable: healthStatus.toolsAvailable,
+      resourcesAvailable: healthStatus.resourcesAvailable,
+      isPermanent: true,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ MCP Connect Error:', error);
+    
+    return res.status(500).json({
+      error: 'Failed to connect to MCP server',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      code: 'MCP_CONNECT_ERROR'
     });
   }
 });

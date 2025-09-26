@@ -35,8 +35,25 @@ import cacheInvalidationRoutes from './routes/cacheInvalidation';
 import uncoverRoutes from './routes/uncover';
 import emailNewsletterRoutes from './routes/emailNewsletter';
 import vocAgentRoutes from './routes/vocAgent';
+import GlobalMcpServiceManager from './services/globalMcpService';
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || '3003', 10);
+
+/**
+ * Initialize MCP service at server startup
+ * Why this matters: Establishes permanent MCP connection when server starts,
+ * not when frontend requests it, ensuring true persistence
+ */
+const initializeMcpService = async (): Promise<void> => {
+  try {
+    console.log('🚀 Starting MCP service initialization...');
+    await GlobalMcpServiceManager.getInstance();
+    console.log('🎉 MCP service startup initialization complete');
+  } catch (error) {
+    console.error('❌ Failed to initialize MCP service at startup:', error);
+    console.log('⚠️ MCP service will be initialized on first API request');
+  }
+};
 
 // Middleware
 app.use(cors({
@@ -134,11 +151,16 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
   });
 });
 
-// Start server
-app.listen(PORT, (): void => {
+// Start server with MCP initialization
+app.listen(PORT, async (): Promise<void> => {
   console.log(`🚀 Apollo Reddit Scraper Backend running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`📚 API info: http://localhost:${PORT}/`);
+  
+  // Initialize MCP service after server starts
+  // Why this matters: Ensures MCP connection is established at server level,
+  // not dependent on frontend interactions
+  await initializeMcpService();
 });
 
 export default app; 
