@@ -34,7 +34,7 @@ import abTestingRoutes from './routes/abTesting';
 import cacheInvalidationRoutes from './routes/cacheInvalidation';
 import uncoverRoutes from './routes/uncover';
 import emailNewsletterRoutes from './routes/emailNewsletter';
-
+import vocAgentRoutes from './routes/vocAgent';
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || '3003', 10);
 
@@ -80,7 +80,7 @@ app.use('/api/ab-testing', abTestingRoutes);
 app.use('/api/cache-invalidation', cacheInvalidationRoutes);
 app.use('/api/uncover', uncoverRoutes);
 app.use('/api/email-newsletter', emailNewsletterRoutes);
-
+app.use('/api/voc-agent', vocAgentRoutes);
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
   res.json({ 
@@ -127,7 +127,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         abTesting: '/api/ab-testing/*',
         cacheInvalidation: '/api/cache-invalidation/*',
         uncover: '/api/uncover/*',
-        emailNewsletter: '/api/email-newsletter/*'
+        emailNewsletter: '/api/email-newsletter/*',
+        vocAgent: '/api/voc-agent/*'
       }
     }
   });

@@ -30,6 +30,7 @@ import jokesRoutes from '../src/routes/jokes';
 import abTestingRoutes from '../src/routes/abTesting';
 import cacheInvalidationRoutes from '../src/routes/cacheInvalidation';
 import uncoverRoutes from '../src/routes/uncover';
+import vocAgentRoutes from '../src/routes/vocAgent';
 
 // Load environment variables
 dotenv.config();
@@ -82,6 +83,7 @@ app.use('/api/jokes', jokesRoutes);
 app.use('/api/ab-testing', abTestingRoutes);
 app.use('/api/cache-invalidation', cacheInvalidationRoutes);
 app.use('/api/uncover', uncoverRoutes);
+app.use('/api/voc-agent', vocAgentRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response<HealthCheckResponse>): void => {
@@ -129,7 +131,8 @@ app.get('/', (req: Request, res: Response<ApiInfoResponse>): void => {
         abTesting: '/api/ab-testing/*',
         cacheInvalidation: '/api/cache-invalidation/*',
         emailNewsletter: '/api/email-newsletter/*',
-        uncover: '/api/uncover/*'
+        uncover: '/api/uncover/*',
+        vocAgent: '/api/voc-agent/*'
       }
     }
   });

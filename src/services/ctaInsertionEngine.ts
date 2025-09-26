@@ -345,17 +345,17 @@ class CTAInsertionEngine {
     const cleanedDescription = this.cleanCTADescription(cta.description);
     
     return `
-<div class="apollo-cta" style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 2px solid #e2e8f0; border-radius: 1rem; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
-  <div class="apollo-cta-category" style="font-size: 0.875rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">
+<div class="apollo-cta" style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 2px solid #e2e8f0; border-radius: 1rem; text-align: center;">
+  <div class="apollo-cta-category" style="font-size: 1rem; font-weight: 600; font-family: FoundersGroteskMono, 'Courier New', monospace; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">
     ${cta.category_header}
   </div>
-  <h3 class="apollo-cta-headline" style="font-size: 1.5rem; font-weight: 700; color: #1e293b; margin-bottom: 1rem; line-height: 1.2;">
+  <h3 class="apollo-cta-headline" style="font-size: 1.625rem; font-weight: 700; font-family: FoundersGrotesk, Arial, sans-serif; color: #1e293b; margin-bottom: 1rem; line-height: 1.2;">
     ${cta.headline}
   </h3>
-  <p class="apollo-cta-description" style="font-size: 1.125rem; color: #475569; margin-bottom: 1.5rem; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto;">
+  <p class="apollo-cta-description" style="font-size: 1.25rem; font-family: ABCDiatype, Inter, -apple-system, sans-serif; color: #475569; margin-bottom: 1.5rem; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto;">
     ${cleanedDescription}
   </p>
-  <a href="https://www.apollo.io/sign-up" class="apollo-cta-button" style="display: inline-flex; align-items: center; gap: 0.5rem; background-color: #EBF212; color: #000000; font-weight: 600; padding: 0.875rem 2rem; border-radius: 0.5rem; text-decoration: none; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);" target="_blank">
+  <a href="https://www.apollo.io/sign-up" class="apollo-cta-button" style="display: inline-flex; align-items: center; gap: 0.5rem; background-color: #EBF212; color: #000000; font-family: ABCDiatype, Inter, -apple-system, sans-serif; font-size: 1.125rem; font-weight: 600; padding: 0.875rem 2rem; border-radius: 0.5rem; text-decoration: none; transition: all 0.2s ease;" target="_blank">
     ${cta.action_button}
     <span style="font-size: 1rem;">→</span>
   </a>
@@ -602,8 +602,9 @@ ${cleanedDescription}
 
   private getCTACategoryStyles(options: CTAInsertionOptions): string {
     return `
-      font-size: 0.75rem;
+      font-size: 0.875rem;
       font-weight: 700;
+      font-family: FoundersGroteskMono, 'Courier New', monospace;
       color: #6b7280;
       letter-spacing: 0.05em;
       margin-bottom: 0.5rem;
@@ -613,8 +614,9 @@ ${cleanedDescription}
 
   private getCTAHeadlineStyles(options: CTAInsertionOptions): string {
     return `
-      font-size: 1.5rem;
+      font-size: 1.625rem;
       font-weight: 700;
+      font-family: FoundersGrotesk, Arial, sans-serif;
       color: #111827;
       margin: 0 0 1rem 0;
       line-height: 1.3;
@@ -623,7 +625,8 @@ ${cleanedDescription}
 
   private getCTADescriptionStyles(options: CTAInsertionOptions): string {
     return `
-      font-size: 1rem;
+      font-size: 1.125rem;
+      font-family: ABCDiatype, Inter, -apple-system, sans-serif;
       color: #4b5563;
       line-height: 1.6;
       margin: 0 0 1.5rem 0;
@@ -643,8 +646,9 @@ ${cleanedDescription}
       background-color: #3b82f6;
       color: white;
       text-decoration: none;
+      font-family: ABCDiatype, Inter, -apple-system, sans-serif;
       font-weight: 700;
-      font-size: 1rem;
+      font-size: 1.125rem;
       border-radius: 0.5rem;
       border: none;
       cursor: pointer;

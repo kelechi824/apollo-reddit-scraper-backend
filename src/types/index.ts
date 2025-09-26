@@ -41,6 +41,7 @@ export interface ApiInfoResponse {
       cacheInvalidation: string;
       uncover: string;
       emailNewsletter: string;
+      vocAgent: string;
     };
   };
 }
